@@ -14,14 +14,22 @@ function requireString(formData: FormData, key: string) {
 export async function signIn(formData: FormData) {
   const email = requireString(formData, "email");
   const password = requireString(formData, "password");
+  const redirectTo = getSafeRedirect(formData.get("redirect_to"), "/dashboard");
   const supabase = await createClient();
 
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) {
-    redirect(`/login?error=${encodeURIComponent(error.message)}`);
+    const loginPath = redirectTo.startsWith("/admin") ? "/admin/login" : "/login";
+    redirect(`${loginPath}?error=${encodeURIComponent(error.message)}`);
   }
 
-  redirect("/dashboard");
+  redirect(redirectTo);
+}
+
+function getSafeRedirect(value: FormDataEntryValue | null, fallback: string) {
+  if (typeof value !== "string") return fallback;
+  if (!value.startsWith("/") || value.startsWith("//")) return fallback;
+  return value;
 }
 
 export async function signUp(formData: FormData) {
@@ -55,4 +63,3 @@ export async function signUp(formData: FormData) {
 
   redirect("/onboarding");
 }
-
