@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
@@ -113,6 +113,8 @@ function applyCustomTheme(color: string) {
 
 export function TenantShell({ children, userName, role }: TenantShellProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const tenantParam = searchParams.get("tenant");
   const [theme, setTheme] = useState<ThemeMode>(() => {
     if (typeof window === "undefined") return "default";
     return (window.localStorage.getItem("meujudi-theme") as ThemeMode | null) ?? "default";
@@ -143,11 +145,17 @@ export function TenantShell({ children, userName, role }: TenantShellProps) {
     [customColor, theme],
   );
 
+  function withTenantContext(href: string) {
+    if (!tenantParam) return href;
+    const separator = href.includes("?") ? "&" : "?";
+    return `${href}${separator}tenant=${encodeURIComponent(tenantParam)}`;
+  }
+
   return (
     <div className="tenant-shell min-h-screen" data-theme={theme} style={customStyle}>
       <div className="grid min-h-screen lg:grid-cols-[230px_1fr]">
         <aside className="sticky top-0 z-20 flex h-auto gap-2 overflow-x-auto bg-[var(--tenant-sidebar)] px-3 py-3 text-[var(--tenant-sidebar-foreground)] lg:h-screen lg:flex-col lg:overflow-visible lg:px-3 lg:py-5">
-          <Link href="/monitoramento" className="flex shrink-0 items-center border-r border-white/10 pr-4 lg:border-b lg:border-r-0 lg:pb-5">
+          <Link href={withTenantContext("/monitoramento")} className="flex shrink-0 items-center border-r border-white/10 pr-4 lg:border-b lg:border-r-0 lg:pb-5">
             <span className="block w-40 lg:w-full">
               <Image
                 src="/meujudi-logo-sem-fundo.png"
@@ -166,7 +174,7 @@ export function TenantShell({ children, userName, role }: TenantShellProps) {
               return (
                 <Link
                   key={item.href}
-                  href={item.href}
+                  href={withTenantContext(item.href)}
                   className={cn(
                     "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-[var(--tenant-sidebar-muted)] transition-colors hover:bg-white/10 hover:text-[var(--tenant-sidebar-active)]",
                     active && "bg-[color-mix(in_srgb,var(--tenant-brass)_22%,transparent)] text-[var(--tenant-sidebar-active)] shadow-[inset_3px_0_0_var(--tenant-brass)]",
@@ -183,7 +191,7 @@ export function TenantShell({ children, userName, role }: TenantShellProps) {
 
           <div className="border-white/10 lg:border-t lg:pt-2">
             <Link
-              href="/configuracoes"
+              href={withTenantContext("/configuracoes")}
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-[var(--tenant-sidebar-muted)] transition-colors hover:bg-white/10 hover:text-[var(--tenant-sidebar-active)]",
                 pathname.startsWith("/configuracoes") && "bg-[color-mix(in_srgb,var(--tenant-brass)_22%,transparent)] text-[var(--tenant-sidebar-active)] shadow-[inset_3px_0_0_var(--tenant-brass)]",

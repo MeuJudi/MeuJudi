@@ -48,14 +48,51 @@ function monthRange() {
   return { start, end, initialMonth: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}` };
 }
 
-export default async function AgendaPage() {
+async function resolveTenantId(
+  supabase: Awaited<ReturnType<typeof requireAppUser>>["supabase"],
+  profile: Awaited<ReturnType<typeof requireAppUser>>["profile"],
+  requestedTenantId: string | undefined,
+) {
+  if (profile.tenant_id) return profile.tenant_id;
+  if (profile.role !== "super_admin") return null;
+
+  if (requestedTenantId) {
+    const { data: tenant } = await supabase
+      .from("tenants")
+      .select("id")
+      .eq("id", requestedTenantId)
+      .maybeSingle();
+
+    if (tenant?.id) return tenant.id as string;
+  }
+
+  const { data: demoTenant } = await supabase
+    .from("tenants")
+    .select("id")
+    .eq("slug", "escritorio-demo-meujudi")
+    .maybeSingle();
+
+  return demoTenant?.id ?? null;
+}
+
+export default async function AgendaPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tenant?: string }>;
+}) {
+  const params = await searchParams;
   const { supabase, profile } = await requireAppUser();
   const { start, end, initialMonth } = monthRange();
+  const tenantId = await resolveTenantId(supabase, profile, params.tenant);
+
+  if (!tenantId) {
+    return <AgendaCalendar initialMonth={initialMonth} events={[]} />;
+  }
 
   const { data: agendaRows } = await supabase
     .from("agenda_eventos")
     .select("id, tipo, titulo, descricao, data_inicio, data_fim, status, fonte, processo_id, user_id")
-    .eq("tenant_id", profile.tenant_id)
+    .eq("tenant_id", tenantId)
     .gte("data_inicio", start.toISOString())
     .lte("data_inicio", end.toISOString())
     .order("data_inicio", { ascending: true });
