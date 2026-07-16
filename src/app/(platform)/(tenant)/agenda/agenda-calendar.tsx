@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, Clock3, GripVertical, ListChecks, Sparkles } from "lucide-react";
-import { rescheduleAgendaEvent } from "./actions";
+import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Clock3, GripVertical, ListChecks, Sparkles, X } from "lucide-react";
+import { createInternalReminderFromAgendaEvent, rescheduleAgendaEvent } from "./actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -29,6 +29,12 @@ type AgendaCalendarProps = {
 };
 
 type CalendarView = "month" | "week";
+type MovePolicy = "direct" | "confirm" | "locked";
+type PendingDrop = {
+  event: AgendaItem;
+  dateKey: string;
+  policy: MovePolicy;
+};
 
 const weekdays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"];
 const weekHeader = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"];
@@ -138,7 +144,43 @@ function updateEventDate(event: AgendaItem, dateKey: string): AgendaItem {
   return { ...event, start: start.toISOString(), end };
 }
 
+function getMovePolicy(event: AgendaItem): MovePolicy {
+  if (event.source !== "manual" && (event.type === "audiencia" || event.type === "prazo")) {
+    return "locked";
+  }
+
+  if (event.source !== "manual" || event.type === "audiencia" || event.type === "prazo") {
+    return "confirm";
+  }
+
+  return "direct";
+}
+
+function policyTitle(policy: MovePolicy, event: AgendaItem) {
+  if (policy === "locked") return "Data oficial protegida";
+  if (event.type === "audiencia") return "Confirmar alteracao de audiencia";
+  if (event.type === "prazo") return "Confirmar alteracao de prazo";
+  return "Confirmar alteracao sensivel";
+}
+
+function policyMessage(policy: MovePolicy, event: AgendaItem) {
+  if (policy === "locked") {
+    return "Este evento veio de uma fonte oficial do processo. O MeuJudi nao deve alterar a data original, porque isso nao muda a data no tribunal. O caminho seguro e criar um lembrete interno na nova data.";
+  }
+
+  if (event.type === "audiencia") {
+    return "Audiencias normalmente dependem do tribunal. Mover este card altera somente a agenda interna do escritorio, nao a data oficial do processo.";
+  }
+
+  if (event.type === "prazo") {
+    return "Prazos processuais precisam de cuidado. Mover este card altera somente a agenda interna do escritorio. Confirme apenas se voce esta corrigindo uma data interna.";
+  }
+
+  return "Este evento veio de uma integracao ou fonte externa. Confirme se a mudanca representa apenas uma organizacao interna do escritorio.";
+}
+
 function EventPill({ event, compact = false }: { event: AgendaItem; compact?: boolean }) {
+  const policy = getMovePolicy(event);
   return (
     <div
       draggable
@@ -148,9 +190,10 @@ function EventPill({ event, compact = false }: { event: AgendaItem; compact?: bo
       }}
       className={cn(
         "group flex cursor-grab items-center gap-2 rounded-md border px-2 py-1.5 text-left text-[11px] shadow-sm transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md active:cursor-grabbing",
+        policy === "locked" && "cursor-copy",
         typeClass[event.type],
       )}
-      title="Arraste para remarcar"
+      title={policy === "locked" ? "Arraste para criar lembrete interno" : "Arraste para remarcar"}
     >
       <GripVertical className="h-3 w-3 shrink-0 opacity-45 transition-opacity group-hover:opacity-80" />
       <span
@@ -166,6 +209,90 @@ function EventPill({ event, compact = false }: { event: AgendaItem; compact?: bo
         <span className="block truncate font-semibold">{event.title}</span>
         {!compact ? <span className="block truncate opacity-80">{formatTime(event.start)}</span> : null}
       </span>
+    </div>
+  );
+}
+
+function MoveGuardModal({
+  pendingDrop,
+  isPending,
+  onCancel,
+  onConfirmMove,
+  onCreateReminder,
+}: {
+  pendingDrop: PendingDrop;
+  isPending: boolean;
+  onCancel: () => void;
+  onConfirmMove: () => void;
+  onCreateReminder: () => void;
+}) {
+  const targetDate = parseDateKey(pendingDrop.dateKey).toLocaleDateString("pt-BR");
+  const isLocked = pendingDrop.policy === "locked";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+      <div className="w-full max-w-xl rounded-lg border border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-5 text-[var(--tenant-surface-foreground)] shadow-xl">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--tenant-wine)_12%,transparent)] text-[var(--tenant-wine)]">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="font-display text-2xl font-bold">{policyTitle(pendingDrop.policy, pendingDrop.event)}</h2>
+              <p className="mt-2 text-sm leading-6 text-[var(--color-muted-foreground)]">
+                {policyMessage(pendingDrop.policy, pendingDrop.event)}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md p-1 text-[var(--color-muted-foreground)] transition-colors hover:bg-[var(--tenant-surface-muted)] hover:text-[var(--tenant-surface-foreground)]"
+            aria-label="Fechar aviso"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="mt-4 rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-3">
+          <p className="text-sm font-semibold">{pendingDrop.event.title}</p>
+          <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
+            Origem: {pendingDrop.event.source} · Tipo: {typeLabel[pendingDrop.event.type]} · Nova data: {targetDate}
+          </p>
+        </div>
+
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={isPending}
+            className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] hover:bg-[var(--tenant-surface-muted)]"
+          >
+            Cancelar
+          </Button>
+          {isLocked ? (
+            <Button type="button" onClick={onCreateReminder} disabled={isPending}>
+              Criar lembrete interno
+            </Button>
+          ) : (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onCreateReminder}
+                disabled={isPending}
+                className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] hover:bg-[var(--tenant-surface-muted)]"
+              >
+                Criar lembrete interno
+              </Button>
+              <Button type="button" onClick={onConfirmMove} disabled={isPending}>
+                Mover mesmo assim
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -247,6 +374,7 @@ export function AgendaCalendar({ initialMonth, events }: AgendaCalendarProps) {
   const [month, setMonth] = useState(() => new Date(`${initialMonth}-01T12:00:00`));
   const [selectedDate, setSelectedDate] = useState(() => toDateKey(new Date()));
   const [dragOverDate, setDragOverDate] = useState<string | null>(null);
+  const [pendingDrop, setPendingDrop] = useState<PendingDrop | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const days = useMemo(() => buildCalendarDays(month), [month]);
@@ -287,18 +415,45 @@ export function AgendaCalendar({ initialMonth, events }: AgendaCalendarProps) {
     setMonth(new Date(today.getFullYear(), today.getMonth(), 1));
   }
 
-  function handleDrop(eventId: string, dateKey: string) {
-    setDragOverDate(null);
+  function commitMove(event: AgendaItem, dateKey: string, confirmSensitive: boolean) {
     const previous = localEvents;
-    setLocalEvents((current) => current.map((event) => (event.id === eventId ? updateEventDate(event, dateKey) : event)));
+    setLocalEvents((current) => current.map((item) => (item.id === event.id ? updateEventDate(item, dateKey) : item)));
 
     startTransition(async () => {
       try {
-        await rescheduleAgendaEvent(eventId, dateKey);
+        await rescheduleAgendaEvent(event.id, dateKey, confirmSensitive);
+        setPendingDrop(null);
       } catch {
         setLocalEvents(previous);
       }
     });
+  }
+
+  function createReminder(event: AgendaItem, dateKey: string) {
+    startTransition(async () => {
+      try {
+        const reminder = await createInternalReminderFromAgendaEvent(event.id, dateKey);
+        setLocalEvents((current) => [...current, reminder]);
+        setSelectedDate(dateKey);
+        setPendingDrop(null);
+      } catch {
+        setPendingDrop(null);
+      }
+    });
+  }
+
+  function handleDrop(eventId: string, dateKey: string) {
+    setDragOverDate(null);
+    const event = localEvents.find((item) => item.id === eventId);
+    if (!event) return;
+
+    const policy = getMovePolicy(event);
+    if (policy === "direct") {
+      commitMove(event, dateKey, false);
+      return;
+    }
+
+    setPendingDrop({ event, dateKey, policy });
   }
 
   function handleSelect(dateKey: string) {
@@ -522,6 +677,16 @@ export function AgendaCalendar({ initialMonth, events }: AgendaCalendarProps) {
           )}
         </CardContent>
       </Card>
+
+      {pendingDrop ? (
+        <MoveGuardModal
+          pendingDrop={pendingDrop}
+          isPending={isPending}
+          onCancel={() => setPendingDrop(null)}
+          onConfirmMove={() => commitMove(pendingDrop.event, pendingDrop.dateKey, true)}
+          onCreateReminder={() => createReminder(pendingDrop.event, pendingDrop.dateKey)}
+        />
+      ) : null}
     </div>
   );
 }
