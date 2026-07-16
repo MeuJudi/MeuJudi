@@ -7,6 +7,8 @@ Este documento registra o que ainda falta depois da fundacao inicial do MeuJudi 
 - App Web Next.js criado na raiz do projeto.
 - Supabase preparado em migrations locais, ainda sem aplicar no projeto remoto.
 - Fluxos base existem para login, cadastro, onboarding, dashboard, CS e admin.
+- A hierarquia de produto e: Super Admin -> Verticais -> Tenants -> Users.
+- O MeuJudi e uma vertical; os escritorios sao tenants dentro dela.
 - RLS inicial foi desenhado por `tenant_id`, usando `public.users` como fonte de permissao.
 - `super_admin` existe como role manual em `public.users.role`, mas a interface e tratada como area separada dos produtos.
 - MVP segue gratuito, sem Stripe e sem limites de plano.

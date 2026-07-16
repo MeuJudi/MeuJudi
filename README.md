@@ -56,6 +56,8 @@ public/                  Assets publicos do Web
 
 - `meujudi-cs/` nao entra no Git.
 - Chaves secretas, principalmente `SUPABASE_SERVICE_ROLE_KEY`, nunca entram no Git nem em variavel `NEXT_PUBLIC_`.
+- Hierarquia da plataforma: Super Admin -> Verticais -> Tenants -> Users.
+- No MVP, `meujudi` e a vertical ativa; cada escritorio e um tenant dentro dessa vertical.
 - Fontes publicas globais, como DataJud/Mural, serao buscadas uma vez e distribuidas por tenant apenas quando houver vinculo confirmado por CNJ/OAB.
 - Itens publicos sem vinculo com nenhum tenant devem ser descartados.
 - Dados vindos do CS/PJe autenticado ficam restritos ao tenant que conectou.
