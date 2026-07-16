@@ -37,7 +37,7 @@ export async function requireOwner() {
   const context = await requireAppUser();
 
   if (context.profile.role !== "owner" && context.profile.role !== "super_admin") {
-    redirect("/dashboard");
+    redirect("/monitoramento");
   }
 
   return context;
@@ -47,7 +47,7 @@ export async function requireSuperAdmin() {
   const context = await requireAppUser();
 
   if (context.profile.role !== "super_admin") {
-    redirect("/dashboard");
+    redirect("/monitoramento");
   }
 
   return context;

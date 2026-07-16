@@ -66,7 +66,7 @@ export default function HomePage() {
                 <Link href="/register">Comecar configuracao</Link>
               </Button>
               <Button asChild size="lg" variant="outline">
-                <Link href="/dashboard">Ver painel</Link>
+                <Link href="/monitoramento">Ver painel</Link>
               </Button>
             </div>
           </div>
@@ -89,4 +89,3 @@ export default function HomePage() {
     </main>
   );
 }
-

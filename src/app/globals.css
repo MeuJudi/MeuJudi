@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
+  --font-sans: "IBM Plex Sans", "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
 
   --color-background: oklch(0.145 0 0);
   --color-foreground: oklch(0.985 0 0);
@@ -42,3 +42,74 @@ a {
   text-decoration: none;
 }
 
+.font-display {
+  font-family: "Fraunces", Georgia, serif;
+}
+
+.tenant-shell {
+  --color-background: #f6f3ea;
+  --color-foreground: #1a1a1a;
+  --color-card: #ffffff;
+  --color-card-foreground: #16233a;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #16233a;
+  --color-primary: #b8863b;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #ede9dd;
+  --color-secondary-foreground: #1f3350;
+  --color-muted: #ede9dd;
+  --color-muted-foreground: #5b5548;
+  --color-accent: #ede9dd;
+  --color-accent-foreground: #16233a;
+  --color-destructive: #7a2e2e;
+  --color-destructive-foreground: #ffffff;
+  --color-border: #d9d2bf;
+  --color-input: #d9d2bf;
+  --color-ring: #b8863b;
+  --tenant-sidebar: #16233a;
+  --tenant-sidebar-foreground: #d7d2c2;
+  --tenant-sidebar-muted: #b9b29b;
+  --tenant-sidebar-active: #f1ede0;
+  --tenant-paper: #f6f3ea;
+  --tenant-line: #d9d2bf;
+  --tenant-brass: #b8863b;
+  --tenant-brass-light: #d9b372;
+  --tenant-wine: #7a2e2e;
+  --tenant-moss: #4b6b4e;
+  color: var(--color-foreground);
+  background: var(--tenant-paper);
+}
+
+.tenant-shell[data-theme="light"] {
+  --color-background: #fbfbfa;
+  --color-card: #ffffff;
+  --color-secondary: #f1f1ef;
+  --color-muted: #f1f1ef;
+  --color-border: #deded8;
+  --tenant-sidebar: #f7f7f4;
+  --tenant-sidebar-foreground: #243044;
+  --tenant-sidebar-muted: #626a74;
+  --tenant-sidebar-active: #16233a;
+  --tenant-paper: #fbfbfa;
+}
+
+.tenant-shell[data-theme="dark"] {
+  --color-background: #111111;
+  --color-foreground: #f4f1e9;
+  --color-card: #1a1a1a;
+  --color-card-foreground: #f4f1e9;
+  --color-secondary: #262626;
+  --color-secondary-foreground: #f4f1e9;
+  --color-muted: #262626;
+  --color-muted-foreground: #b8b1a2;
+  --color-accent: #262626;
+  --color-accent-foreground: #f4f1e9;
+  --color-border: #333333;
+  --color-input: #333333;
+  --tenant-sidebar: #070707;
+  --tenant-sidebar-foreground: #e8e2d3;
+  --tenant-sidebar-muted: #aaa394;
+  --tenant-sidebar-active: #ffffff;
+  --tenant-paper: #111111;
+  --tenant-line: #333333;
+}

@@ -14,7 +14,7 @@ function requireString(formData: FormData, key: string) {
 export async function signIn(formData: FormData) {
   const email = requireString(formData, "email");
   const password = requireString(formData, "password");
-  const redirectTo = getSafeRedirect(formData.get("redirect_to"), "/dashboard");
+  const redirectTo = getSafeRedirect(formData.get("redirect_to"), "/monitoramento");
   const supabase = await createClient();
 
   const { error } = await supabase.auth.signInWithPassword({ email, password });

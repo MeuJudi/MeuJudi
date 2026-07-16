@@ -1,6 +1,19 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const protectedPrefixes = ["/dashboard", "/onboarding", "/cs", "/team", "/admin"];
+const protectedPrefixes = [
+  "/dashboard",
+  "/monitoramento",
+  "/agenda",
+  "/tarefas",
+  "/clientes",
+  "/relatorios",
+  "/financeiro",
+  "/configuracoes",
+  "/onboarding",
+  "/cs",
+  "/team",
+  "/admin",
+];
 const authPrefixes = ["/login", "/register"];
 const publicPrefixes = ["/admin/login"];
 
@@ -22,7 +35,7 @@ export function proxy(request: NextRequest) {
   }
 
   if (authPrefixes.some((prefix) => path.startsWith(prefix)) && hasSessionCookie) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return NextResponse.redirect(new URL("/monitoramento", request.url));
   }
 
   return NextResponse.next();
