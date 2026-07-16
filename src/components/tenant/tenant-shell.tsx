@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -73,23 +74,37 @@ function mix(hex: string, target: string, amount: number) {
 }
 
 function applyCustomTheme(color: string) {
+  const dark = mix(color, "#000000", 0.72);
+  const darker = mix(color, "#000000", 0.82);
+  const light = mix(color, "#ffffff", 0.9);
+  const lightSurface = mix(color, "#ffffff", 0.96);
+  const accent = mix(color, "#000000", 0.38);
+  const border = mix(color, "#000000", 0.18);
+
   return {
-    "--tenant-sidebar": mix(color, "#000000", 0.62),
-    "--tenant-paper": mix(color, "#ffffff", 0.88),
-    "--color-background": mix(color, "#ffffff", 0.9),
-    "--color-card": mix(color, "#ffffff", 0.97),
-    "--color-primary": mix(color, "#000000", 0.18),
-    "--color-ring": mix(color, "#000000", 0.18),
-    "--tenant-brass": mix(color, "#000000", 0.18),
-    "--tenant-brass-light": mix(color, "#ffffff", 0.55),
+    "--tenant-sidebar": dark,
+    "--tenant-paper": light,
+    "--tenant-line": border,
+    "--color-background": light,
+    "--color-foreground": darker,
+    "--color-card": lightSurface,
+    "--color-card-foreground": darker,
+    "--color-primary": accent,
+    "--color-primary-foreground": "#ffffff",
+    "--color-ring": accent,
+    "--tenant-brass": accent,
+    "--tenant-brass-light": mix(color, "#ffffff", 0.5),
     "--tenant-sidebar-foreground": "#ffffff",
-    "--tenant-sidebar-muted": mix(color, "#ffffff", 0.68),
+    "--tenant-sidebar-muted": mix(color, "#ffffff", 0.78),
     "--tenant-sidebar-active": "#ffffff",
     "--color-secondary": mix(color, "#ffffff", 0.82),
+    "--color-secondary-foreground": darker,
     "--color-muted": mix(color, "#ffffff", 0.82),
+    "--color-muted-foreground": mix(color, "#000000", 0.68),
     "--color-accent": mix(color, "#ffffff", 0.78),
-    "--color-border": mix(color, "#ffffff", 0.68),
-    "--color-input": mix(color, "#ffffff", 0.68),
+    "--color-accent-foreground": darker,
+    "--color-border": border,
+    "--color-input": border,
   } as React.CSSProperties;
 }
 
@@ -129,11 +144,17 @@ export function TenantShell({ children, userName, role }: TenantShellProps) {
     <div className="tenant-shell min-h-screen" data-theme={theme} style={customStyle}>
       <div className="grid min-h-screen lg:grid-cols-[230px_1fr]">
         <aside className="sticky top-0 z-20 flex h-auto gap-2 overflow-x-auto bg-[var(--tenant-sidebar)] px-3 py-3 text-[var(--tenant-sidebar-foreground)] lg:h-screen lg:flex-col lg:overflow-visible lg:px-3 lg:py-5">
-          <Link href="/monitoramento" className="flex shrink-0 items-center gap-2 border-r border-white/10 px-2 pr-4 lg:border-b lg:border-r-0 lg:pb-5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--tenant-brass)] font-display text-sm font-bold text-[var(--tenant-brass-light)]">
-              MJ
+          <Link href="/monitoramento" className="flex shrink-0 items-center border-r border-white/10 pr-4 lg:border-b lg:border-r-0 lg:pb-5">
+            <span className="block w-40 overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-black/10 lg:w-full">
+              <Image
+                src="/meujudi-logo-2.png"
+                alt="MeuJudi"
+                width={1774}
+                height={887}
+                priority
+                className="block h-auto w-full"
+              />
             </span>
-            <strong className="font-display text-lg text-[#f1ede0]">MeuJudi</strong>
           </Link>
 
           <nav className="flex gap-1 lg:mt-3 lg:flex-col">
@@ -171,9 +192,9 @@ export function TenantShell({ children, userName, role }: TenantShellProps) {
           </div>
         </aside>
 
-        <main className="min-w-0 bg-[var(--tenant-paper)] px-4 py-5 sm:px-6 lg:px-8">
+        <main className="min-w-0 bg-[var(--tenant-paper)] px-4 py-5 text-[var(--color-foreground)] sm:px-6 lg:px-8">
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex min-w-[240px] flex-1 items-center gap-2 rounded-md border border-[var(--tenant-line)] bg-white px-3 py-2 text-sm text-[var(--color-muted-foreground)]">
+            <div className="flex min-w-[240px] flex-1 items-center gap-2 rounded-md border border-[var(--tenant-line)] bg-[var(--color-card)] px-3 py-2 text-sm text-[var(--color-muted-foreground)]">
               <Search className="h-4 w-4 opacity-70" />
               <span>Buscar processo, cliente ou tarefa...</span>
             </div>

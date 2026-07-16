@@ -53,7 +53,7 @@ a {
   --color-card-foreground: #16233a;
   --color-popover: #ffffff;
   --color-popover-foreground: #16233a;
-  --color-primary: #b8863b;
+  --color-primary: #8c6425;
   --color-primary-foreground: #ffffff;
   --color-secondary: #ede9dd;
   --color-secondary-foreground: #1f3350;
@@ -65,14 +65,14 @@ a {
   --color-destructive-foreground: #ffffff;
   --color-border: #d9d2bf;
   --color-input: #d9d2bf;
-  --color-ring: #b8863b;
+  --color-ring: #8c6425;
   --tenant-sidebar: #16233a;
   --tenant-sidebar-foreground: #d7d2c2;
   --tenant-sidebar-muted: #b9b29b;
   --tenant-sidebar-active: #f1ede0;
   --tenant-paper: #f6f3ea;
   --tenant-line: #d9d2bf;
-  --tenant-brass: #b8863b;
+  --tenant-brass: #9a6a22;
   --tenant-brass-light: #d9b372;
   --tenant-wine: #7a2e2e;
   --tenant-moss: #4b6b4e;
@@ -82,15 +82,23 @@ a {
 
 .tenant-shell[data-theme="light"] {
   --color-background: #fbfbfa;
+  --color-foreground: #151515;
   --color-card: #ffffff;
+  --color-card-foreground: #16233a;
   --color-secondary: #f1f1ef;
+  --color-secondary-foreground: #16233a;
   --color-muted: #f1f1ef;
-  --color-border: #deded8;
+  --color-muted-foreground: #41464f;
+  --color-accent: #ebebe7;
+  --color-accent-foreground: #16233a;
+  --color-border: #d2d2ca;
+  --color-input: #d2d2ca;
   --tenant-sidebar: #f7f7f4;
   --tenant-sidebar-foreground: #243044;
-  --tenant-sidebar-muted: #626a74;
+  --tenant-sidebar-muted: #3e4754;
   --tenant-sidebar-active: #16233a;
   --tenant-paper: #fbfbfa;
+  --tenant-line: #d2d2ca;
 }
 
 .tenant-shell[data-theme="dark"] {
