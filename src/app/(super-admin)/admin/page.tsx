@@ -13,7 +13,7 @@ export default async function AdminPage() {
   ]);
 
   const metrics = [
-    { label: "Ambientes", value: tenantsCount ?? 0, icon: Building2 },
+    { label: "Clientes", value: tenantsCount ?? 0, icon: Building2 },
     { label: "Usuarios", value: usersCount ?? 0, icon: Users },
     { label: "Eventos de auditoria", value: auditCount ?? 0, icon: ClipboardList },
   ];
@@ -22,8 +22,8 @@ export default async function AdminPage() {
     <div className="mx-auto max-w-6xl space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="text-sm font-medium text-primary">JudiCore Control</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Console operacional</h1>
+          <p className="text-sm font-medium text-primary">Super Admin</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Gestao da plataforma</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Controle global de clientes, ambientes, usuarios e auditoria da plataforma.
           </p>
@@ -52,12 +52,12 @@ export default async function AdminPage() {
         </CardHeader>
         <CardContent className="space-y-3 text-sm leading-6 text-muted-foreground">
           <p>
-            Este console e separado dos produtos dos clientes. O acesso depende da role manual{" "}
+            Esta area e separada dos produtos dos clientes. O acesso depende da role manual{" "}
             <code>super_admin</code>; usuarios comuns nunca recebem essa permissao pelo cadastro.
           </p>
           <div className="flex flex-wrap gap-3">
             <Button asChild>
-              <Link href="/admin/tenants">Ver ambientes</Link>
+              <Link href="/admin/tenants">Ver clientes</Link>
             </Button>
             <Button asChild variant="outline">
               <Link href="/admin/audit">Ver auditoria</Link>

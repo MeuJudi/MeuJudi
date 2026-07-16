@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 
 const adminLinks = [
   { href: "/admin", label: "Resumo", icon: BarChart3 },
-  { href: "/admin/tenants", label: "Ambientes", icon: Building2 },
+  { href: "/admin/tenants", label: "Clientes", icon: Building2 },
   { href: "/admin/audit", label: "Auditoria", icon: ClipboardList },
 ];
 
@@ -17,7 +17,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <aside className="fixed inset-y-0 left-0 hidden w-64 border-r bg-background px-4 py-6 md:block">
         <Link href="/admin" className="flex items-center gap-2 font-semibold">
           <Shield className="h-5 w-5 text-primary" />
-          JudiCore Control
+          Super Admin
         </Link>
         <nav className="mt-8 space-y-1">
           {adminLinks.map((link) => (

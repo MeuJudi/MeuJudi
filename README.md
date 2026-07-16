@@ -59,8 +59,8 @@ public/                  Assets publicos do Web
 - Fontes publicas globais, como DataJud/Mural, serao buscadas uma vez e distribuidas por tenant apenas quando houver vinculo confirmado por CNJ/OAB.
 - Itens publicos sem vinculo com nenhum tenant devem ser descartados.
 - Dados vindos do CS/PJe autenticado ficam restritos ao tenant que conectou.
-- O console operacional separado usa `users.role = 'super_admin'`, definido manualmente por Caio.
-- Pendencias de SaaS e JudiCore Control ficam registradas em `docs/roadmap/17-gap-saas-super-admin.md`.
+- A area separada de Super Admin usa `users.role = 'super_admin'`, definido manualmente por Caio.
+- Pendencias de SaaS e Super Admin ficam registradas em `docs/roadmap/17-gap-saas-super-admin.md`.
 
 ## Validacao
 

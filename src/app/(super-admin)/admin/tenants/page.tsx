@@ -20,17 +20,17 @@ export default async function AdminTenantsPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <header>
-        <p className="text-sm font-medium text-primary">JudiCore Control</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">Ambientes de clientes</h1>
+        <p className="text-sm font-medium text-primary">Super Admin</p>
+        <h1 className="mt-1 text-3xl font-semibold tracking-tight">Clientes</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Clientes e ambientes conectados as verticais da plataforma.
+          Clientes conectados as verticais da plataforma.
         </p>
       </header>
 
       <Card>
         <CardHeader>
           <Building2 className="h-5 w-5 text-primary" />
-          <CardTitle>Lista de ambientes</CardTitle>
+          <CardTitle>Lista de clientes</CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <table className="w-full min-w-[760px] text-sm">

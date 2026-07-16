@@ -18,7 +18,7 @@ export default async function AdminAuditPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <header>
-        <p className="text-sm font-medium text-primary">JudiCore Control</p>
+        <p className="text-sm font-medium text-primary">Super Admin</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Auditoria global</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Ultimos eventos sensiveis registrados na plataforma.
