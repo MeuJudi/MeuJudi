@@ -11,6 +11,7 @@ type AgendaRow = {
   status: AgendaItem["status"];
   fonte: string;
   processo_id: string | null;
+  user_id: string | null;
 };
 
 type ProcessRow = {
@@ -20,10 +21,24 @@ type ProcessRow = {
   reu: string | null;
 };
 
+type UserRow = {
+  id: string;
+  name: string;
+  avatar_url: string | null;
+};
+
+const lawyerColors = ["#0f766e", "#7c3aed", "#be123c", "#2563eb", "#b45309", "#15803d", "#c026d3", "#0e7490"];
+
 function buildProcessTitle(process: ProcessRow | undefined) {
   if (!process) return null;
   const parties = [process.autor, process.reu].filter(Boolean).join(" x ");
   return parties ? `${process.classe_nome ?? "Processo"} - ${parties}` : process.classe_nome ?? "Processo";
+}
+
+function colorForUser(seed: string | null) {
+  if (!seed) return "#5b5548";
+  const index = seed.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0) % lawyerColors.length;
+  return lawyerColors[index];
 }
 
 function monthRange() {
@@ -39,7 +54,7 @@ export default async function AgendaPage() {
 
   const { data: agendaRows } = await supabase
     .from("agenda_eventos")
-    .select("id, tipo, titulo, descricao, data_inicio, data_fim, status, fonte, processo_id")
+    .select("id, tipo, titulo, descricao, data_inicio, data_fim, status, fonte, processo_id, user_id")
     .eq("tenant_id", profile.tenant_id)
     .gte("data_inicio", start.toISOString())
     .lte("data_inicio", end.toISOString())
@@ -53,7 +68,16 @@ export default async function AgendaPage() {
         .in("id", processIds)
     : { data: [] };
 
+  const userIds = Array.from(new Set((agendaRows ?? []).map((event) => event.user_id).filter(Boolean)));
+  const { data: userRows } = userIds.length
+    ? await supabase
+        .from("users")
+        .select("id, name, avatar_url")
+        .in("id", userIds)
+    : { data: [] };
+
   const processById = new Map(((processRows ?? []) as ProcessRow[]).map((process) => [process.id, process]));
+  const userById = new Map(((userRows ?? []) as UserRow[]).map((user) => [user.id, user]));
   const events: AgendaItem[] = ((agendaRows ?? []) as AgendaRow[]).map((event) => ({
     id: event.id,
     title: event.titulo,
@@ -64,6 +88,9 @@ export default async function AgendaPage() {
     status: event.status,
     source: event.fonte,
     processTitle: event.processo_id ? buildProcessTitle(processById.get(event.processo_id)) : null,
+    responsibleName: event.user_id ? userById.get(event.user_id)?.name ?? null : null,
+    responsibleAvatarUrl: event.user_id ? userById.get(event.user_id)?.avatar_url ?? null : null,
+    responsibleColor: colorForUser(event.user_id),
   }));
 
   return <AgendaCalendar initialMonth={initialMonth} events={events} />;

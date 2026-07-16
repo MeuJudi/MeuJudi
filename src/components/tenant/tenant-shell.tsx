@@ -155,7 +155,7 @@ export function TenantShell({ children, userName, role }: TenantShellProps) {
                 width={1429}
                 height={395}
                 priority
-                className="block h-auto w-full"
+                className="logo-outline-white block h-auto w-full"
               />
             </span>
           </Link>

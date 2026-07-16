@@ -46,6 +46,26 @@ a {
   font-family: "Fraunces", Georgia, serif;
 }
 
+.logo-outline-white {
+  filter:
+    drop-shadow(0 1px 0 rgb(255 255 255 / 0.94))
+    drop-shadow(1px 0 0 rgb(255 255 255 / 0.94))
+    drop-shadow(0 -1px 0 rgb(255 255 255 / 0.94))
+    drop-shadow(-1px 0 0 rgb(255 255 255 / 0.94))
+    drop-shadow(0 4px 10px rgb(0 0 0 / 0.16));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
 .tenant-shell {
   --color-background: #f6f3ea;
   --color-foreground: #1a1a1a;
