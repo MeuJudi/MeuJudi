@@ -36,6 +36,62 @@ function atHour(days: number, hour: number, minute = 0) {
   return date;
 }
 
+async function getOrCreateDemoTenant(supabase: Awaited<ReturnType<typeof requireAppUser>>["supabase"], userId: string) {
+  const { data: existing } = await supabase
+    .from("tenants")
+    .select("id")
+    .eq("slug", "escritorio-demo-meujudi")
+    .maybeSingle();
+
+  if (existing?.id) return existing.id as string;
+
+  const { data: vertical, error: verticalError } = await supabase
+    .from("verticals")
+    .select("id")
+    .eq("slug", "meujudi")
+    .single();
+
+  if (verticalError || !vertical) {
+    redirect("/monitoramento?error=vertical_meujudi_nao_encontrada");
+  }
+
+  const { data: tenant, error: tenantError } = await supabase
+    .from("tenants")
+    .insert({
+      vertical_id: vertical.id,
+      name: "Escritorio Demo MeuJudi",
+      slug: "escritorio-demo-meujudi",
+      city: "Sao Paulo",
+      state: "SP",
+      email: "demo@meujudi.local",
+      created_by: userId,
+      onboarding: { demo: true },
+    })
+    .select("id")
+    .single();
+
+  if (tenantError || !tenant) {
+    redirect(`/monitoramento?error=${encodeURIComponent(tenantError?.message ?? "tenant_demo_nao_criado")}`);
+  }
+
+  return tenant.id as string;
+}
+
+async function resolveSeedTenantId() {
+  const { supabase, profile } = await requireAppUser();
+
+  if (profile.tenant_id) {
+    return { supabase, profile, tenantId: profile.tenant_id, redirectTenant: false };
+  }
+
+  if (profile.role === "super_admin") {
+    const tenantId = await getOrCreateDemoTenant(supabase, profile.id);
+    return { supabase, profile, tenantId, redirectTenant: true };
+  }
+
+  redirect("/monitoramento?error=usuario_sem_escritorio");
+}
+
 export async function updateProcessStatus(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const status = String(formData.get("status") ?? "");
@@ -58,11 +114,7 @@ export async function updateProcessStatus(formData: FormData) {
 }
 
 export async function createSampleProcesses() {
-  const { supabase, profile } = await requireAppUser();
-
-  if (!profile.tenant_id) {
-    redirect("/monitoramento?error=tenant_nao_encontrado");
-  }
+  const { supabase, profile, tenantId, redirectTenant } = await resolveSeedTenantId();
 
   const rows = demoProcesses.map((process, index) => {
     const [
@@ -80,7 +132,7 @@ export async function createSampleProcesses() {
     ] = process;
 
     return {
-      tenant_id: profile.tenant_id,
+      tenant_id: tenantId,
       cnj,
       tribunal,
       grau,
@@ -120,7 +172,7 @@ export async function createSampleProcesses() {
   const { data: existingDemoAgenda } = await supabase
     .from("agenda_eventos")
     .select("id")
-    .eq("tenant_id", profile.tenant_id)
+    .eq("tenant_id", tenantId)
     .like("titulo", "[Demo]%")
     .limit(1);
 
@@ -130,7 +182,7 @@ export async function createSampleProcesses() {
         const events = [];
         if (process.proxima_audiencia) {
           events.push({
-            tenant_id: profile.tenant_id,
+            tenant_id: tenantId,
             processo_id: process.id,
             user_id: profile.id,
             tipo: "audiencia",
@@ -144,7 +196,7 @@ export async function createSampleProcesses() {
 
         if (process.prazo_proxima_resposta) {
           events.push({
-            tenant_id: profile.tenant_id,
+            tenant_id: tenantId,
             processo_id: process.id,
             user_id: profile.id,
             tipo: "prazo",
@@ -164,14 +216,14 @@ export async function createSampleProcesses() {
   const { data: existingDemoMovement } = await supabase
     .from("movimentacoes")
     .select("id")
-    .eq("tenant_id", profile.tenant_id)
+    .eq("tenant_id", tenantId)
     .like("nome", "[Demo]%")
     .limit(1);
 
   if (processRows.length > 0 && (existingDemoMovement ?? []).length === 0) {
     await supabase.from("movimentacoes").insert(
       processRows.map((process, index) => ({
-        tenant_id: profile.tenant_id,
+        tenant_id: tenantId,
         processo_id: process.id,
         data_movimento: addDays(-index).toISOString(),
         codigo: 100 + index,
@@ -186,4 +238,8 @@ export async function createSampleProcesses() {
 
   revalidatePath("/monitoramento");
   revalidatePath("/agenda");
+
+  if (redirectTenant) {
+    redirect(`/monitoramento?tenant=${tenantId}`);
+  }
 }

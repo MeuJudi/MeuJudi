@@ -50,31 +50,70 @@ function buildTitle(process: ProcessRow) {
   return parties ? `${className} - ${parties}` : className;
 }
 
+async function resolveTenantId(
+  supabase: Awaited<ReturnType<typeof requireAppUser>>["supabase"],
+  profile: Awaited<ReturnType<typeof requireAppUser>>["profile"],
+  requestedTenantId: string | undefined,
+) {
+  if (profile.tenant_id) return profile.tenant_id;
+  if (profile.role !== "super_admin") return null;
+
+  if (requestedTenantId) {
+    const { data: tenant } = await supabase
+      .from("tenants")
+      .select("id")
+      .eq("id", requestedTenantId)
+      .maybeSingle();
+
+    if (tenant?.id) return tenant.id as string;
+  }
+
+  const { data: demoTenant } = await supabase
+    .from("tenants")
+    .select("id")
+    .eq("slug", "escritorio-demo-meujudi")
+    .maybeSingle();
+
+  return demoTenant?.id ?? null;
+}
+
 export default async function MonitoramentoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; tenant?: string }>;
 }) {
   const params = await searchParams;
   const { supabase, profile } = await requireAppUser();
+  const tenantId = await resolveTenantId(supabase, profile, params.tenant);
+
+  if (!tenantId) {
+    return (
+      <MonitoramentoView
+        processes={[]}
+        metrics={{ active: 0, newMovements: 0, upcomingDeadlines: 0, muralPending: 0 }}
+        muralItems={[]}
+        error={params.error ? decodeURIComponent(params.error) : undefined}
+      />
+    );
+  }
 
   const [{ data: processRows }, { data: movementRows }, { data: muralRows }] = await Promise.all([
     supabase
       .from("processos")
       .select("id, cnj, tribunal, classe_nome, autor, reu, prazo_proxima_resposta, proxima_audiencia, status, tags, is_favorito, data_ultima_movimentacao")
-      .eq("tenant_id", profile.tenant_id)
+      .eq("tenant_id", tenantId)
       .order("data_ultima_movimentacao", { ascending: false, nullsFirst: false })
       .limit(120),
     supabase
       .from("movimentacoes")
       .select("processo_id, nome, data_movimento, is_novo")
-      .eq("tenant_id", profile.tenant_id)
+      .eq("tenant_id", tenantId)
       .order("data_movimento", { ascending: false })
       .limit(300),
     supabase
       .from("comunicacoes_mural")
       .select("id, tipo_comunicacao, sigla_tribunal, data_disponibilizacao, processo_id")
-      .eq("tenant_id", profile.tenant_id)
+      .eq("tenant_id", tenantId)
       .order("data_disponibilizacao", { ascending: false })
       .limit(20),
   ]);
