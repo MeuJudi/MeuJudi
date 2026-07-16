@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAppUser } from "@/lib/auth/guards";
 
 const allowedStatuses = ["ativo", "suspenso", "arquivado", "concluido"] as const;
+const columnColors = ["#9a6a22", "#4b6b4e", "#7a2e2e", "#2563eb", "#7c3aed", "#0e7490"];
 
 const demoProcesses = [
   ["10000012320268260001", "TJSP", "1º grau", "PJe", 436, "Procedimento Comum Civel", "Solaris Comercio Ltda.", "Banco Aurora S.A.", "ativo", ["civel", "contrato"], 125000],
@@ -108,6 +109,150 @@ export async function updateProcessStatus(formData: FormData) {
 
   if (error) {
     redirect(`/monitoramento?error=${encodeURIComponent(error.message)}`);
+  }
+
+  revalidatePath("/monitoramento");
+}
+
+async function assertColumnAccess(supabase: Awaited<ReturnType<typeof requireAppUser>>["supabase"], columnId: string) {
+  const { data: column, error } = await supabase
+    .from("process_kanban_columns")
+    .select("id, tenant_id")
+    .eq("id", columnId)
+    .single();
+
+  if (error || !column) {
+    redirect("/monitoramento?error=coluna_nao_encontrada");
+  }
+
+  return column as { id: string; tenant_id: string };
+}
+
+export async function moveProcessToColumn(processId: string, columnId: string) {
+  const { supabase } = await requireAppUser();
+  const column = await assertColumnAccess(supabase, columnId);
+
+  const { error } = await supabase
+    .from("processos")
+    .update({ kanban_column_id: column.id, updated_at: new Date().toISOString() })
+    .eq("id", processId)
+    .eq("tenant_id", column.tenant_id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/monitoramento");
+}
+
+export async function renameKanbanColumn(columnId: string, name: string) {
+  const cleanName = name.trim();
+  if (!cleanName || cleanName.length > 60) {
+    throw new Error("Nome de coluna invalido.");
+  }
+
+  const { supabase } = await requireAppUser();
+  await assertColumnAccess(supabase, columnId);
+
+  const { error } = await supabase
+    .from("process_kanban_columns")
+    .update({ name: cleanName })
+    .eq("id", columnId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/monitoramento");
+}
+
+export async function createKanbanColumn(tenantId: string, name = "Nova coluna") {
+  const { supabase, profile } = await requireAppUser();
+  const canUseTenant = profile.tenant_id === tenantId || profile.role === "super_admin";
+  if (!canUseTenant) {
+    throw new Error("Voce nao tem acesso a este escritorio.");
+  }
+
+  const { data: columns } = await supabase
+    .from("process_kanban_columns")
+    .select("position")
+    .eq("tenant_id", tenantId)
+    .order("position", { ascending: false })
+    .limit(1);
+
+  const nextPosition = ((columns?.[0]?.position as number | undefined) ?? -1) + 1;
+  const color = columnColors[nextPosition % columnColors.length];
+
+  const { data: column, error } = await supabase
+    .from("process_kanban_columns")
+    .insert({
+      tenant_id: tenantId,
+      name: name.trim() || "Nova coluna",
+      position: nextPosition,
+      color,
+      is_default: false,
+      created_by: profile.id,
+    })
+    .select("id, tenant_id, name, position, color, is_default")
+    .single();
+
+  if (error || !column) {
+    throw new Error(error?.message ?? "Nao foi possivel criar a coluna.");
+  }
+
+  revalidatePath("/monitoramento");
+  return column;
+}
+
+export async function reorderKanbanColumns(orderedColumnIds: string[]) {
+  const { supabase } = await requireAppUser();
+  const uniqueIds = Array.from(new Set(orderedColumnIds));
+
+  for (const [position, columnId] of uniqueIds.entries()) {
+    await assertColumnAccess(supabase, columnId);
+    const { error } = await supabase
+      .from("process_kanban_columns")
+      .update({ position })
+      .eq("id", columnId);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  revalidatePath("/monitoramento");
+}
+
+export async function deleteKanbanColumn(columnId: string, targetColumnId: string) {
+  if (columnId === targetColumnId) {
+    throw new Error("Escolha uma coluna destino diferente.");
+  }
+
+  const { supabase } = await requireAppUser();
+  const source = await assertColumnAccess(supabase, columnId);
+  const target = await assertColumnAccess(supabase, targetColumnId);
+
+  if (source.tenant_id !== target.tenant_id) {
+    throw new Error("As colunas precisam pertencer ao mesmo escritorio.");
+  }
+
+  const { error: moveError } = await supabase
+    .from("processos")
+    .update({ kanban_column_id: target.id, updated_at: new Date().toISOString() })
+    .eq("tenant_id", source.tenant_id)
+    .eq("kanban_column_id", source.id);
+
+  if (moveError) {
+    throw new Error(moveError.message);
+  }
+
+  const { error: deleteError } = await supabase
+    .from("process_kanban_columns")
+    .update({ is_active: false })
+    .eq("id", source.id);
+
+  if (deleteError) {
+    throw new Error(deleteError.message);
   }
 
   revalidatePath("/monitoramento");

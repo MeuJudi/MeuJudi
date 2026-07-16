@@ -1,4 +1,4 @@
-import { MonitoramentoView, type MonitorProcess } from "./monitoramento-view";
+import { MonitoramentoView, type KanbanColumn, type MonitorProcess } from "./monitoramento-view";
 import { requireAppUser } from "@/lib/auth/guards";
 
 type ProcessRow = {
@@ -11,10 +11,28 @@ type ProcessRow = {
   prazo_proxima_resposta: string | null;
   proxima_audiencia: string | null;
   status: "ativo" | "suspenso" | "arquivado" | "concluido";
+  kanban_column_id: string | null;
   tags: string[] | null;
   is_favorito: boolean;
   data_ultima_movimentacao: string | null;
 };
+
+type KanbanColumnRow = {
+  id: string;
+  name: string;
+  position: number;
+  color: string;
+  is_default: boolean;
+};
+
+const defaultKanbanColumns = [
+  { name: "Novo", color: "#9a6a22" },
+  { name: "Em analise", color: "#2563eb" },
+  { name: "Aguardando cliente", color: "#7c3aed" },
+  { name: "Aguardando tribunal", color: "#0e7490" },
+  { name: "Prazo proximo", color: "#7a2e2e" },
+  { name: "Encerrado", color: "#4b6b4e" },
+];
 
 type MovementRow = {
   processo_id: string;
@@ -77,6 +95,38 @@ async function resolveTenantId(
   return demoTenant?.id ?? null;
 }
 
+async function ensureKanbanColumns(
+  supabase: Awaited<ReturnType<typeof requireAppUser>>["supabase"],
+  profile: Awaited<ReturnType<typeof requireAppUser>>["profile"],
+  tenantId: string,
+) {
+  const { data: existingRows } = await supabase
+    .from("process_kanban_columns")
+    .select("id, name, position, color, is_default")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .order("position", { ascending: true });
+
+  if ((existingRows ?? []).length > 0) {
+    return (existingRows ?? []) as KanbanColumnRow[];
+  }
+
+  const { data: insertedRows } = await supabase
+    .from("process_kanban_columns")
+    .insert(defaultKanbanColumns.map((column, index) => ({
+      tenant_id: tenantId,
+      name: column.name,
+      position: index,
+      color: column.color,
+      is_default: true,
+      created_by: profile.id,
+    })))
+    .select("id, name, position, color, is_default")
+    .order("position", { ascending: true });
+
+  return (insertedRows ?? []) as KanbanColumnRow[];
+}
+
 export default async function MonitoramentoPage({
   searchParams,
 }: {
@@ -89,6 +139,8 @@ export default async function MonitoramentoPage({
   if (!tenantId) {
     return (
       <MonitoramentoView
+        tenantId={null}
+        kanbanColumns={[]}
         processes={[]}
         metrics={{ active: 0, newMovements: 0, upcomingDeadlines: 0, muralPending: 0 }}
         muralItems={[]}
@@ -97,10 +149,21 @@ export default async function MonitoramentoPage({
     );
   }
 
+  const kanbanColumns = await ensureKanbanColumns(supabase, profile, tenantId);
+  const defaultColumnId = kanbanColumns[0]?.id ?? null;
+
+  if (defaultColumnId) {
+    await supabase
+      .from("processos")
+      .update({ kanban_column_id: defaultColumnId })
+      .eq("tenant_id", tenantId)
+      .is("kanban_column_id", null);
+  }
+
   const [{ data: processRows }, { data: movementRows }, { data: muralRows }] = await Promise.all([
     supabase
       .from("processos")
-      .select("id, cnj, tribunal, classe_nome, autor, reu, prazo_proxima_resposta, proxima_audiencia, status, tags, is_favorito, data_ultima_movimentacao")
+      .select("id, cnj, tribunal, classe_nome, autor, reu, prazo_proxima_resposta, proxima_audiencia, status, kanban_column_id, tags, is_favorito, data_ultima_movimentacao")
       .eq("tenant_id", tenantId)
       .order("data_ultima_movimentacao", { ascending: false, nullsFirst: false })
       .limit(120),
@@ -141,6 +204,7 @@ export default async function MonitoramentoPage({
       tribunal: process.tribunal ?? "-",
       status: process.status,
       statusLabel: statusLabel[process.status],
+      kanbanColumnId: process.kanban_column_id ?? defaultColumnId,
       tags: process.tags ?? [],
       isFavorito: process.is_favorito,
       prazoProximaResposta: process.prazo_proxima_resposta,
@@ -177,6 +241,14 @@ export default async function MonitoramentoPage({
 
   return (
     <MonitoramentoView
+      tenantId={tenantId}
+      kanbanColumns={kanbanColumns.map((column): KanbanColumn => ({
+        id: column.id,
+        name: column.name,
+        position: column.position,
+        color: column.color,
+        isDefault: column.is_default,
+      }))}
       processes={processes}
       metrics={metrics}
       muralItems={muralItems}
