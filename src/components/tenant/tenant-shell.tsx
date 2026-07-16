@@ -84,6 +84,9 @@ function applyCustomTheme(color: string) {
   return {
     "--tenant-sidebar": dark,
     "--tenant-paper": light,
+    "--tenant-surface": lightSurface,
+    "--tenant-surface-muted": mix(color, "#ffffff", 0.84),
+    "--tenant-surface-foreground": darker,
     "--tenant-line": border,
     "--color-background": light,
     "--color-foreground": darker,
@@ -194,7 +197,7 @@ export function TenantShell({ children, userName, role }: TenantShellProps) {
 
         <main className="min-w-0 bg-[var(--tenant-paper)] px-4 py-5 text-[var(--color-foreground)] sm:px-6 lg:px-8">
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex min-w-[240px] flex-1 items-center gap-2 rounded-md border border-[var(--tenant-line)] bg-[var(--color-card)] px-3 py-2 text-sm text-[var(--color-muted-foreground)]">
+            <div className="flex min-w-[240px] flex-1 items-center gap-2 rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-2 text-sm text-[var(--color-muted-foreground)]">
               <Search className="h-4 w-4 opacity-70" />
               <span>Buscar processo, cliente ou tarefa...</span>
             </div>

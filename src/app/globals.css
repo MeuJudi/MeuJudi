@@ -71,6 +71,9 @@ a {
   --tenant-sidebar-muted: #b9b29b;
   --tenant-sidebar-active: #f1ede0;
   --tenant-paper: #f6f3ea;
+  --tenant-surface: #ffffff;
+  --tenant-surface-muted: #ede9dd;
+  --tenant-surface-foreground: #16233a;
   --tenant-line: #d9d2bf;
   --tenant-brass: #9a6a22;
   --tenant-brass-light: #d9b372;
@@ -98,6 +101,9 @@ a {
   --tenant-sidebar-muted: #3e4754;
   --tenant-sidebar-active: #16233a;
   --tenant-paper: #fbfbfa;
+  --tenant-surface: #ffffff;
+  --tenant-surface-muted: #f1f1ef;
+  --tenant-surface-foreground: #16233a;
   --tenant-line: #d2d2ca;
 }
 
@@ -119,5 +125,8 @@ a {
   --tenant-sidebar-muted: #aaa394;
   --tenant-sidebar-active: #ffffff;
   --tenant-paper: #111111;
+  --tenant-surface: #171717;
+  --tenant-surface-muted: #202020;
+  --tenant-surface-foreground: #f4f1e9;
   --tenant-line: #333333;
 }
