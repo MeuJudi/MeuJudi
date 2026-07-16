@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarDays, Download, FileText, ShieldCheck, Users } from "lucide-react";
+import { CalendarDays, Download, FileText, ShieldCheck, UserPlus, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,12 +23,20 @@ export default function DashboardPage() {
               Dados reais entram depois que Supabase, RLS e fontes forem conectados.
             </p>
           </div>
-          <Button asChild variant="outline">
-            <Link href="/cs">
-              <Download className="h-4 w-4" />
-              MeuJudi CS
-            </Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link href="/team">
+                <UserPlus className="h-4 w-4" />
+                Equipe
+              </Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/cs">
+                <Download className="h-4 w-4" />
+                MeuJudi CS
+              </Link>
+            </Button>
+          </div>
         </header>
 
         <section className="grid gap-4 md:grid-cols-4">
@@ -46,4 +54,3 @@ export default function DashboardPage() {
     </main>
   );
 }
-

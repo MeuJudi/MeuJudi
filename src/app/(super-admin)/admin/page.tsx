@@ -1,22 +1,70 @@
-import { Shield } from "lucide-react";
+import Link from "next/link";
+import { Building2, ClipboardList, Shield, Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { requireSuperAdmin } from "@/lib/auth/guards";
 
-export default function AdminPage() {
+export default async function AdminPage() {
+  const { supabase } = await requireSuperAdmin();
+  const [{ count: tenantsCount }, { count: usersCount }, { count: auditCount }] = await Promise.all([
+    supabase.from("tenants").select("*", { count: "exact", head: true }),
+    supabase.from("users").select("*", { count: "exact", head: true }),
+    supabase.from("audit_logs").select("*", { count: "exact", head: true }),
+  ]);
+
+  const metrics = [
+    { label: "Tenants", value: tenantsCount ?? 0, icon: Building2 },
+    { label: "Usuarios", value: usersCount ?? 0, icon: Users },
+    { label: "Eventos de auditoria", value: auditCount ?? 0, icon: ClipboardList },
+  ];
+
   return (
-    <main className="min-h-screen bg-background px-6 py-8">
-      <div className="mx-auto max-w-5xl">
-        <Card>
-          <CardHeader>
-            <Shield className="h-5 w-5 text-primary" />
-            <CardTitle>Super admin</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm leading-6 text-muted-foreground">
-            Acesso reservado para usuarios com role manual `super_admin`. Usuarios comuns nunca
-            recebem essa permissao pelo cadastro.
-          </CardContent>
+    <div className="mx-auto max-w-6xl space-y-6">
+      <header className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium text-primary">Super admin</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Central SaaS</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Controle global de tenants, usuarios e auditoria do MeuJudi.
+          </p>
+        </div>
+        <Button asChild variant="outline">
+          <Link href="/dashboard">Voltar ao app</Link>
+        </Button>
+      </header>
+
+      <section className="grid gap-4 md:grid-cols-3">
+        {metrics.map((metric) => (
+          <Card key={metric.label}>
+            <CardHeader>
+              <metric.icon className="h-5 w-5 text-primary" />
+              <CardTitle>{metric.label}</CardTitle>
+            </CardHeader>
+            <CardContent className="text-3xl font-semibold">{metric.value}</CardContent>
+          </Card>
+        ))}
+      </section>
+
+      <Card>
+        <CardHeader>
+          <Shield className="h-5 w-5 text-primary" />
+          <CardTitle>Regra de acesso</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm leading-6 text-muted-foreground">
+          <p>
+            Acesso reservado para usuarios com role manual <code>super_admin</code>. Usuarios
+            comuns nunca recebem essa permissao pelo cadastro.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Button asChild>
+              <Link href="/admin/tenants">Ver tenants</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/admin/audit">Ver auditoria</Link>
+            </Button>
+          </div>
+        </CardContent>
         </Card>
-      </div>
-    </main>
+    </div>
   );
 }
-

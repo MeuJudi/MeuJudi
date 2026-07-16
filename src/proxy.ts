@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const protectedPrefixes = ["/dashboard", "/onboarding", "/cs"];
+const protectedPrefixes = ["/dashboard", "/onboarding", "/cs", "/team", "/admin"];
 const authPrefixes = ["/login", "/register"];
 
 export function proxy(request: NextRequest) {
@@ -23,4 +23,3 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)"],
 };
-
