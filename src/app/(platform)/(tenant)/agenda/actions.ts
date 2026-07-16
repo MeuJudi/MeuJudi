@@ -132,6 +132,7 @@ export async function createInternalReminderFromAgendaEvent(eventId: string, dat
     end: reminder.data_fim,
     status: reminder.status,
     source: reminder.fonte,
+    processId: event.processo_id,
     processTitle: null,
     responsibleName: profile.name,
     responsibleAvatarUrl: null,

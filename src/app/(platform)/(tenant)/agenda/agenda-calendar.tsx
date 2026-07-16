@@ -6,6 +6,7 @@ import { createInternalReminderFromAgendaEvent, rescheduleAgendaEvent } from "./
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ProcessDetailsModal } from "@/components/tenant/process-details-modal";
 import { cn } from "@/lib/utils";
 
 export type AgendaItem = {
@@ -17,6 +18,7 @@ export type AgendaItem = {
   end: string | null;
   status: "pendente" | "concluido" | "cancelado";
   source: string;
+  processId: string | null;
   processTitle: string | null;
   responsibleName: string | null;
   responsibleAvatarUrl: string | null;
@@ -184,7 +186,15 @@ function policyMessage(policy: MovePolicy, event: AgendaItem) {
   return "Este evento veio de uma integracao ou fonte externa. Confirme se a mudanca representa apenas uma organizacao interna do escritorio.";
 }
 
-function EventPill({ event, compact = false }: { event: AgendaItem; compact?: boolean }) {
+function EventPill({
+  event,
+  compact = false,
+  onOpenProcess,
+}: {
+  event: AgendaItem;
+  compact?: boolean;
+  onOpenProcess?: (processId: string) => void;
+}) {
   const policy = getMovePolicy(event);
   return (
     <div
@@ -195,10 +205,16 @@ function EventPill({ event, compact = false }: { event: AgendaItem; compact?: bo
       }}
       className={cn(
         "group flex cursor-grab items-center gap-2 rounded-md border px-2 py-1.5 text-left text-[11px] shadow-sm transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md active:cursor-grabbing",
+        event.processId && "cursor-pointer",
         policy === "locked" && "cursor-copy",
         typeClass[event.type],
       )}
       title={policy === "locked" ? "Arraste para criar lembrete interno" : "Arraste para remarcar"}
+      onClick={(clickEvent) => {
+        if (!event.processId) return;
+        clickEvent.stopPropagation();
+        onOpenProcess?.(event.processId);
+      }}
     >
       <GripVertical className="h-3 w-3 shrink-0 opacity-45 transition-opacity group-hover:opacity-80" />
       <span
@@ -218,7 +234,7 @@ function EventPill({ event, compact = false }: { event: AgendaItem; compact?: bo
   );
 }
 
-function WeekEventCard({ event }: { event: AgendaItem }) {
+function WeekEventCard({ event, onOpenProcess }: { event: AgendaItem; onOpenProcess?: (processId: string) => void }) {
   const start = new Date(event.start);
   const hour = start.getHours();
   const minute = start.getMinutes();
@@ -230,7 +246,7 @@ function WeekEventCard({ event }: { event: AgendaItem }) {
       className="absolute left-2 right-2 z-10"
       style={{ top: `${(rowStart - 1) * 56 + topOffset + 6}px` }}
     >
-      <EventPill event={event} />
+      <EventPill event={event} onOpenProcess={onOpenProcess} />
     </div>
   );
 }
@@ -406,6 +422,7 @@ export function AgendaCalendar({ initialMonth, events }: AgendaCalendarProps) {
   const [selectedDate, setSelectedDate] = useState(() => toDateKey(new Date()));
   const [dragOverDate, setDragOverDate] = useState<string | null>(null);
   const [pendingDrop, setPendingDrop] = useState<PendingDrop | null>(null);
+  const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const days = useMemo(() => buildCalendarDays(month), [month]);
@@ -600,7 +617,7 @@ export function AgendaCalendar({ initialMonth, events }: AgendaCalendarProps) {
                         onDragLeave={() => setDragOverDate(null)}
                       >
                         {dayEvents.slice(0, 3).map((event) => (
-                          <EventPill key={event.id} event={event} compact />
+                          <EventPill key={event.id} event={event} compact onOpenProcess={setSelectedProcessId} />
                         ))}
                         {dayEvents.length > 3 ? (
                           <div className="rounded bg-[var(--tenant-surface-muted)] px-2 py-1 text-[11px] font-medium text-[var(--color-muted-foreground)]">
@@ -674,7 +691,7 @@ export function AgendaCalendar({ initialMonth, events }: AgendaCalendarProps) {
                         <div key={hour} className="h-14 border-b border-[var(--tenant-line)]" />
                       ))}
                       <div onDragEnter={() => setDragOverDate(key)} onDragLeave={() => setDragOverDate(null)}>
-                        {dayEvents.map((event) => <WeekEventCard key={event.id} event={event} />)}
+                        {dayEvents.map((event) => <WeekEventCard key={event.id} event={event} onOpenProcess={setSelectedProcessId} />)}
                         {dayEvents.length === 0 ? (
                           <span className="absolute left-2 top-2 rounded border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-2 py-1 text-xs text-[var(--color-muted-foreground)]">
                             Solte aqui
@@ -710,7 +727,17 @@ export function AgendaCalendar({ initialMonth, events }: AgendaCalendarProps) {
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-semibold text-[var(--tenant-surface-foreground)]">{event.title}</p>
-                      <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">{event.processTitle ?? event.description ?? "Sem processo vinculado"}</p>
+                      {event.processId ? (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedProcessId(event.processId)}
+                          className="mt-1 text-left text-sm text-[var(--color-muted-foreground)] underline-offset-2 hover:underline"
+                        >
+                          {event.processTitle ?? event.description ?? "Processo vinculado"}
+                        </button>
+                      ) : (
+                        <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">{event.description ?? "Sem processo vinculado"}</p>
+                      )}
                       <div className="mt-2 flex items-center gap-2 text-xs font-medium text-[var(--color-muted-foreground)]">
                         <span
                           className="flex h-6 w-6 items-center justify-center rounded-full bg-cover bg-center font-mono text-[10px] font-bold text-white"
@@ -752,6 +779,7 @@ export function AgendaCalendar({ initialMonth, events }: AgendaCalendarProps) {
           onCreateReminder={() => createReminder(pendingDrop.event, pendingDrop.dateKey)}
         />
       ) : null}
+      <ProcessDetailsModal processId={selectedProcessId} onClose={() => setSelectedProcessId(null)} />
     </div>
   );
 }

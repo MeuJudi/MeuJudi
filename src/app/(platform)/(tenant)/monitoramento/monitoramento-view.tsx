@@ -41,6 +41,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ProcessDetailsModal } from "@/components/tenant/process-details-modal";
 import {
   createKanbanColumn,
   createSampleProcesses,
@@ -109,43 +110,67 @@ function shortDate(value: string | null) {
   return new Date(value).toLocaleDateString("pt-BR");
 }
 
-function ProcessCard({ process, compact = false, dragHandle }: { process: MonitorProcess; compact?: boolean; dragHandle?: React.ReactNode }) {
+function ProcessCard({
+  process,
+  compact = false,
+  dragHandle,
+  onOpen,
+}: {
+  process: MonitorProcess;
+  compact?: boolean;
+  dragHandle?: React.ReactNode;
+  onOpen?: (processId: string) => void;
+}) {
+  function handleOpen() {
+    onOpen?.(process.id);
+  }
+
   return (
-    <Card className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] transition-shadow hover:shadow-md">
-      <CardContent className={compact ? "p-3" : "flex flex-wrap items-center justify-between gap-4 p-4"}>
-        <div className="min-w-[240px] flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            {dragHandle}
-            <p className="font-mono text-xs text-[var(--color-muted-foreground)]">{process.cnj}</p>
-            {process.unreadMovements > 0 ? (
-              <Badge className="border-[var(--tenant-wine)] bg-transparent text-[var(--tenant-wine)]">
-                {process.unreadMovements} nova{process.unreadMovements > 1 ? "s" : ""}
-              </Badge>
-            ) : null}
+    <div
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onClick={handleOpen}
+      onKeyDown={(event) => {
+        if (onOpen && (event.key === "Enter" || event.key === " ")) handleOpen();
+      }}
+      className={cn(onOpen && "cursor-pointer")}
+    >
+      <Card className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] transition-shadow hover:shadow-md">
+        <CardContent className={compact ? "p-3" : "flex flex-wrap items-center justify-between gap-4 p-4"}>
+          <div className="min-w-[240px] flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              {dragHandle}
+              <p className="font-mono text-xs text-[var(--color-muted-foreground)]">{process.cnj}</p>
+              {process.unreadMovements > 0 ? (
+                <Badge className="border-[var(--tenant-wine)] bg-transparent text-[var(--tenant-wine)]">
+                  {process.unreadMovements} nova{process.unreadMovements > 1 ? "s" : ""}
+                </Badge>
+              ) : null}
+            </div>
+            <h2 className="mt-1 font-semibold text-[var(--color-card-foreground)]">{process.title}</h2>
+            <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">{process.latestMovement ?? process.subtitle}</p>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--color-muted-foreground)]">
+              <span className="inline-flex items-center gap-1">
+                <CalendarDays className="h-3 w-3" />
+                Prazo: {shortDate(process.prazoProximaResposta)}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <Clock3 className="h-3 w-3" />
+                Audiencia: {shortDate(process.proximaAudiencia)}
+              </span>
+            </div>
           </div>
-          <h2 className="mt-1 font-semibold text-[var(--color-card-foreground)]">{process.title}</h2>
-          <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">{process.latestMovement ?? process.subtitle}</p>
-          <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--color-muted-foreground)]">
-            <span className="inline-flex items-center gap-1">
-              <CalendarDays className="h-3 w-3" />
-              Prazo: {shortDate(process.prazoProximaResposta)}
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <Clock3 className="h-3 w-3" />
-              Audiencia: {shortDate(process.proximaAudiencia)}
-            </span>
+          <div className={compact ? "mt-3 flex flex-wrap gap-2" : "flex flex-wrap items-center gap-2"}>
+            <Badge variant="outline">{process.tribunal}</Badge>
+            <Badge className={statusClass[process.status]}>{process.statusLabel}</Badge>
           </div>
-        </div>
-        <div className={compact ? "mt-3 flex flex-wrap gap-2" : "flex flex-wrap items-center gap-2"}>
-          <Badge variant="outline">{process.tribunal}</Badge>
-          <Badge className={statusClass[process.status]}>{process.statusLabel}</Badge>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
-function SortableProcessCard({ process }: { process: MonitorProcess }) {
+function SortableProcessCard({ process, onOpen }: { process: MonitorProcess; onOpen: (processId: string) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: process.id,
     data: { type: "process", columnId: process.kanbanColumnId },
@@ -166,12 +191,14 @@ function SortableProcessCard({ process }: { process: MonitorProcess }) {
             type="button"
             className="cursor-grab rounded p-0.5 text-[var(--color-muted-foreground)] hover:bg-[var(--tenant-surface-muted)] active:cursor-grabbing"
             aria-label="Arrastar processo"
+            onClick={(event) => event.stopPropagation()}
             {...attributes}
             {...listeners}
           >
             <GripVertical className="h-3.5 w-3.5" />
           </button>
         )}
+        onOpen={onOpen}
       />
     </div>
   );
@@ -187,6 +214,7 @@ function SortableColumn({
   onSaveName,
   onCancelEdit,
   onDeleteColumn,
+  onOpenProcess,
 }: {
   column: KanbanColumn;
   processes: MonitorProcess[];
@@ -197,6 +225,7 @@ function SortableColumn({
   onSaveName: (column: KanbanColumn) => void;
   onCancelEdit: () => void;
   onDeleteColumn: (column: KanbanColumn) => void;
+  onOpenProcess: (processId: string) => void;
 }) {
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: column.id, data: { type: "column" } });
   const {
@@ -285,7 +314,7 @@ function SortableColumn({
       <div ref={setDropRef} className="min-h-0 flex-1 overflow-y-auto pr-1">
         <SortableContext items={processes.map((process) => process.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-3">
-            {processes.map((process) => <SortableProcessCard key={process.id} process={process} />)}
+            {processes.map((process) => <SortableProcessCard key={process.id} process={process} onOpen={onOpenProcess} />)}
             {processes.length === 0 ? (
               <div className="rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-4 text-center text-xs text-[var(--color-muted-foreground)]">
                 Solte processos aqui.
@@ -377,10 +406,9 @@ export function MonitoramentoView({
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   const [deleteColumn, setDeleteColumn] = useState<KanbanColumn | null>(null);
+  const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-  const topScrollRef = useRef<HTMLDivElement | null>(null);
   const boardScrollRef = useRef<HTMLDivElement | null>(null);
-  const isSyncingScrollRef = useRef(false);
   const panStateRef = useRef<{ pointerId: number; startX: number; startScrollLeft: number; active: boolean } | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -404,25 +432,6 @@ export function MonitoramentoView({
       processes: filtered.filter((process) => process.kanbanColumnId === column.id),
     }));
   }, [filtered, localColumns]);
-
-  const kanbanScrollWidth = Math.max(0, localColumns.length * 336 - 16);
-
-  function syncScroll(source: "top" | "board") {
-    if (isSyncingScrollRef.current) return;
-    const top = topScrollRef.current;
-    const board = boardScrollRef.current;
-    if (!top || !board) return;
-
-    isSyncingScrollRef.current = true;
-    if (source === "top") {
-      board.scrollLeft = top.scrollLeft;
-    } else {
-      top.scrollLeft = board.scrollLeft;
-    }
-    window.requestAnimationFrame(() => {
-      isSyncingScrollRef.current = false;
-    });
-  }
 
   function shouldStartBoardPan(target: EventTarget | null) {
     if (!(target instanceof Element)) return false;
@@ -451,7 +460,6 @@ export function MonitoramentoView({
 
     event.preventDefault();
     board.scrollLeft = panState.startScrollLeft - (event.clientX - panState.startX);
-    syncScroll("board");
   }
 
   function endBoardPan(event: React.PointerEvent<HTMLDivElement>) {
@@ -639,7 +647,7 @@ export function MonitoramentoView({
               {filtered.length === 0 ? (
                 <EmptyState />
               ) : (
-                filtered.map((process) => <ProcessCard key={process.id} process={process} />)
+                filtered.map((process) => <ProcessCard key={process.id} process={process} onOpen={setSelectedProcessId} />)
               )}
             </div>
           ) : null}
@@ -652,16 +660,7 @@ export function MonitoramentoView({
               onDragEnd={handleDragEnd}
             >
               <div
-                ref={topScrollRef}
-                onScroll={() => syncScroll("top")}
-                className="overflow-x-auto pb-1"
-                aria-label="Rolagem horizontal superior do Kanban"
-              >
-                <div className="h-1" style={{ width: `${kanbanScrollWidth}px` }} />
-              </div>
-              <div
                 ref={boardScrollRef}
-                onScroll={() => syncScroll("board")}
                 onPointerDown={handleBoardPointerDown}
                 onPointerMove={handleBoardPointerMove}
                 onPointerUp={endBoardPan}
@@ -682,6 +681,7 @@ export function MonitoramentoView({
                         onSaveName={handleSaveName}
                         onCancelEdit={() => setEditingColumnId(null)}
                         onDeleteColumn={setDeleteColumn}
+                        onOpenProcess={setSelectedProcessId}
                       />
                     ))}
                   </div>
@@ -734,6 +734,7 @@ export function MonitoramentoView({
           onConfirm={(targetColumnId) => handleConfirmDelete(deleteColumn, targetColumnId)}
         />
       ) : null}
+      <ProcessDetailsModal processId={selectedProcessId} onClose={() => setSelectedProcessId(null)} />
     </div>
   );
 }

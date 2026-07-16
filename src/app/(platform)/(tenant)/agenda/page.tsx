@@ -124,6 +124,7 @@ export default async function AgendaPage({
     end: event.data_fim,
     status: event.status,
     source: event.fonte,
+    processId: event.processo_id,
     processTitle: event.processo_id ? buildProcessTitle(processById.get(event.processo_id)) : null,
     responsibleName: event.user_id ? userById.get(event.user_id)?.name ?? null : null,
     responsibleAvatarUrl: event.user_id ? userById.get(event.user_id)?.avatar_url ?? null : null,
