@@ -18,8 +18,8 @@ export default async function AdminLoginPage({
       <Card className="w-full max-w-md">
         <CardHeader>
           <Shield className="h-6 w-6 text-primary" />
-          <CardTitle>Acesso Super Admin</CardTitle>
-          <CardDescription>Entrada separada para administração global do SaaS.</CardDescription>
+          <CardTitle>JudiCore Control</CardTitle>
+          <CardDescription>Console separado para operacao global da plataforma SaaS.</CardDescription>
         </CardHeader>
         <CardContent>
           {params.error ? (
@@ -30,7 +30,7 @@ export default async function AdminLoginPage({
           <form action={signIn} className="space-y-4">
             <input type="hidden" name="redirect_to" value="/admin" />
             <div className="space-y-2">
-              <Label htmlFor="email">Email administrativo</Label>
+              <Label htmlFor="email">Email operacional</Label>
               <Input id="email" name="email" type="email" autoComplete="email" required />
             </div>
             <div className="space-y-2">
@@ -39,13 +39,13 @@ export default async function AdminLoginPage({
             </div>
             <Button className="w-full" type="submit">
               <Shield className="h-4 w-4" />
-              Entrar no admin
+              Entrar no console
             </Button>
           </form>
           <p className="mt-6 text-center text-sm text-muted-foreground">
-            Acesso de escritório?{" "}
+            Acesso de cliente?{" "}
             <Link className="font-medium text-primary" href="/login">
-              Entrar no painel comum
+              Entrar no produto
             </Link>
           </p>
         </CardContent>

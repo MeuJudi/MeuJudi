@@ -48,7 +48,7 @@ export default async function AdminTenantDetailPage({
 
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-medium text-primary">Tenant</p>
+          <p className="text-sm font-medium text-primary">Ambiente de cliente</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">{tenant.name}</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             {tenant.slug} · {[tenant.city, tenant.state].filter(Boolean).join(" / ") || "Sem local"}
@@ -58,7 +58,7 @@ export default async function AdminTenantDetailPage({
           <input type="hidden" name="tenant_id" value={tenant.id} />
           <input type="hidden" name="is_active" value={String(!tenant.is_active)} />
           <Button type="submit" variant={tenant.is_active ? "destructive" : "default"}>
-            {tenant.is_active ? "Suspender tenant" : "Reativar tenant"}
+            {tenant.is_active ? "Suspender ambiente" : "Reativar ambiente"}
           </Button>
         </form>
       </header>

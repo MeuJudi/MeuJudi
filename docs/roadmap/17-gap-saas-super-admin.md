@@ -1,4 +1,4 @@
-# 17 - Gap SaaS e Super Admin
+# 17 - Gap SaaS e JudiCore Control
 
 Este documento registra o que ainda falta depois da fundacao inicial do MeuJudi Web.
 
@@ -8,7 +8,7 @@ Este documento registra o que ainda falta depois da fundacao inicial do MeuJudi 
 - Supabase preparado em migrations locais, ainda sem aplicar no projeto remoto.
 - Fluxos base existem para login, cadastro, onboarding, dashboard, CS e admin.
 - RLS inicial foi desenhado por `tenant_id`, usando `public.users` como fonte de permissao.
-- `super_admin` existe como role manual em `public.users.role`.
+- `super_admin` existe como role manual em `public.users.role`, mas a interface e tratada como console operacional separado dos produtos.
 - MVP segue gratuito, sem Stripe e sem limites de plano.
 
 ## Supabase
@@ -30,15 +30,16 @@ Este documento registra o que ainda falta depois da fundacao inicial do MeuJudi 
 - Definir estados de tenant: ativo, suspenso e encerrado.
 - Manter billing/Stripe fora do MVP, mas deixar pontos de extensao documentados.
 
-## Super Admin
+## JudiCore Control
 
 - Proteger `/admin` com checagem server-side de `super_admin`.
-- Criar layout admin com navegacao propria.
-- Criar lista de tenants.
-- Criar detalhe de tenant com usuarios, OABs, processos e auditoria.
+- Manter login separado em `/admin/login`.
+- Criar layout de console com identidade propria, sem marca MeuJudi.
+- Criar lista de ambientes/clientes.
+- Criar detalhe de ambiente com usuarios, OABs, processos e auditoria.
 - Criar tela global de auditoria.
 - Criar acoes administrativas: suspender tenant, reativar tenant e revisar logs.
-- Registrar auditoria para cada acao sensivel do Super Admin.
+- Registrar auditoria para cada acao sensivel do console operacional.
 
 ## Seguranca e LGPD
 
@@ -64,6 +65,6 @@ Este documento registra o que ainda falta depois da fundacao inicial do MeuJudi 
 - Testar cadastro criando escritorio e owner.
 - Testar convite por email.
 - Testar isolamento entre dois tenants.
-- Testar Super Admin sem vazar dados para usuarios comuns.
+- Testar JudiCore Control sem vazar dados para usuarios comuns.
 - Testar auditoria em cadastro, convite, alteracao de equipe, alteracao de tenant e acesso admin.
 - Revisar migrations com Supabase Advisors.
