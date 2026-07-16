@@ -1,133 +1,147 @@
-import { Bell, CalendarDays, FileText, MonitorCheck } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { MonitoramentoView, type MonitorProcess } from "./monitoramento-view";
+import { requireAppUser } from "@/lib/auth/guards";
 
-const processes = [
-  {
-    cnj: "0001234-56.2024.8.26.0100",
-    title: "Acao de Cobranca - Mercado Central Ltda.",
-    meta: "Juntada de peticao do requerido - ha 2 horas",
-    court: "TJSP",
-    status: "Em andamento",
-    fresh: true,
-  },
-  {
-    cnj: "0004567-89.2023.5.02.0040",
-    title: "Reclamacao Trabalhista - J. Andrade",
-    meta: "Audiencia de instrucao designada - ha 1 dia",
-    court: "TRT-2",
-    status: "Em andamento",
-  },
-  {
-    cnj: "0007890-12.2024.8.26.0224",
-    title: "Divorcio Litigioso - Familia Ramos",
-    meta: "Aguardando manifestacao da parte contraria",
-    court: "TJSP",
-    status: "Aguardando",
-  },
-  {
-    cnj: "1002345-67.2022.4.03.6100",
-    title: "Execucao Fiscal - Insumos Bertoni ME",
-    meta: "Penhora on-line em analise - ha 3 dias",
-    court: "TRF-3",
-    status: "Em andamento",
-  },
-];
+type ProcessRow = {
+  id: string;
+  cnj: string;
+  tribunal: string | null;
+  classe_nome: string | null;
+  autor: string | null;
+  reu: string | null;
+  prazo_proxima_resposta: string | null;
+  proxima_audiencia: string | null;
+  status: "ativo" | "suspenso" | "arquivado" | "concluido";
+  tags: string[] | null;
+  is_favorito: boolean;
+  data_ultima_movimentacao: string | null;
+};
 
-const metrics = [
-  { label: "Processos ativos", value: "12", icon: FileText },
-  { label: "Novos hoje", value: "3", icon: Bell },
-  { label: "Prazos proximos", value: "5", icon: CalendarDays },
-  { label: "CS/PJe", value: "Pendente", icon: MonitorCheck },
-];
+type MovementRow = {
+  processo_id: string;
+  nome: string;
+  data_movimento: string;
+  is_novo: boolean;
+};
 
-export default function MonitoramentoPage() {
+type MuralRow = {
+  id: string;
+  tipo_comunicacao: string;
+  sigla_tribunal: string;
+  data_disponibilizacao: string;
+  processo_id: string | null;
+};
+
+const statusLabel: Record<MonitorProcess["status"], string> = {
+  ativo: "Em acompanhamento",
+  suspenso: "Aguardando",
+  arquivado: "Arquivado",
+  concluido: "Concluido",
+};
+
+function formatCnj(cnj: string) {
+  return cnj.length === 20
+    ? `${cnj.slice(0, 7)}-${cnj.slice(7, 9)}.${cnj.slice(9, 13)}.${cnj.slice(13, 14)}.${cnj.slice(14, 16)}.${cnj.slice(16)}`
+    : cnj;
+}
+
+function buildTitle(process: ProcessRow) {
+  const className = process.classe_nome ?? "Processo";
+  const parties = [process.autor, process.reu].filter(Boolean).join(" x ");
+  return parties ? `${className} - ${parties}` : className;
+}
+
+export default async function MonitoramentoPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const params = await searchParams;
+  const { supabase, profile } = await requireAppUser();
+
+  const [{ data: processRows }, { data: movementRows }, { data: muralRows }] = await Promise.all([
+    supabase
+      .from("processos")
+      .select("id, cnj, tribunal, classe_nome, autor, reu, prazo_proxima_resposta, proxima_audiencia, status, tags, is_favorito, data_ultima_movimentacao")
+      .eq("tenant_id", profile.tenant_id)
+      .order("data_ultima_movimentacao", { ascending: false, nullsFirst: false })
+      .limit(120),
+    supabase
+      .from("movimentacoes")
+      .select("processo_id, nome, data_movimento, is_novo")
+      .eq("tenant_id", profile.tenant_id)
+      .order("data_movimento", { ascending: false })
+      .limit(300),
+    supabase
+      .from("comunicacoes_mural")
+      .select("id, tipo_comunicacao, sigla_tribunal, data_disponibilizacao, processo_id")
+      .eq("tenant_id", profile.tenant_id)
+      .order("data_disponibilizacao", { ascending: false })
+      .limit(20),
+  ]);
+
+  const movements = (movementRows ?? []) as MovementRow[];
+  const latestMovementByProcess = new Map<string, MovementRow>();
+  const unreadCountByProcess = new Map<string, number>();
+
+  for (const movement of movements) {
+    if (!latestMovementByProcess.has(movement.processo_id)) {
+      latestMovementByProcess.set(movement.processo_id, movement);
+    }
+    if (movement.is_novo) {
+      unreadCountByProcess.set(movement.processo_id, (unreadCountByProcess.get(movement.processo_id) ?? 0) + 1);
+    }
+  }
+
+  const processes: MonitorProcess[] = ((processRows ?? []) as ProcessRow[]).map((process) => {
+    const latestMovement = latestMovementByProcess.get(process.id);
+    return {
+      id: process.id,
+      cnj: formatCnj(process.cnj),
+      title: buildTitle(process),
+      subtitle: [process.autor, process.reu].filter(Boolean).join(" x ") || "Sem partes cadastradas",
+      tribunal: process.tribunal ?? "-",
+      status: process.status,
+      statusLabel: statusLabel[process.status],
+      tags: process.tags ?? [],
+      isFavorito: process.is_favorito,
+      prazoProximaResposta: process.prazo_proxima_resposta,
+      proximaAudiencia: process.proxima_audiencia,
+      dataUltimaMovimentacao: process.data_ultima_movimentacao,
+      latestMovement: latestMovement?.nome ?? null,
+      unreadMovements: unreadCountByProcess.get(process.id) ?? 0,
+    };
+  });
+
+  const processTitleById = new Map(processes.map((process) => [process.id, process.title]));
+  const muralItems = ((muralRows ?? []) as MuralRow[]).map((item) => ({
+    id: item.id,
+    title: item.tipo_comunicacao,
+    tribunal: item.sigla_tribunal,
+    date: item.data_disponibilizacao,
+    processTitle: item.processo_id ? processTitleById.get(item.processo_id) ?? null : null,
+  }));
+
+  const today = new Date();
+  const nextThirtyDays = new Date();
+  nextThirtyDays.setDate(today.getDate() + 30);
+
+  const metrics = {
+    active: processes.filter((process) => process.status === "ativo").length,
+    newMovements: movements.filter((movement) => movement.is_novo).length,
+    upcomingDeadlines: processes.filter((process) => {
+      if (!process.prazoProximaResposta) return false;
+      const date = new Date(process.prazoProximaResposta);
+      return date >= today && date <= nextThirtyDays;
+    }).length,
+    muralPending: muralItems.length,
+  };
+
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-3xl font-bold text-[var(--color-card-foreground)]">
-            Monitoramento de processos
-          </h1>
-          <p className="mt-2 max-w-xl text-sm text-[var(--color-muted-foreground)]">
-            Atualizacoes puxadas automaticamente dos tribunais, com foco no que precisa da sua atencao hoje.
-          </p>
-        </div>
-        <Badge className="rounded-full bg-[color-mix(in_srgb,var(--tenant-moss)_14%,transparent)] text-[var(--tenant-moss)]">
-          12 processos ativos
-        </Badge>
-      </header>
-
-      <section className="grid gap-3 md:grid-cols-4">
-        {metrics.map((metric) => (
-          <Card key={metric.label}>
-            <CardHeader className="pb-3">
-              <metric.icon className="h-5 w-5 text-primary" />
-              <CardTitle className="text-sm">{metric.label}</CardTitle>
-            </CardHeader>
-            <CardContent className="text-2xl font-semibold">{metric.value}</CardContent>
-          </Card>
-        ))}
-      </section>
-
-      <Tabs defaultValue="lista">
-        <TabsList className="rounded-none border-b bg-transparent p-0">
-          <TabsTrigger value="lista" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:shadow-none">
-            Lista
-          </TabsTrigger>
-          <TabsTrigger value="kanban" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:shadow-none">
-            Kanban
-          </TabsTrigger>
-          <TabsTrigger value="mural" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:shadow-none">
-            Mural/descobertas
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="lista" className="space-y-3">
-          {processes.map((process) => (
-            <Card key={process.cnj} className="transition-shadow hover:shadow-md">
-              <CardContent className="flex flex-wrap items-center justify-between gap-4 p-4">
-                <div className="min-w-[260px] flex-1">
-                  <p className="font-mono text-xs text-muted-foreground">{process.cnj}</p>
-                  <h2 className="mt-1 font-semibold text-[var(--color-card-foreground)]">{process.title}</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">{process.meta}</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {process.fresh ? <Badge className="border-[var(--tenant-wine)] bg-transparent text-[var(--tenant-wine)]">Novo hoje</Badge> : null}
-                  <Badge variant="outline">{process.court}</Badge>
-                  <Badge className="bg-[color-mix(in_srgb,var(--tenant-brass)_16%,transparent)] text-[#8c6425]">{process.status}</Badge>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </TabsContent>
-        <TabsContent value="kanban">
-          <div className="grid gap-4 md:grid-cols-3">
-            {["Em processo", "Aguardando tribunal", "Concluido"].map((column) => (
-              <div key={column} className="rounded-lg border border-border bg-muted/40 p-3">
-                <div className="mb-3 flex items-center justify-between text-xs font-semibold uppercase text-muted-foreground">
-                  {column}
-                  <span className="rounded-full bg-secondary px-2 py-0.5 font-mono">1</span>
-                </div>
-                <Card>
-                  <CardContent className="p-3">
-                    <p className="font-semibold text-sm">Acao de Cobranca</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Mercado Central Ltda.</p>
-                    <p className="mt-3 font-mono text-[11px] text-muted-foreground">0001234-56</p>
-                  </CardContent>
-                </Card>
-              </div>
-            ))}
-          </div>
-        </TabsContent>
-        <TabsContent value="mural">
-          <Card>
-            <CardContent className="p-5 text-sm text-muted-foreground">
-              Comunicacoes publicas encontradas pelo pipeline global aparecerao aqui somente quando houver vinculo confirmado com CNJ/OAB do escritorio.
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
+    <MonitoramentoView
+      processes={processes}
+      metrics={metrics}
+      muralItems={muralItems}
+      error={params.error ? decodeURIComponent(params.error) : undefined}
+    />
   );
 }
