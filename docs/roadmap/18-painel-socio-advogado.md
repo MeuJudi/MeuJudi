@@ -43,6 +43,7 @@ Baseada no HTML demo:
 - `/tarefas`: kanban operacional da equipe.
 - `/clientes`: clientes, CRM simples e historico de contato.
 - `/relatorios`: visoes consolidadas do escritorio, abaixo de Clientes na navegacao.
+- `/financeiro`: modulo em breve, visivel na navegacao com explicacao do que tera.
 - `/configuracoes`: perfil, escritorio, equipe, OABs, notificacoes, CS/PJe, integracoes, termos/LGPD.
 
 Rotas que estavam separadas e entram dentro de outras:
@@ -188,7 +189,9 @@ Depois:
 
 ## Financeiro
 
-Nao entra como menu principal no primeiro desenho do MVP, mas fica planejado como modulo futuro.
+Entra na navegacao desde o inicio como modulo "Em breve".
+
+Objetivo inicial: mostrar uma tela simples explicando que o financeiro sera usado para acompanhar honorarios, recebimentos e custos vinculados ao escritorio/processos.
 
 Possivel escopo:
 - Honorarios contratados.
@@ -198,6 +201,12 @@ Possivel escopo:
 - Custas e taxas.
 - Repasse por advogado/socio futuramente.
 - Relatorios financeiros.
+
+No MVP:
+- Menu visivel.
+- Tela "Em breve".
+- Lista clara do que o modulo vai mostrar futuramente.
+- Sem cadastro financeiro real ainda.
 
 O financeiro deve ser simples no inicio e nao bloquear o uso juridico do sistema.
 
@@ -213,6 +222,7 @@ No MVP:
 - Ajuda para identificar prazo, audiencia, parte, CNJ e tribunal.
 
 Depois:
+- Campo de conversa contextual dentro do sistema, se fizer sentido.
 - Chat contextual do escritorio.
 - Perguntas sobre processos.
 - Minutas e rascunhos.
@@ -294,16 +304,22 @@ Secoes esperadas:
 Objetivo: permitir personalizacao simples sem quebrar identidade e contraste.
 
 Opcoes:
+- Tema padrao MeuJudi.
 - Tema claro.
 - Tema escuro.
-- Cor do sistema/acento.
+- Tema personalizado por cor.
 
 Comportamento:
-- Tema claro usa base clara do demo.
-- Tema escuro usa base escura equivalente.
-- Cor escolhida altera principalmente acentos: item ativo da sidebar, botoes principais, foco, badges selecionados e links.
+- Tema padrao usa as cores de referencia do HTML: menu azul-escuro, pagina papel claro e acento brass.
+- Tema claro usa fundos mais brancos/neutros, mantendo boa leitura.
+- Tema escuro usa fundos proximos do preto/grafite, mantendo contraste.
+- Tema personalizado por cor gera duas bases a partir da cor escolhida:
+  - menu/sidebar em uma versao escura da cor;
+  - pagina/fundo em uma versao clara da cor;
+  - acentos e selecoes em uma versao media/saturada da cor.
+- Exemplo: se escolher rosa, o menu vira rosa escuro, o fundo vira rosa claro e os destaques usam rosa medio.
 - Cores de estado juridico/operacional continuam consistentes: erro/urgente, sucesso/concluido e alerta nao devem depender apenas da cor personalizada.
-- A cor personalizada deve passar contraste minimo antes de ser aplicada.
+- A cor personalizada deve passar contraste minimo antes de ser aplicada; se nao passar, o sistema ajusta automaticamente o tom escuro/claro.
 
 ## Telas prioritarias para desenhar primeiro
 
@@ -323,7 +339,6 @@ Comportamento:
 - Quais eventos sensiveis do tenant devem aparecer tambem na auditoria do Super Admin.
 - Quando o resumo por IA aparece no detalhe do processo.
 - Se `Mural/descobertas` fica apenas como aba do Monitoramento no MVP ou ganha menu proprio depois.
-- Se `Financeiro` fica fora do MVP ou entra como area futura.
 - Se IA deve ter uma tela propria depois ou continuar embutida nas telas.
 
 ## Ordem sugerida de implementacao
@@ -336,5 +351,6 @@ Comportamento:
 6. Tarefas.
 7. Clientes/CRM.
 8. Relatorios.
-9. Configuracoes do escritorio, equipe, aparencia e CS/PJe.
-10. Melhorias de permissao por role.
+9. Financeiro em breve.
+10. Configuracoes do escritorio, equipe, aparencia e CS/PJe.
+11. Melhorias de permissao por role.

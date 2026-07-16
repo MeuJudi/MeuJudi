@@ -40,11 +40,27 @@ Use the demo palette as the MeuJudi tenant app identity.
 
 The tenant app supports:
 
+- Default MeuJudi theme.
 - Light theme.
 - Dark theme.
-- User-selected accent color.
+- User-selected custom color theme.
 
-The accent color changes selection and brand emphasis, not every semantic state. It should affect:
+Default MeuJudi theme uses the HTML reference palette: dark Ink sidebar, light Paper page, Brass accent.
+
+Light theme uses whiter/neutral surfaces.
+
+Dark theme uses near-black/graphite surfaces.
+
+Custom color theme derives the whole shell from the selected color:
+
+- Sidebar/menu: dark shade of the selected color.
+- Page/background: very light shade of the selected color.
+- Accent: medium/saturated shade of the selected color.
+- Foreground text: accessible dark/light pairing generated from contrast.
+
+Example: if the user selects pink, the menu becomes dark pink, the page becomes light pink, and active states/buttons use a medium pink.
+
+The custom color changes theme surfaces and brand emphasis, not every semantic state. It should affect:
 
 - Active sidebar item.
 - Primary buttons.
@@ -52,6 +68,8 @@ The accent color changes selection and brand emphasis, not every semantic state.
 - Links.
 - Selected tabs.
 - Neutral badges that represent active selection.
+- App background.
+- Sidebar background.
 
 Semantic colors remain stable:
 
