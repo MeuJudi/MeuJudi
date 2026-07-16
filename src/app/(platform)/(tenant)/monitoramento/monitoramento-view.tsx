@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import {
   closestCorners,
   DndContext,
@@ -156,6 +156,7 @@ function SortableProcessCard({ process }: { process: MonitorProcess }) {
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(isDragging && "opacity-40")}
+      data-kanban-card
     >
       <ProcessCard
         process={process}
@@ -217,6 +218,7 @@ function SortableColumn({
         isDragging && "opacity-50",
         isOver && "ring-2 ring-primary",
       )}
+      data-kanban-column
     >
       <header className="mb-3 space-y-2">
         <div className="flex items-center gap-2">
@@ -376,6 +378,10 @@ export function MonitoramentoView({
   const [draftName, setDraftName] = useState("");
   const [deleteColumn, setDeleteColumn] = useState<KanbanColumn | null>(null);
   const [isPending, startTransition] = useTransition();
+  const topScrollRef = useRef<HTMLDivElement | null>(null);
+  const boardScrollRef = useRef<HTMLDivElement | null>(null);
+  const isSyncingScrollRef = useRef(false);
+  const panStateRef = useRef<{ pointerId: number; startX: number; startScrollLeft: number; active: boolean } | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -398,6 +404,67 @@ export function MonitoramentoView({
       processes: filtered.filter((process) => process.kanbanColumnId === column.id),
     }));
   }, [filtered, localColumns]);
+
+  const kanbanScrollWidth = Math.max(0, localColumns.length * 336 - 16);
+
+  function syncScroll(source: "top" | "board") {
+    if (isSyncingScrollRef.current) return;
+    const top = topScrollRef.current;
+    const board = boardScrollRef.current;
+    if (!top || !board) return;
+
+    isSyncingScrollRef.current = true;
+    if (source === "top") {
+      board.scrollLeft = top.scrollLeft;
+    } else {
+      top.scrollLeft = board.scrollLeft;
+    }
+    window.requestAnimationFrame(() => {
+      isSyncingScrollRef.current = false;
+    });
+  }
+
+  function shouldStartBoardPan(target: EventTarget | null) {
+    if (!(target instanceof Element)) return false;
+    return !target.closest("[data-kanban-column], [data-kanban-card], button, input, select, textarea, a");
+  }
+
+  function handleBoardPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0 || !shouldStartBoardPan(event.target)) return;
+    const board = boardScrollRef.current;
+    if (!board) return;
+
+    panStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startScrollLeft: board.scrollLeft,
+      active: true,
+    };
+    board.setPointerCapture(event.pointerId);
+    board.dataset.panning = "true";
+  }
+
+  function handleBoardPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const panState = panStateRef.current;
+    const board = boardScrollRef.current;
+    if (!panState?.active || !board || panState.pointerId !== event.pointerId) return;
+
+    event.preventDefault();
+    board.scrollLeft = panState.startScrollLeft - (event.clientX - panState.startX);
+    syncScroll("board");
+  }
+
+  function endBoardPan(event: React.PointerEvent<HTMLDivElement>) {
+    const panState = panStateRef.current;
+    const board = boardScrollRef.current;
+    if (!panState || panState.pointerId !== event.pointerId || !board) return;
+
+    if (board.hasPointerCapture(event.pointerId)) {
+      board.releasePointerCapture(event.pointerId);
+    }
+    delete board.dataset.panning;
+    panStateRef.current = null;
+  }
 
   function handleDragStart(event: DragStartEvent) {
     if (event.active.data.current?.type === "process") {
@@ -584,9 +651,25 @@ export function MonitoramentoView({
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
             >
-              <div className="overflow-x-auto pb-2">
+              <div
+                ref={topScrollRef}
+                onScroll={() => syncScroll("top")}
+                className="overflow-x-auto pb-1"
+                aria-label="Rolagem horizontal superior do Kanban"
+              >
+                <div className="h-1" style={{ width: `${kanbanScrollWidth}px` }} />
+              </div>
+              <div
+                ref={boardScrollRef}
+                onScroll={() => syncScroll("board")}
+                onPointerDown={handleBoardPointerDown}
+                onPointerMove={handleBoardPointerMove}
+                onPointerUp={endBoardPan}
+                onPointerCancel={endBoardPan}
+                className="overflow-x-auto pb-2 data-[panning=true]:cursor-grabbing"
+              >
                 <SortableContext items={localColumns.map((column) => column.id)} strategy={horizontalListSortingStrategy}>
-                  <div className="flex min-h-[500px] gap-4">
+                  <div className="flex min-h-[500px] gap-4 rounded-md" data-kanban-board>
                     {grouped.map((column) => (
                       <SortableColumn
                         key={column.id}
