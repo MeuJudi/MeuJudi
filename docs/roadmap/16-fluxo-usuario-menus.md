@@ -257,7 +257,7 @@ Usuário se cadastra → recebe email de confirmação → clica no link → cai
 │                                                          │
 │  Como vamos chamar seu escritório?                      │
 │  ┌────────────────────────────────────┐                  │
-│  │ Embrepoli Advocacia                │                  │
+│  │ Escritorio Exemplo                 │                  │
 │  └────────────────────────────────────┘                  │
 │                                                          │
 │              [Continuar →]                               │

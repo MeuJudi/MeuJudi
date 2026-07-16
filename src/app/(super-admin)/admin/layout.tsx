@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { BarChart3, Building2, ClipboardList, Shield } from "lucide-react";
+import { BarChart3, Building2, ClipboardList, MonitorCog, Shield } from "lucide-react";
 import { requireSuperAdmin } from "@/lib/auth/guards";
 import { cn } from "@/lib/utils";
 
 const adminLinks = [
   { href: "/admin", label: "Resumo", icon: BarChart3 },
   { href: "/admin/tenants", label: "Clientes", icon: Building2 },
+  { href: "/admin/cs-diagnostics", label: "CS Diagnosticos", icon: MonitorCog },
   { href: "/admin/audit", label: "Auditoria", icon: ClipboardList },
 ];
 
