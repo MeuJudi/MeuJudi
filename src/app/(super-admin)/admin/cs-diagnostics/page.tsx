@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, MonitorCog, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, MonitorCog, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireSuperAdmin } from "@/lib/auth/guards";
@@ -9,11 +9,24 @@ type RecentLog = {
   message?: string;
 };
 
+type DiagnosticEvent = {
+  timestamp?: string;
+  name?: string;
+  status?: string;
+  message?: string;
+  durationMs?: number;
+  details?: Record<string, unknown>;
+};
+
 type DiagnosticReportJson = {
   errors?: string[];
   warnings?: string[];
   recommendations?: string[];
   recentLogs?: RecentLog[];
+  recentEvents?: DiagnosticEvent[];
+  probableCause?: string;
+  nextAction?: string;
+  technicalSummary?: Record<string, unknown>;
 };
 
 type DiagnosticReportRow = {
@@ -68,7 +81,9 @@ export default async function CsDiagnosticsPage() {
 
   const reports = (data ?? []) as DiagnosticReportRow[];
   const latest = reports[0];
+  const latestEvents = latest?.report_json?.recentEvents?.slice(-24).reverse() ?? [];
   const latestLogs = latest?.report_json?.recentLogs?.slice(-12).reverse() ?? [];
+  const technicalSummary = latest?.report_json?.technicalSummary;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -158,6 +173,101 @@ export default async function CsDiagnosticsPage() {
               ))}
             </tbody>
           </table>
+        </CardContent>
+      </Card>
+
+      {latest ? (
+        <section className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+          <Card>
+            <CardHeader>
+              <CardTitle>Diagnostico mais recente</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm">
+              <div>
+                <p className="font-medium text-foreground">Causa provavel</p>
+                <p className="mt-1 text-muted-foreground">
+                  {latest.report_json?.probableCause ?? latest.last_error ?? "Nao identificado."}
+                </p>
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Proxima acao</p>
+                <p className="mt-1 text-muted-foreground">
+                  {latest.report_json?.nextAction ?? "Abrir logs e revisar o fluxo de login."}
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-md border p-3">
+                  <p className="text-xs text-muted-foreground">Sessao</p>
+                  <p className="mt-1 font-medium">{boolLabel(latest.cookies_has_session)}</p>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-xs text-muted-foreground">XSRF</p>
+                  <p className="mt-1 font-medium">{boolLabel(latest.cookies_has_xsrf)}</p>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-xs text-muted-foreground">Eventos</p>
+                  <p className="mt-1 font-medium">{latestEvents.length}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Resumo tecnico</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!technicalSummary ? (
+                <p className="text-sm text-muted-foreground">Esse relatorio ainda nao trouxe resumo tecnico.</p>
+              ) : (
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+                  {Object.entries(technicalSummary).map(([key, value]) => (
+                    <div key={key}>
+                      <dt className="text-muted-foreground">{key}</dt>
+                      <dd className="mt-1 break-words font-mono text-foreground">
+                        {Array.isArray(value) ? value.join(", ") : String(value ?? "-")}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+      ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Timeline do ultimo relatorio</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {latestEvents.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum evento estruturado enviado nesse relatorio.</p>
+          ) : (
+            latestEvents.map((event, index) => (
+              <div key={`${event.timestamp}-${event.name}-${index}`} className="rounded-md border bg-background px-3 py-2 text-xs">
+                <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
+                  <Badge variant={event.status === "error" ? "destructive" : "outline"}>
+                    {event.status ?? "info"}
+                  </Badge>
+                  <span className="font-medium text-foreground">{event.name ?? "evento"}</span>
+                  <span>{event.timestamp ? new Date(event.timestamp).toLocaleString("pt-BR") : "-"}</span>
+                  {typeof event.durationMs === "number" ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Clock3 className="h-3 w-3" />
+                      {event.durationMs}ms
+                    </span>
+                  ) : null}
+                </div>
+                {event.message ? <p className="mt-2 text-foreground">{event.message}</p> : null}
+                {event.details ? (
+                  <pre className="mt-2 max-h-32 overflow-auto rounded bg-muted p-2 font-mono text-[11px] text-muted-foreground">
+                    {JSON.stringify(event.details, null, 2)}
+                  </pre>
+                ) : null}
+              </div>
+            ))
+          )}
         </CardContent>
       </Card>
 

@@ -2,6 +2,8 @@
 
 Este documento define a primeira versao do painel usado pelos tenants da vertical MeuJudi.
 
+Referencia visual: `C:\Users\User\Downloads\MeuJudi_Demo.html`.
+
 ## Hierarquia
 
 - Super Admin: administra a plataforma.
@@ -21,17 +23,34 @@ O painel do tenant e o produto MeuJudi em si. Ele deve parecer simples, juridico
 
 O owner e o advogado entram no mesmo app, mas o owner enxerga controles extras de configuracao do escritorio. O Super Admin continua separado, em outra area, antes das verticais.
 
+## Identidade visual
+
+Vamos usar o demo HTML como base do MeuJudi:
+
+- Sidebar azul-escura (`#16233A`) com destaque dourado/brass (`#B8863B`).
+- Fundo claro tipo papel (`#F6F3EA`) e cards brancos com borda discreta (`#D9D2BF`).
+- Tipografia: Fraunces para marca/titulos principais, IBM Plex Sans para UI e IBM Plex Mono para CNJ, datas tecnicas e codigos.
+- Estados: vinho para urgente/erro, brass para andamento/media prioridade, moss para ativo/concluido/baixo risco.
+- Layout de produto: sidebar + topbar + area de trabalho, sem cara de landing page.
+
 ## Navegacao MVP
 
-- `/dashboard`: visao geral do escritorio.
-- `/processos`: lista de processos.
-- `/processos/[cnj]`: detalhe do processo.
-- `/agenda`: prazos, audiencias e compromissos.
-- `/mural`: comunicacoes capturadas do Mural/DataJud que precisam de atencao.
-- `/clientes`: lista de clientes.
-- `/team`: equipe e convites.
-- `/cs`: status, download e diagnosticos do MeuJudi CS.
-- `/configuracoes`: configuracoes do perfil e escritorio.
+Baseada no HTML demo:
+
+- `/monitoramento`: primeira tela do app. Lista/Kanban de processos monitorados, movimentacoes e comunicacoes relevantes.
+- `/monitoramento/[cnj]`: detalhe do processo.
+- `/agenda`: calendario mensal e lista de prazos/audiencias.
+- `/tarefas`: kanban operacional da equipe.
+- `/clientes`: clientes, CRM simples e historico de contato.
+- `/configuracoes`: perfil, escritorio, equipe, OABs, notificacoes, CS/PJe, integracoes, termos/LGPD.
+
+Rotas que estavam separadas e entram dentro de outras:
+
+- `/dashboard`: vira resumo dentro de `/monitoramento` ou uma faixa superior da tela inicial. Nao precisa ser menu separado no MVP se o Monitoramento ja responder "o que exige atencao hoje?".
+- `/processos`: vira `/monitoramento`, porque o demo usa essa linguagem e ela explica melhor o valor.
+- `/mural`: entra como aba/filtro dentro de `/monitoramento`, porque e uma descoberta/comunicacao vinculada a processo ou OAB.
+- `/team`: entra em `/configuracoes/equipe`, visivel com poderes de edicao para owner.
+- `/cs`: entra em `/configuracoes/cs-pje`, com status, download, instrucoes e diagnostico do escritorio.
 
 ## Diferenca entre Socio e Advogado
 
@@ -52,7 +71,9 @@ Advogado:
 
 ## Dashboard
 
-Objetivo: responder rapidamente "o que precisa da minha atencao hoje?".
+No MVP, o dashboard vira a parte superior do Monitoramento.
+
+Objetivo: responder rapidamente "o que precisa da minha atencao hoje?" sem criar uma tela separada vazia.
 
 Blocos:
 - Prazos proximos.
@@ -63,12 +84,14 @@ Blocos:
 - Status do CS/PJe.
 - Alertas de configuracao, como OAB ausente ou CS desconectado.
 
-## Processos
+## Monitoramento
 
 Lista:
 - Busca por CNJ, parte, cliente, tag ou tribunal.
 - Filtros por status, responsavel, prazo, audiencia, favorito e sigilo.
 - Acoes: favoritar, atribuir responsavel, adicionar tag e abrir detalhe.
+- Abas: `Lista`, `Kanban`, `Mural/descobertas`.
+- Indicadores no topo: processos ativos, novos hoje, prazos proximos, comunicacoes pendentes e status do CS/PJe.
 
 Detalhe:
 - Capa do processo.
@@ -79,6 +102,22 @@ Detalhe:
 - Anotacoes internas.
 - Documentos/PDFs futuramente.
 - Resumo IA futuramente.
+
+## Tarefas
+
+Objetivo: organizar o trabalho interno do escritorio sem virar um sistema juridico complexo.
+
+Visao inicial:
+- Kanban com colunas simples: `A fazer`, `Em andamento`, `Aguardando`, `Concluido`.
+- Cards ligados a processo, cliente ou tarefa avulsa.
+- Prioridade: alta, media, baixa.
+- Responsavel.
+- Prazo interno.
+
+Permissoes:
+- Owner pode ver e redistribuir tudo.
+- Advogado ve tarefas do escritorio ou atribuicoes conforme regra definida.
+- Staff pode comecar restrito ao que foi atribuido.
 
 ## Agenda
 
@@ -100,6 +139,8 @@ Eventos:
 
 Objetivo: mostrar comunicacoes publicas encontradas uma vez pelo sistema e distribuidas ao tenant correto.
 
+No menu, entra dentro de `/monitoramento`, nao como item principal inicialmente.
+
 Estados:
 - Novo.
 - Revisado.
@@ -112,7 +153,7 @@ Regra:
 
 ## Clientes
 
-Objetivo MVP: cadastro simples para organizar processos.
+Objetivo MVP: cadastro simples para organizar processos e historico de relacionamento.
 
 Campos:
 - Nome.
@@ -121,7 +162,13 @@ Campos:
 - Processos vinculados.
 - Observacoes.
 
+Abas:
+- `Clientes`: tabela/lista.
+- `CRM`: funil simples e historico de contato.
+
 ## Equipe
+
+No menu, entra dentro de Configuracoes.
 
 Owner:
 - Ver membros.
@@ -133,6 +180,8 @@ Advogado/staff:
 - Ver perfil proprio e membros basicos do escritorio.
 
 ## CS/PJe
+
+No menu, entra dentro de Configuracoes.
 
 Objetivo:
 - Explicar o CS.
@@ -166,14 +215,25 @@ Seguranca/LGPD:
 - Politica de retencao.
 - Exportacao/solicitacao de dados futuramente.
 
+Secoes esperadas:
+- `Meu perfil`
+- `Escritorio`
+- `Equipe e permissoes`
+- `OABs monitoradas`
+- `Notificacoes`
+- `CS/PJe`
+- `Integracoes`
+- `Seguranca e LGPD`
+
 ## Telas prioritarias para desenhar primeiro
 
-1. Dashboard do escritorio: primeira tela apos login.
-2. Processos: lista densa, com filtros e busca.
-3. Detalhe do processo: tela de trabalho principal.
-4. Agenda: prazos e audiencias.
-5. Equipe: convites e permissoes, apenas para owner.
-6. CS/PJe: download, status e diagnostico do escritorio.
+1. App shell: sidebar/topbar seguindo o demo.
+2. Monitoramento: lista de processos + resumo superior.
+3. Detalhe do processo.
+4. Agenda mensal.
+5. Tarefas em kanban.
+6. Clientes + CRM simples.
+7. Configuracoes com secoes internas.
 
 ## Decisoes ainda abertas
 
@@ -182,15 +242,18 @@ Seguranca/LGPD:
 - Como sera o primeiro alerta quando o CS/PJe estiver desconectado.
 - Quais eventos sensiveis do tenant devem aparecer tambem na auditoria do Super Admin.
 - Quando o resumo por IA aparece no detalhe do processo.
+- Se `Mural/descobertas` fica apenas como aba do Monitoramento no MVP ou ganha menu proprio depois.
+- Se `Relatorios` entra no MVP ou fica para depois.
+- Se `Financeiro` fica fora do MVP ou entra como area futura.
 
 ## Ordem sugerida de implementacao
 
 1. Layout do app do tenant com sidebar/topbar.
-2. Dashboard com dados reais do Supabase.
-3. Lista de processos.
+2. Tokens visuais do demo em Tailwind/global CSS.
+3. Monitoramento com dados reais do Supabase.
 4. Detalhe do processo.
 5. Agenda.
-6. Mural/descobertas.
-7. Clientes.
-8. Configuracoes do escritorio.
+6. Tarefas.
+7. Clientes/CRM.
+8. Configuracoes do escritorio, equipe e CS/PJe.
 9. Melhorias de permissao por role.
