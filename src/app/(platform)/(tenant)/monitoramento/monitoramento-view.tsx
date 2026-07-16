@@ -5,7 +5,7 @@ import { Bell, CalendarDays, CheckCircle2, Clock3, FileText, KanbanSquare, ListF
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { updateProcessStatus } from "./actions";
+import { createSampleProcesses, updateProcessStatus } from "./actions";
 
 export type MonitorProcess = {
   id: string;
@@ -283,6 +283,11 @@ function EmptyState() {
       <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">
         Quando processos forem cadastrados, capturados pelo CS/PJe ou vinculados pelo DataJud/Mural, eles aparecerao aqui com status, prazos e movimentacoes.
       </p>
+      <form action={createSampleProcesses} className="mt-5">
+        <Button type="submit">
+          Criar 15 processos de exemplo
+        </Button>
+      </form>
     </div>
   );
 }

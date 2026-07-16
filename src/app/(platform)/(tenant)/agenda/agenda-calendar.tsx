@@ -38,6 +38,7 @@ type PendingDrop = {
 
 const weekdays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"];
 const weekHeader = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"];
+const weekHours = Array.from({ length: 11 }, (_, index) => index + 8);
 
 const typeLabel = {
   audiencia: "Audiencia",
@@ -129,6 +130,10 @@ function specialDatesFor(date: Date) {
   return fixedSpecialDates.filter((item) => item.month === date.getMonth() + 1 && item.day === date.getDate());
 }
 
+function isToday(date: Date) {
+  return toDateKey(date) === toDateKey(new Date());
+}
+
 function updateEventDate(event: AgendaItem, dateKey: string): AgendaItem {
   const [year, month, day] = dateKey.split("-").map(Number);
   const start = new Date(event.start);
@@ -209,6 +214,23 @@ function EventPill({ event, compact = false }: { event: AgendaItem; compact?: bo
         <span className="block truncate font-semibold">{event.title}</span>
         {!compact ? <span className="block truncate opacity-80">{formatTime(event.start)}</span> : null}
       </span>
+    </div>
+  );
+}
+
+function WeekEventCard({ event }: { event: AgendaItem }) {
+  const start = new Date(event.start);
+  const hour = start.getHours();
+  const minute = start.getMinutes();
+  const rowStart = Math.max(1, Math.min(weekHours.length, hour - weekHours[0] + 1));
+  const topOffset = Math.round((minute / 60) * 46);
+
+  return (
+    <div
+      className="absolute left-2 right-2 z-10"
+      style={{ top: `${(rowStart - 1) * 56 + topOffset + 6}px` }}
+    >
+      <EventPill event={event} />
     </div>
   );
 }
@@ -320,6 +342,7 @@ function DayShell({
 }) {
   const key = toDateKey(date);
   const specialDates = specialDatesFor(date);
+  const today = isToday(date);
 
   return (
     <div
@@ -340,6 +363,7 @@ function DayShell({
       }}
       className={cn(
         "min-h-32 border-b border-r border-[var(--tenant-line)] p-2 text-left align-top transition duration-200 ease-out hover:bg-[var(--tenant-surface-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary",
+        today && "bg-[color-mix(in_srgb,var(--tenant-brass)_7%,var(--tenant-surface))]",
         currentMonth === false && "bg-[var(--tenant-surface-muted)]/45 text-[var(--color-muted-foreground)]",
         selected && "outline outline-2 outline-primary outline-offset-[-2px]",
         dragOver && "bg-[color-mix(in_srgb,var(--tenant-brass)_14%,var(--tenant-surface))] ring-2 ring-primary ring-inset",
@@ -347,7 +371,14 @@ function DayShell({
       )}
     >
       <div className="mb-2 flex items-start justify-between gap-2">
-        <span className="font-mono text-xs font-semibold">{date.getDate()}</span>
+        <span
+          className={cn(
+            "flex h-6 min-w-6 items-center justify-center rounded-full px-1 font-mono text-xs font-semibold",
+            today && "border border-[var(--tenant-brass)] bg-[var(--tenant-surface)] text-[var(--tenant-brass)] shadow-sm",
+          )}
+        >
+          {date.getDate()}
+        </span>
         {events.length > 0 ? (
           <span className="rounded-full bg-[var(--tenant-surface-muted)] px-2 py-0.5 font-mono text-[10px] text-[var(--tenant-surface-foreground)]">
             {events.length}
@@ -583,40 +614,74 @@ export function AgendaCalendar({ initialMonth, events }: AgendaCalendarProps) {
               </div>
             </div>
           ) : (
-            <div className="overflow-hidden rounded-lg border border-[var(--tenant-line)]">
-              <div className="grid grid-cols-7 bg-[var(--tenant-surface-muted)] text-center text-[11px] font-semibold uppercase text-[var(--tenant-surface-foreground)]">
-                {weekHeader.map((day) => <div key={day} className="p-3">{day}</div>)}
+            <div className="overflow-x-auto rounded-lg border border-[var(--tenant-line)]">
+              <div className="grid grid-cols-[64px_repeat(7,minmax(150px,1fr))] bg-[var(--tenant-surface-muted)] text-center text-[11px] font-semibold uppercase text-[var(--tenant-surface-foreground)]">
+                <div className="border-r border-[var(--tenant-line)] p-3 text-left">Hora</div>
+                {weekHeader.map((day, index) => {
+                  const date = weekDays[index];
+                  return (
+                    <div key={day} className="border-r border-[var(--tenant-line)] p-3">
+                      <span>{day}</span>
+                      <span
+                        className={cn(
+                          "ml-2 inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 font-mono",
+                          isToday(date) && "border border-[var(--tenant-brass)] bg-[var(--tenant-surface)] text-[var(--tenant-brass)]",
+                        )}
+                      >
+                        {date.getDate()}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
-              <div className="grid min-h-[520px] grid-cols-7 bg-[var(--tenant-surface)]">
+              <div className="grid grid-cols-[64px_repeat(7,minmax(150px,1fr))] bg-[var(--tenant-surface)]">
+                <div className="border-r border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)]/40">
+                  {weekHours.map((hour) => (
+                    <div key={hour} className="h-14 border-b border-[var(--tenant-line)] px-2 py-1 text-right font-mono text-[11px] text-[var(--color-muted-foreground)]">
+                      {String(hour).padStart(2, "0")}:00
+                    </div>
+                  ))}
+                </div>
                 {weekDays.map((date) => {
                   const key = toDateKey(date);
                   const dayEvents = eventsByDay.get(key) ?? [];
                   return (
-                    <DayShell
+                    <div
                       key={key}
-                      date={date}
-                      selected={selectedDate === key}
-                      dragOver={dragOverDate === key}
-                      events={dayEvents}
-                      onSelect={handleSelect}
-                      onDropEvent={handleDrop}
-                      className="min-h-[520px]"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleSelect(key)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") handleSelect(key);
+                      }}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const eventId = event.dataTransfer.getData("text/plain");
+                        if (eventId) handleDrop(eventId, key);
+                      }}
+                      className={cn(
+                        "relative min-h-[616px] border-r border-[var(--tenant-line)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary",
+                        isToday(date) && "bg-[color-mix(in_srgb,var(--tenant-brass)_6%,var(--tenant-surface))]",
+                        selectedDate === key && "outline outline-2 outline-primary outline-offset-[-2px]",
+                        dragOverDate === key && "bg-[color-mix(in_srgb,var(--tenant-brass)_14%,var(--tenant-surface))] ring-2 ring-primary ring-inset",
+                      )}
                     >
-                      <div
-                        className="mt-3 space-y-2"
-                        onDragEnter={() => setDragOverDate(key)}
-                        onDragLeave={() => setDragOverDate(null)}
-                      >
+                      {weekHours.map((hour) => (
+                        <div key={hour} className="h-14 border-b border-[var(--tenant-line)]" />
+                      ))}
+                      <div onDragEnter={() => setDragOverDate(key)} onDragLeave={() => setDragOverDate(null)}>
+                        {dayEvents.map((event) => <WeekEventCard key={event.id} event={event} />)}
                         {dayEvents.length === 0 ? (
-                          <div className="rounded border border-dashed border-[var(--tenant-line)] p-3 text-xs text-[var(--color-muted-foreground)]">
-                            Solte um evento aqui
-                          </div>
+                          <span className="absolute left-2 top-2 rounded border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-2 py-1 text-xs text-[var(--color-muted-foreground)]">
+                            Solte aqui
+                          </span>
                         ) : null}
-                        {dayEvents.map((event) => (
-                          <EventPill key={event.id} event={event} />
-                        ))}
                       </div>
-                    </DayShell>
+                    </div>
                   );
                 })}
               </div>
