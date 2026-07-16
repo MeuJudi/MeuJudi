@@ -26,6 +26,8 @@ create table if not exists public.diagnostic_reports (
   cookies_has_xsrf boolean,
   total_errors integer not null default 0,
   total_warnings integer not null default 0,
+  recent_logs_count integer not null default 0,
+  last_error text,
   source text not null default 'meujudi-cs',
   trigger_reason text,
   report_json jsonb not null
