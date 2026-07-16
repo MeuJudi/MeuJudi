@@ -23,6 +23,8 @@ arquivos-antigos/
 release/
 Investigação/
 tests/
+.next-dev-logs/
+dev-local.cmd
 *.har
 *.exe
 *.msi
