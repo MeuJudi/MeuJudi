@@ -148,12 +148,12 @@ export function TenantShell({ children, userName, role }: TenantShellProps) {
       <div className="grid min-h-screen lg:grid-cols-[230px_1fr]">
         <aside className="sticky top-0 z-20 flex h-auto gap-2 overflow-x-auto bg-[var(--tenant-sidebar)] px-3 py-3 text-[var(--tenant-sidebar-foreground)] lg:h-screen lg:flex-col lg:overflow-visible lg:px-3 lg:py-5">
           <Link href="/monitoramento" className="flex shrink-0 items-center border-r border-white/10 pr-4 lg:border-b lg:border-r-0 lg:pb-5">
-            <span className="block w-40 overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-black/10 lg:w-full">
+            <span className="block w-40 lg:w-full">
               <Image
-                src="/meujudi-logo-2.png"
+                src="/meujudi-logo-sem-fundo.png"
                 alt="MeuJudi"
-                width={1774}
-                height={887}
+                width={1429}
+                height={395}
                 priority
                 className="block h-auto w-full"
               />

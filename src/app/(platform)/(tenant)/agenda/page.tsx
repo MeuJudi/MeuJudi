@@ -1,66 +1,70 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { AgendaCalendar, type AgendaItem } from "./agenda-calendar";
+import { requireAppUser } from "@/lib/auth/guards";
 
-const days = Array.from({ length: 35 }, (_, index) => index + 1);
-const events: Record<number, { label: string; tone: "urgent" | "normal" | "later" }[]> = {
-  13: [{ label: "Reuniao - Ramos", tone: "later" }],
-  16: [{ label: "Contestacao - Cobranca", tone: "urgent" }],
-  21: [{ label: "Audiencia - Andrade, 14h", tone: "normal" }],
-  28: [{ label: "Retorno cliente Bertoni", tone: "later" }],
+type AgendaRow = {
+  id: string;
+  tipo: AgendaItem["type"];
+  titulo: string;
+  descricao: string | null;
+  data_inicio: string;
+  data_fim: string | null;
+  status: AgendaItem["status"];
+  fonte: string;
+  processo_id: string | null;
 };
 
-const toneClass = {
-  urgent: "border-[var(--tenant-wine)] bg-[color-mix(in_srgb,var(--tenant-wine)_10%,transparent)] text-[var(--tenant-wine)]",
-  normal: "border-[var(--tenant-brass)] bg-[color-mix(in_srgb,var(--tenant-brass)_12%,transparent)] text-[#8c6425]",
-  later: "border-[var(--tenant-moss)] bg-[color-mix(in_srgb,var(--tenant-moss)_10%,transparent)] text-[var(--tenant-moss)]",
+type ProcessRow = {
+  id: string;
+  classe_nome: string | null;
+  autor: string | null;
+  reu: string | null;
 };
 
-export default function AgendaPage() {
-  return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-3xl font-bold text-[var(--color-card-foreground)]">Agenda</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Prazos e audiencias, com contagem automatica em dias uteis.</p>
-        </div>
-        <span className="rounded-full border border-[color-mix(in_srgb,var(--tenant-moss)_25%,transparent)] bg-[color-mix(in_srgb,var(--tenant-moss)_10%,transparent)] px-3 py-1 font-mono text-xs text-[var(--tenant-moss)]">
-          3 prazos essa semana
-        </span>
-      </header>
+function buildProcessTitle(process: ProcessRow | undefined) {
+  if (!process) return null;
+  const parties = [process.autor, process.reu].filter(Boolean).join(" x ");
+  return parties ? `${process.classe_nome ?? "Processo"} - ${parties}` : process.classe_nome ?? "Processo";
+}
 
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" aria-label="Mes anterior"><ChevronLeft className="h-4 w-4" /></Button>
-          <h2 className="min-w-36 font-display text-xl font-bold text-[var(--color-card-foreground)]">Julho 2026</h2>
-          <Button variant="outline" size="sm" aria-label="Proximo mes"><ChevronRight className="h-4 w-4" /></Button>
-        </div>
-        <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-          <span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[var(--tenant-wine)]" />Prazo fatal</span>
-          <span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[var(--tenant-brass)]" />Audiencia</span>
-          <span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[var(--tenant-moss)]" />Interno</span>
-        </div>
-      </div>
+function monthRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 2, 0, 23, 59, 59);
+  return { start, end, initialMonth: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}` };
+}
 
-      <Card className="overflow-hidden">
-        <div className="grid grid-cols-7 bg-[var(--tenant-sidebar)] text-center text-[11px] font-semibold uppercase tracking-wide text-[#c9c2ad]">
-          {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"].map((day) => <div key={day} className="p-3">{day}</div>)}
-        </div>
-        <CardContent className="grid grid-cols-7 p-0">
-          {days.map((day) => (
-            <div key={day} className="min-h-24 border-b border-r border-border p-2 text-sm last:border-r-0">
-              <span className="font-mono text-xs text-muted-foreground">{day}</span>
-              <div className="mt-2 space-y-1">
-                {events[day]?.map((event) => (
-                  <div key={event.label} className={`truncate rounded border-l-2 px-2 py-1 text-[11px] ${toneClass[event.tone]}`}>
-                    {event.label}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    </div>
-  );
+export default async function AgendaPage() {
+  const { supabase, profile } = await requireAppUser();
+  const { start, end, initialMonth } = monthRange();
+
+  const { data: agendaRows } = await supabase
+    .from("agenda_eventos")
+    .select("id, tipo, titulo, descricao, data_inicio, data_fim, status, fonte, processo_id")
+    .eq("tenant_id", profile.tenant_id)
+    .gte("data_inicio", start.toISOString())
+    .lte("data_inicio", end.toISOString())
+    .order("data_inicio", { ascending: true });
+
+  const processIds = Array.from(new Set((agendaRows ?? []).map((event) => event.processo_id).filter(Boolean)));
+  const { data: processRows } = processIds.length
+    ? await supabase
+        .from("processos")
+        .select("id, classe_nome, autor, reu")
+        .in("id", processIds)
+    : { data: [] };
+
+  const processById = new Map(((processRows ?? []) as ProcessRow[]).map((process) => [process.id, process]));
+  const events: AgendaItem[] = ((agendaRows ?? []) as AgendaRow[]).map((event) => ({
+    id: event.id,
+    title: event.titulo,
+    description: event.descricao,
+    type: event.tipo,
+    start: event.data_inicio,
+    end: event.data_fim,
+    status: event.status,
+    source: event.fonte,
+    processTitle: event.processo_id ? buildProcessTitle(processById.get(event.processo_id)) : null,
+  }));
+
+  return <AgendaCalendar initialMonth={initialMonth} events={events} />;
 }
