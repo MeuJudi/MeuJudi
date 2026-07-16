@@ -36,6 +36,31 @@ Use the demo palette as the MeuJudi tenant app identity.
 - Line: `#D9D2BF`
 - Surface: `#FFFFFF`
 
+## Theme Customization
+
+The tenant app supports:
+
+- Light theme.
+- Dark theme.
+- User-selected accent color.
+
+The accent color changes selection and brand emphasis, not every semantic state. It should affect:
+
+- Active sidebar item.
+- Primary buttons.
+- Focus ring.
+- Links.
+- Selected tabs.
+- Neutral badges that represent active selection.
+
+Semantic colors remain stable:
+
+- Error/urgent remains Wine or accessible equivalent.
+- Success/active remains Moss or accessible equivalent.
+- Warning/in-progress remains Brass or accessible equivalent.
+
+When a user picks a custom color, generate accessible foreground/background pairings and reject or adjust colors that fail contrast.
+
 ## App Shell
 
 - Sidebar fixa em desktop, fundo `Ink`, largura aproximada de 230px.

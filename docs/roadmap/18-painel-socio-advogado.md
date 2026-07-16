@@ -42,6 +42,7 @@ Baseada no HTML demo:
 - `/agenda`: calendario mensal e lista de prazos/audiencias.
 - `/tarefas`: kanban operacional da equipe.
 - `/clientes`: clientes, CRM simples e historico de contato.
+- `/relatorios`: visoes consolidadas do escritorio, abaixo de Clientes na navegacao.
 - `/configuracoes`: perfil, escritorio, equipe, OABs, notificacoes, CS/PJe, integracoes, termos/LGPD.
 
 Rotas que estavam separadas e entram dentro de outras:
@@ -166,6 +167,59 @@ Abas:
 - `Clientes`: tabela/lista.
 - `CRM`: funil simples e historico de contato.
 
+## Relatorios
+
+Objetivo: dar visoes consolidadas do escritorio sem virar BI complexo no MVP.
+
+No MVP:
+- Processos por status.
+- Prazos por periodo.
+- Audiencias proximas.
+- Movimentacoes novas por tribunal.
+- Tarefas por responsavel.
+- Comunicacoes do Mural/DataJud encontradas e vinculadas.
+
+Depois:
+- Produtividade por advogado/equipe.
+- Relatorio por cliente.
+- Relatorio de risco/prazos criticos.
+- Exportacao em PDF/CSV.
+- Indicadores financeiros quando o modulo financeiro existir.
+
+## Financeiro
+
+Nao entra como menu principal no primeiro desenho do MVP, mas fica planejado como modulo futuro.
+
+Possivel escopo:
+- Honorarios contratados.
+- Parcelas e vencimentos.
+- Recebimentos.
+- Despesas do processo.
+- Custas e taxas.
+- Repasse por advogado/socio futuramente.
+- Relatorios financeiros.
+
+O financeiro deve ser simples no inicio e nao bloquear o uso juridico do sistema.
+
+## IA
+
+Nao entra como menu principal inicialmente. A IA aparece dentro das telas onde ajuda o trabalho.
+
+No MVP:
+- Resumo de movimentacoes no detalhe do processo.
+- Leitura/organizacao de textos longos e comunicacoes.
+- Classificacao de prioridade.
+- Sugestao de tags/status.
+- Ajuda para identificar prazo, audiencia, parte, CNJ e tribunal.
+
+Depois:
+- Chat contextual do escritorio.
+- Perguntas sobre processos.
+- Minutas e rascunhos.
+- Busca inteligente.
+- Analise de risco.
+- Auditoria de uso e anonimizacao antes de enviar dados sensiveis.
+
 ## Equipe
 
 No menu, entra dentro de Configuracoes.
@@ -192,10 +246,19 @@ Objetivo:
 MVP:
 - Download e instrucoes.
 - Status manual/informativo.
+- Botao para baixar o instalador.
+- Versao recomendada do CS.
+- Passo a passo de conexao com PJe.
+- Status: conectado, desconectado, erro, ultima tentativa.
+- Ultimo diagnostico vinculado ao escritorio.
+- Avisos de certificado A1, PJeOffice/GOV e cookies/sessao.
 
 Depois:
 - Vincular diagnosticos do CS ao tenant.
 - Exibir ultimo erro do CS no painel do owner.
+- Historico de diagnosticos do escritorio.
+- Acao para reenviar diagnostico.
+- Status de sincronizacao do PJe.
 
 ## Configuracoes
 
@@ -221,9 +284,26 @@ Secoes esperadas:
 - `Equipe e permissoes`
 - `OABs monitoradas`
 - `Notificacoes`
+- `Aparencia`
 - `CS/PJe`
 - `Integracoes`
 - `Seguranca e LGPD`
+
+### Aparencia
+
+Objetivo: permitir personalizacao simples sem quebrar identidade e contraste.
+
+Opcoes:
+- Tema claro.
+- Tema escuro.
+- Cor do sistema/acento.
+
+Comportamento:
+- Tema claro usa base clara do demo.
+- Tema escuro usa base escura equivalente.
+- Cor escolhida altera principalmente acentos: item ativo da sidebar, botoes principais, foco, badges selecionados e links.
+- Cores de estado juridico/operacional continuam consistentes: erro/urgente, sucesso/concluido e alerta nao devem depender apenas da cor personalizada.
+- A cor personalizada deve passar contraste minimo antes de ser aplicada.
 
 ## Telas prioritarias para desenhar primeiro
 
@@ -243,8 +323,8 @@ Secoes esperadas:
 - Quais eventos sensiveis do tenant devem aparecer tambem na auditoria do Super Admin.
 - Quando o resumo por IA aparece no detalhe do processo.
 - Se `Mural/descobertas` fica apenas como aba do Monitoramento no MVP ou ganha menu proprio depois.
-- Se `Relatorios` entra no MVP ou fica para depois.
 - Se `Financeiro` fica fora do MVP ou entra como area futura.
+- Se IA deve ter uma tela propria depois ou continuar embutida nas telas.
 
 ## Ordem sugerida de implementacao
 
@@ -255,5 +335,6 @@ Secoes esperadas:
 5. Agenda.
 6. Tarefas.
 7. Clientes/CRM.
-8. Configuracoes do escritorio, equipe e CS/PJe.
-9. Melhorias de permissao por role.
+8. Relatorios.
+9. Configuracoes do escritorio, equipe, aparencia e CS/PJe.
+10. Melhorias de permissao por role.
