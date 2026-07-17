@@ -1,5 +1,5 @@
 import { requireAppUser } from "@/lib/auth/guards";
-import { PerfilForm } from "./perfil-form";
+import { PerfilForm, AparenciaSection } from "./perfil-form";
 
 export default async function PerfilPage() {
   const { profile } = await requireAppUser();
@@ -7,8 +7,8 @@ export default async function PerfilPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="font-display text-xl font-semibold">Meu perfil</h2>
-        <p className="text-sm text-muted-foreground">
+        <h2 className="font-display text-xl font-semibold text-[var(--color-card-foreground)]">Meu perfil</h2>
+        <p className="text-sm text-[var(--color-muted-foreground)]">
           Gerencie suas informações pessoais.
         </p>
       </div>
@@ -25,6 +25,7 @@ export default async function PerfilPage() {
           created_at: (profile as Record<string, unknown>).created_at as string,
         }}
       />
+      <AparenciaSection />
     </div>
   );
 }

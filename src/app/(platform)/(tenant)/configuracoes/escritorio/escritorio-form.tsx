@@ -114,23 +114,23 @@ export function EscritorioForm({ tenant }: Props) {
           )}
 
           <div className="flex items-center gap-6">
-            <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-input bg-muted/50">
+            <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)]">
               {logoPreview ? (
                 <img src={logoPreview} alt="Logo" className="h-full w-full object-contain" />
               ) : (
-                <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                <div className="flex h-full w-full items-center justify-center text-[var(--color-muted-foreground)]">
                   <Upload className="h-6 w-6" />
                 </div>
               )}
               {uploadingLogo && (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/80">
-                  <Loader2 className="h-5 w-5 animate-spin" />
+                <div className="absolute inset-0 flex items-center justify-center bg-[var(--tenant-surface)]/80">
+                  <Loader2 className="h-5 w-5 animate-spin text-[var(--tenant-brass)]" />
                 </div>
               )}
             </div>
             <div>
-              <p className="text-sm font-medium">Logo do escritório</p>
-              <p className="text-xs text-muted-foreground">PNG, JPG ou SVG. Máximo 2MB.</p>
+              <p className="text-sm font-medium text-[var(--color-card-foreground)]">Logo do escritório</p>
+              <p className="text-xs text-[var(--color-muted-foreground)]">PNG, JPG ou SVG. Máximo 2MB.</p>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -142,7 +142,7 @@ export function EscritorioForm({ tenant }: Props) {
                 type="button"
                 variant="outline"
                 size="sm"
-                className="mt-2"
+                className="mt-2 border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--color-muted-foreground)] hover:bg-[var(--tenant-surface-muted)] hover:text-[var(--tenant-brass)]"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploadingLogo}
               >
@@ -153,66 +153,71 @@ export function EscritorioForm({ tenant }: Props) {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="name">Nome do escritório</Label>
+              <Label htmlFor="name" className="text-[var(--color-card-foreground)]">Nome do escritório</Label>
               <Input
                 id="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--color-card-foreground)]"
                 required
               />
             </div>
 
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="slug">Slug (URL)</Label>
+              <Label htmlFor="slug" className="text-[var(--color-card-foreground)]">Slug (URL)</Label>
               <Input
                 id="slug"
                 value={slug}
                 onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+                className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--color-card-foreground)]"
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-[var(--color-muted-foreground)]">
                 Alterar o slug pode quebrar links existentes.
               </p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="cnpj">CNPJ</Label>
+              <Label htmlFor="cnpj" className="text-[var(--color-card-foreground)]">CNPJ</Label>
               <Input
                 id="cnpj"
                 value={cnpj}
                 onChange={(e) => setCnpj(maskCnpj(e.target.value))}
                 placeholder="00.000.000/0000-00"
                 maxLength={18}
+                className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--color-card-foreground)]"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="phone">Telefone</Label>
+              <Label htmlFor="phone" className="text-[var(--color-card-foreground)]">Telefone</Label>
               <Input
                 id="phone"
                 value={phone}
                 onChange={(e) => setPhone(maskPhone(e.target.value))}
                 placeholder="(00) 00000-0000"
                 maxLength={15}
+                className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--color-card-foreground)]"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="city">Cidade</Label>
+              <Label htmlFor="city" className="text-[var(--color-card-foreground)]">Cidade</Label>
               <Input
                 id="city"
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
                 placeholder="Ex.: Curitiba"
+                className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--color-card-foreground)]"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="state">UF</Label>
+              <Label htmlFor="state" className="text-[var(--color-card-foreground)]">UF</Label>
               <select
                 id="state"
                 value={state}
                 onChange={(e) => setState(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="flex h-9 w-full rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-1 text-sm text-[var(--color-card-foreground)] shadow-sm transition-colors placeholder:text-[var(--color-muted-foreground)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--tenant-brass)]"
               >
                 <option value="">UF</option>
                 {ufs.map((uf) => (
@@ -222,26 +227,31 @@ export function EscritorioForm({ tenant }: Props) {
             </div>
 
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="email">Email do escritório</Label>
+              <Label htmlFor="email" className="text-[var(--color-card-foreground)]">Email do escritório</Label>
               <Input
                 id="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="contato@escritorio.com.br"
+                className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--color-card-foreground)]"
               />
             </div>
 
             <div className="space-y-2 sm:col-span-2">
-              <Label>Criado em</Label>
-              <div className="rounded-md border border-input bg-muted/50 px-3 py-2 text-sm">
+              <Label className="text-[var(--color-card-foreground)]">Criado em</Label>
+              <div className="rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-3 py-2 text-sm text-[var(--color-card-foreground)]">
                 {new Date(tenant.created_at).toLocaleDateString("pt-BR")}
               </div>
             </div>
           </div>
 
           <div className="flex justify-end">
-            <Button type="submit" disabled={isPending}>
+            <Button
+              type="submit"
+              disabled={isPending}
+              className="bg-[var(--tenant-brass)] text-white hover:bg-[var(--tenant-brass)]/90"
+            >
               {isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

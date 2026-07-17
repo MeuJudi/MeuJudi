@@ -56,8 +56,8 @@ export function SegurancaForm() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="font-display text-xl font-semibold">Segurança</h2>
-        <p className="text-sm text-muted-foreground">
+        <h2 className="font-display text-xl font-semibold text-[var(--color-card-foreground)]">Segurança</h2>
+        <p className="text-sm text-[var(--color-muted-foreground)]">
           Altere sua senha e gerencie sua conta.
         </p>
       </div>
@@ -76,10 +76,10 @@ export function SegurancaForm() {
       {/* Alterar senha */}
       <Card className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
         <CardContent className="p-6">
-          <h3 className="mb-4 font-medium">Alterar senha</h3>
+          <h3 className="mb-4 font-medium text-[var(--color-card-foreground)]">Alterar senha</h3>
           <form onSubmit={handlePasswordChange} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="current_password">Senha atual</Label>
+              <Label className="text-[var(--color-card-foreground)]" htmlFor="current_password">Senha atual</Label>
               <PasswordInput
                 id="current_password"
                 value={currentPassword}
@@ -88,7 +88,7 @@ export function SegurancaForm() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="new_password">Nova senha</Label>
+              <Label className="text-[var(--color-card-foreground)]" htmlFor="new_password">Nova senha</Label>
               <PasswordInput
                 id="new_password"
                 value={newPassword}
@@ -98,7 +98,7 @@ export function SegurancaForm() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="confirm_password">Confirmar nova senha</Label>
+              <Label className="text-[var(--color-card-foreground)]" htmlFor="confirm_password">Confirmar nova senha</Label>
               <PasswordInput
                 id="confirm_password"
                 value={confirmPassword}
@@ -108,7 +108,11 @@ export function SegurancaForm() {
               />
             </div>
             <div className="flex justify-end">
-              <Button type="submit" disabled={isPending}>
+              <Button
+                type="submit"
+                disabled={isPending}
+                className="bg-[var(--tenant-brass)] text-white hover:bg-[var(--tenant-brass)]/90"
+              >
                 {isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -130,7 +134,7 @@ export function SegurancaForm() {
             <AlertTriangle className="mt-0.5 h-5 w-5 text-destructive" />
             <div className="flex-1">
               <h3 className="font-medium text-destructive">Zona de perigo</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
                 Excluir sua conta é uma ação irreversível. Todos os seus dados serão removidos
                 permanentemente.
               </p>

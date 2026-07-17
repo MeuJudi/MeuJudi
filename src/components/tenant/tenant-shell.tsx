@@ -15,6 +15,7 @@ import {
   Settings,
   UsersRound,
   User,
+  Bell,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -52,6 +53,7 @@ export function TenantShell({ children, userName, role, initialPaletteId }: Tena
   const tenantParam = searchParams.get("tenant");
   const currentScope = searchParams.get("scope") ?? "all";
   const [paletteId, setPaletteId] = useState<PaletteId>(initialPaletteId);
+  const [notifOpen, setNotifOpen] = useState(false);
 
   const isStaff = role === "staff";
 
@@ -149,9 +151,9 @@ export function TenantShell({ children, userName, role, initialPaletteId }: Tena
           </div>
         </aside>
 
-        <main className="min-w-0 bg-[var(--tenant-paper)] px-4 py-5 text-[var(--color-foreground)] sm:px-6 lg:px-8">
+        <main className="min-w-0 bg-[var(--tenant-paper)] px-4 py-5 text-gray-900 sm:px-6 lg:px-8">
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex min-w-[240px] flex-1 items-center gap-2 rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-2 text-sm text-[var(--color-muted-foreground)]">
+            <div className="flex min-w-[240px] flex-1 items-center gap-2 rounded-md border border-[var(--tenant-line)] bg-white px-3 py-2 text-sm text-gray-500">
               <Search className="h-4 w-4" />
               <span>Buscar processo, cliente ou tarefa...</span>
             </div>
@@ -165,20 +167,21 @@ export function TenantShell({ children, userName, role, initialPaletteId }: Tena
                         "flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors",
                         currentScope === "mine"
                           ? "border-[var(--tenant-brass)] bg-[color-mix(in_srgb,var(--tenant-brass)_10%,transparent)] text-[var(--tenant-brass)]"
-                          : "border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--color-muted-foreground)] hover:bg-[var(--tenant-surface-muted)]",
+                          : "border-[var(--tenant-line)] bg-white text-gray-700 hover:bg-gray-50",
                       )}
                     >
                       {currentScope === "mine" ? <User className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       <span className="hidden sm:inline">{currentScope === "mine" ? "Meus casos" : "Todos"}</span>
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-48 border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-1">
+                  <PopoverContent className="w-48 border-[var(--tenant-line)] bg-white !p-1" style={{ color: "#111827" }}>
                     <button
                       type="button"
                       onClick={() => handleScopeChange("all")}
+                      style={{ color: currentScope === "all" ? undefined : "#111827" }}
                       className={cn(
-                        "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left transition-colors hover:bg-[var(--tenant-surface-muted)]",
-                        currentScope === "all" && "bg-[var(--tenant-surface-muted)] text-[var(--tenant-brass)]",
+                        "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left transition-colors hover:bg-gray-50",
+                        currentScope === "all" && "bg-gray-50 !text-[var(--tenant-brass)]",
                       )}
                     >
                       <Eye className="h-4 w-4" />
@@ -187,9 +190,10 @@ export function TenantShell({ children, userName, role, initialPaletteId }: Tena
                     <button
                       type="button"
                       onClick={() => handleScopeChange("mine")}
+                      style={{ color: currentScope === "mine" ? undefined : "#111827" }}
                       className={cn(
-                        "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left transition-colors hover:bg-[var(--tenant-surface-muted)]",
-                        currentScope === "mine" && "bg-[var(--tenant-surface-muted)] text-[var(--tenant-brass)]",
+                        "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left transition-colors hover:bg-gray-50",
+                        currentScope === "mine" && "bg-gray-50 !text-[var(--tenant-brass)]",
                       )}
                     >
                       <User className="h-4 w-4" />
@@ -198,9 +202,91 @@ export function TenantShell({ children, userName, role, initialPaletteId }: Tena
                   </PopoverContent>
                 </Popover>
               )}
+              <div
+                className="relative"
+                onMouseEnter={() => setNotifOpen(true)}
+                onMouseLeave={() => setNotifOpen(false)}
+              >
+                <button
+                  type="button"
+                  className="relative flex h-9 w-9 items-center justify-center rounded-md border border-[var(--tenant-line)] bg-white text-gray-500 transition-colors hover:bg-gray-50 hover:text-[var(--tenant-brass)]"
+                >
+                  <Bell className="h-4 w-4" />
+                  <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[var(--tenant-brass)] text-[8px] font-bold text-white">
+                    3
+                  </span>
+                </button>
+                {notifOpen && (
+                  <div className="absolute right-0 top-full z-50 mt-1 w-80 rounded-md border border-[var(--tenant-line)] bg-white shadow-lg">
+                    <div className="border-b border-gray-200 px-4 py-3">
+                      <p className="text-sm font-semibold text-gray-900">
+                        Notificações
+                      </p>
+                    </div>
+                    <div className="max-h-72 overflow-y-auto">
+                      <div className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-gray-50">
+                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                          <CheckSquare className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm text-gray-900">
+                            Prazo de <strong>Recurso INSS</strong> amanhã
+                          </p>
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            Processo 0001234-56.2024.8.16.0001
+                          </p>
+                          <p className="mt-0.5 text-xs text-gray-400">
+                            há 2 horas
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-gray-50">
+                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                          <UsersRound className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm text-gray-900">
+                            Novo cliente <strong>Maria Santos</strong> cadastrado
+                          </p>
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            por João Silva
+                          </p>
+                          <p className="mt-0.5 text-xs text-gray-400">
+                            há 5 horas
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-gray-50">
+                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                          <FileSearch className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm text-gray-900">
+                            Processo <strong>0009876-54.2024.8.16.0002</strong> movimentado
+                          </p>
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            Despacho: Cite o réu
+                          </p>
+                          <p className="mt-0.5 text-xs text-gray-400">
+                            ontem
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="border-t border-gray-200 px-4 py-2">
+                      <button
+                        type="button"
+                        className="w-full text-center text-xs font-medium text-[var(--tenant-brass)] hover:underline"
+                      >
+                        Ver todas as notificações
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
               <div className="text-right text-sm">
-                <strong className="block text-[var(--color-card-foreground)]">{userName}</strong>
-                <span className="text-xs text-[var(--color-muted-foreground)]">{role}</span>
+                <strong className="block text-gray-900">{userName}</strong>
+                <span className="text-xs text-gray-500">{role}</span>
               </div>
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--tenant-sidebar)] font-mono text-xs font-bold text-[var(--tenant-brass-light)]">
                 {initials(userName)}

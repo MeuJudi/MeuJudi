@@ -28,16 +28,16 @@ export default function ConfiguracoesLayout({ children }: { children: React.Reac
       </header>
 
       {/* Desktop tabs */}
-      <nav className="hidden gap-1 border-b md:flex">
+      <nav className="hidden gap-1 border-b border-[var(--tenant-line)] md:flex">
         {tabs.map((tab) => (
           <Link
             key={tab.href}
             href={tab.href}
             className={cn(
-              "px-4 py-2 text-sm font-medium transition-colors",
+              "px-4 py-2.5 text-sm font-medium transition-colors",
               pathname === tab.href
-                ? "border-b-2 border-primary text-primary"
-                : "text-muted-foreground hover:text-foreground"
+                ? "border-b-2 border-[var(--tenant-brass)] text-[var(--tenant-brass)]"
+                : "text-[var(--color-muted-foreground)] hover:text-[var(--color-card-foreground)]"
             )}
           >
             {tab.label}
@@ -51,7 +51,7 @@ export default function ConfiguracoesLayout({ children }: { children: React.Reac
         onChange={(e) => {
           window.location.href = e.target.value;
         }}
-        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm md:hidden"
+        className="w-full rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-2 text-sm text-[var(--color-card-foreground)] md:hidden"
       >
         {tabs.map((tab) => (
           <option key={tab.href} value={tab.href}>

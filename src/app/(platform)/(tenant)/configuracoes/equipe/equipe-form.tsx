@@ -126,8 +126,8 @@ export function EquipeForm({ members, invites, currentUserId }: Props) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="font-display text-xl font-semibold">Equipe</h2>
-        <p className="text-sm text-muted-foreground">
+        <h2 className="font-display text-xl font-semibold text-[var(--color-card-foreground)]">Equipe</h2>
+        <p className="text-sm text-[var(--color-muted-foreground)]">
           Gerencie os membros do seu escritório e convites pendentes.
         </p>
       </div>
@@ -146,22 +146,22 @@ export function EquipeForm({ members, invites, currentUserId }: Props) {
       {/* Membros ativos */}
       <Card className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
         <CardContent className="p-6">
-          <h3 className="mb-4 font-medium">Membros ativos ({activeMembers.length})</h3>
-          <div className="divide-y rounded-md border border-input">
+          <h3 className="mb-4 font-medium text-[var(--color-card-foreground)]">Membros ativos ({activeMembers.length})</h3>
+          <div className="divide-y rounded-md border border-[var(--tenant-line)]">
             {activeMembers.map((member) => (
               <div key={member.id} className="flex items-center justify-between px-4 py-3">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--tenant-surface-muted)] text-sm font-medium text-[var(--tenant-brass)]">
                     {member.name.charAt(0).toUpperCase()}
                   </div>
                   <div>
-                    <p className="font-medium">
+                    <p className="font-medium text-[var(--color-card-foreground)]">
                       {member.name}
                       {member.id === currentUserId && (
-                        <span className="ml-2 text-xs text-muted-foreground">(você)</span>
+                        <span className="ml-2 text-xs text-[var(--color-muted-foreground)]">(você)</span>
                       )}
                     </p>
-                    <p className="text-sm text-muted-foreground">{member.email}</p>
+                    <p className="text-sm text-[var(--color-muted-foreground)]">{member.email}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -169,7 +169,7 @@ export function EquipeForm({ members, invites, currentUserId }: Props) {
                     value={member.role}
                     onChange={(e) => handleRoleChange(member.id, e.target.value)}
                     disabled={isPending || member.id === currentUserId}
-                    className="h-8 rounded-md border border-input bg-transparent px-2 text-xs"
+                    className="h-8 rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-2 text-xs text-[var(--color-card-foreground)]"
                   >
                     <option value="owner">Responsável</option>
                     <option value="lawyer">Advogado(a)</option>
@@ -182,7 +182,7 @@ export function EquipeForm({ members, invites, currentUserId }: Props) {
                         size="sm"
                         onClick={() => handleDeactivate(member.id)}
                         disabled={isPending}
-                        className="h-8 text-xs"
+                        className="h-8 text-xs text-[var(--color-muted-foreground)] hover:text-[var(--tenant-brass)]"
                       >
                         Desativar
                       </Button>
@@ -191,7 +191,7 @@ export function EquipeForm({ members, invites, currentUserId }: Props) {
                         size="sm"
                         onClick={() => handleRemove(member.id)}
                         disabled={isPending}
-                        className="h-8 text-xs text-destructive hover:text-destructive"
+                        className="h-8 text-xs text-[var(--color-muted-foreground)] hover:text-destructive"
                       >
                         Remover
                       </Button>
@@ -208,8 +208,8 @@ export function EquipeForm({ members, invites, currentUserId }: Props) {
       <Card className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
         <CardContent className="p-6">
           <div className="mb-4 flex items-center gap-2">
-            <MailPlus className="h-5 w-5 text-primary" />
-            <h3 className="font-medium">Convidar membro</h3>
+            <MailPlus className="h-5 w-5 text-[var(--tenant-brass)]" />
+            <h3 className="font-medium text-[var(--color-card-foreground)]">Convidar membro</h3>
           </div>
           <form onSubmit={handleInvite} className="flex gap-3">
             <div className="flex-1">
@@ -218,6 +218,7 @@ export function EquipeForm({ members, invites, currentUserId }: Props) {
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
                 placeholder="email@exemplo.com"
+                className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--color-card-foreground)]"
                 required
               />
             </div>
@@ -225,14 +226,18 @@ export function EquipeForm({ members, invites, currentUserId }: Props) {
               <select
                 value={inviteRole}
                 onChange={(e) => setInviteRole(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="flex h-9 w-full rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-1 text-sm text-[var(--color-card-foreground)] shadow-sm transition-colors placeholder:text-[var(--color-muted-foreground)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--tenant-brass)]"
               >
                 <option value="lawyer">Advogado(a)</option>
                 <option value="staff">Equipe administrativa</option>
                 <option value="owner">Sócio(a) / Responsável</option>
               </select>
             </div>
-            <Button type="submit" disabled={isPending}>
+            <Button
+              type="submit"
+              disabled={isPending}
+              className="bg-[var(--tenant-brass)] text-white hover:bg-[var(--tenant-brass)]/90"
+            >
               {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enviar convite"}
             </Button>
           </form>
@@ -243,26 +248,31 @@ export function EquipeForm({ members, invites, currentUserId }: Props) {
       {invites.length > 0 && (
         <Card className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
           <CardContent className="p-6">
-            <h3 className="mb-4 font-medium">Convites pendentes ({invites.length})</h3>
-            <div className="divide-y rounded-md border border-input">
+            <h3 className="mb-4 font-medium text-[var(--color-card-foreground)]">Convites pendentes ({invites.length})</h3>
+            <div className="divide-y rounded-md border border-[var(--tenant-line)]">
               {invites.map((invite) => (
                 <div key={invite.id} className="flex items-center justify-between px-4 py-3">
                   <div>
-                    <p className="font-medium">{invite.email}</p>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="font-medium text-[var(--color-card-foreground)]">{invite.email}</p>
+                    <p className="text-sm text-[var(--color-muted-foreground)]">
                       {roleLabels[invite.role] ?? invite.role} · Enviado por{" "}
                       {invite.invited_by_name ?? "desconhecido"} · Expira em{" "}
                       {new Date(invite.expires_at).toLocaleDateString("pt-BR")}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline">{invite.status}</Badge>
+                    <Badge
+                      variant="outline"
+                      className="border-[var(--tenant-line)] bg-[color-mix(in_srgb,var(--tenant-brass)_10%,transparent)] text-[var(--tenant-brass)]"
+                    >
+                      {invite.status}
+                    </Badge>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => handleRevokeInvite(invite.id)}
                       disabled={isPending}
-                      className="text-destructive hover:text-destructive"
+                      className="text-[var(--color-muted-foreground)] hover:text-destructive"
                     >
                       <X className="h-4 w-4" />
                     </Button>

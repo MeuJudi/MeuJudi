@@ -7,7 +7,6 @@ import { maskOab } from "@/lib/masks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 
 const ufs = [
@@ -85,8 +84,10 @@ export function OabsForm({ oabs }: Props) {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="font-display text-xl font-semibold">OABs do escritório</h2>
-        <p className="text-sm text-muted-foreground">
+        <h2 className="font-display text-xl font-semibold text-[var(--color-card-foreground)]">
+          OABs do escritório
+        </h2>
+        <p className="text-sm text-[var(--color-muted-foreground)]">
           Gerencie as inscrições OAB vinculadas ao escritório.
         </p>
       </div>
@@ -111,13 +112,14 @@ export function OabsForm({ oabs }: Props) {
                 onChange={(e) => setOabNumber(maskOab(e.target.value))}
                 placeholder="Número da OAB"
                 inputMode="numeric"
+                className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--color-card-foreground)]"
               />
             </div>
             <div className="w-24">
               <select
                 value={oabUf}
                 onChange={(e) => setOabUf(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="flex h-9 w-full rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-1 text-sm text-[var(--color-card-foreground)] shadow-sm transition-colors placeholder:text-[var(--color-muted-foreground)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--tenant-brass)]"
               >
                 <option value="">UF</option>
                 {ufs.map((uf) => (
@@ -125,29 +127,36 @@ export function OabsForm({ oabs }: Props) {
                 ))}
               </select>
             </div>
-            <Button type="submit" disabled={isPending || !oabNumber || !oabUf}>
+            <Button
+              type="submit"
+              disabled={isPending || !oabNumber || !oabUf}
+              className="bg-[var(--tenant-brass)] text-white hover:bg-[var(--tenant-brass)]/90"
+            >
               {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "+ Adicionar"}
             </Button>
           </form>
 
           {oabs.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nenhuma OAB vinculada ao escritório.</p>
+            <p className="text-sm text-[var(--color-muted-foreground)]">Nenhuma OAB vinculada ao escritório.</p>
           ) : (
-            <div className="divide-y rounded-md border border-input">
+            <div className="divide-y rounded-md border border-[var(--tenant-line)]">
               {oabs.map((oab) => (
                 <div key={oab.id} className="flex items-center justify-between px-4 py-3">
                   <div className="flex items-center gap-3">
-                    <span className="font-medium">
+                    <span className="font-medium text-[var(--color-card-foreground)]">
                       OAB {oab.oab_number}/{oab.oab_uf}
                     </span>
                     {oab.is_primary && (
-                      <Badge variant="outline" className="border-primary text-primary">
+                      <Badge
+                        variant="outline"
+                        className="border-[var(--tenant-brass)] bg-[color-mix(in_srgb,var(--tenant-brass)_10%,transparent)] text-[var(--tenant-brass)]"
+                      >
                         <Star className="mr-1 h-3 w-3" />
                         Principal
                       </Badge>
                     )}
                     {oab.user_name && (
-                      <span className="text-sm text-muted-foreground">
+                      <span className="text-sm text-[var(--color-muted-foreground)]">
                         — {oab.user_name}
                       </span>
                     )}
@@ -159,6 +168,7 @@ export function OabsForm({ oabs }: Props) {
                         size="sm"
                         onClick={() => handleSetPrimary(oab.id)}
                         disabled={isPending}
+                        className="text-[var(--color-muted-foreground)] hover:text-[var(--tenant-brass)]"
                       >
                         Definir como principal
                       </Button>
@@ -168,7 +178,7 @@ export function OabsForm({ oabs }: Props) {
                       size="sm"
                       onClick={() => handleRemove(oab.id)}
                       disabled={isPending}
-                      className="text-destructive hover:text-destructive"
+                      className="text-[var(--color-muted-foreground)] hover:text-destructive"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
