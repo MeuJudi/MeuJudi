@@ -6,28 +6,33 @@ product
 
 ## Users
 
-Socios, advogados e equipe de escritorios de advocacia que precisam acompanhar processos, prazos, clientes, tarefas e comunicacoes sem operar manualmente cada tribunal.
+Advogados e estagiários de escritórios de advocacia brasileiros. Usam o app no dia-a-dia pra consultar processos, acompanhar movimentações, gerenciar agenda e clientes. Contexto: escritório, fórum, reunião — precisam de algo rápido e direto.
 
 ## Product Purpose
 
-MeuJudi organiza o trabalho juridico diario do escritorio: monitora processos, centraliza agenda, ajuda a distribuir tarefas, registra clientes e conecta o escritorio ao PJe por meio do MeuJudi CS. Sucesso significa que o usuario entende rapidamente o que exige atencao hoje e consegue agir sem procurar informacao em varios lugares.
+Centralizar a gestão de processos jurídicos num único lugar. Combinar fontes públicas (DataJud + Mural Eletrônico) com IA pra entregar informações que o advogado normalmente buscaria em vários sites diferentes.
 
 ## Brand Personality
 
-Confiavel, claro e operacional. A interface deve parecer juridica e madura, mas sem linguagem pesada ou burocratica.
+Profissional, confiável, direto. Sem frescura — advogado não tem tempo pra interface enfeitada.
 
 ## Anti-references
 
-Nao deve parecer landing page generica de SaaS, painel neon/cripto, dashboard excessivamente escuro, sistema publico antigo ou ferramenta juridica cheia de termos tecnicos desnecessarios.
+- Interfaces genéricas de SaaS com gradientes e cards coloridos demais
+- Modais customizados sem padrão (o problema atual)
+- Texto pequeno demais ou contraste ruim
+- Animaçõesdecorativas que atrapalham o fluxo
 
 ## Design Principles
 
-- Priorizar o trabalho do dia: prazos, audiencias, movimentacoes e pendencias aparecem antes de configuracoes.
-- Usar linguagem simples, explicando termos juridicos apenas quando necessario.
-- Separar claramente plataforma, vertical, tenant e usuario: Super Admin e painel do escritorio nao devem se misturar.
-- Mostrar estados operacionais de forma direta: conectado, pendente, com erro, novo, aguardando e concluido.
-- Preservar uma identidade visual juridica e sobria baseada no demo MeuJudi.
+1. **Consistência primeiro** — todos os modais, botões e formulários seguem o mesmo padrão visual
+2. **Velocidade** — o advogado precisa ver informação rápido, sem sobrecarga visual
+3. **Familiaridade** — padrões que o advogado já conhece (listas, tabelas, formulários simples)
+4. **Confiança** — interface sólida transmite credibilidade pro escritório que usa
 
 ## Accessibility & Inclusion
 
-Mirar WCAG AA para contraste e navegacao por teclado. Respeitar reducao de movimento. Nao depender apenas de cor para indicar prioridade, erro ou sucesso.
+- Contraste mínimo WCAG AA (4.5:1)
+- Navegação por teclado
+- Focus ring visível
+- Textos descritivos em botões e links

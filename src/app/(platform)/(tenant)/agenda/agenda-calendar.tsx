@@ -1,11 +1,15 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Clock3, GripVertical, ListChecks, Sparkles, X } from "lucide-react";
-import { createInternalReminderFromAgendaEvent, rescheduleAgendaEvent } from "./actions";
+import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Clock3, GripVertical, ListChecks, Plus, Sparkles } from "lucide-react";
+import { createAgendaEvent, createInternalReminderFromAgendaEvent, rescheduleAgendaEvent } from "./actions";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ProcessDetailsModal } from "@/components/tenant/process-details-modal";
 import { cn } from "@/lib/utils";
 
@@ -20,17 +24,23 @@ export type AgendaItem = {
   source: string;
   processId: string | null;
   processTitle: string | null;
+  clienteId: string | null;
+  clienteName: string | null;
   responsibleName: string | null;
   responsibleAvatarUrl: string | null;
   responsibleColor: string;
+  userId: string | null;
 };
 
 type AgendaCalendarProps = {
   initialMonth: string;
   events: AgendaItem[];
+  scope?: string;
+  userId?: string;
 };
 
 type CalendarView = "month" | "week";
+type GroupBy = "processos" | "clientes";
 type MovePolicy = "direct" | "confirm" | "locked";
 type PendingDrop = {
   event: AgendaItem;
@@ -268,70 +278,129 @@ function MoveGuardModal({
   const isLocked = pendingDrop.policy === "locked";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 animate-fade-in">
-      <div className="w-full max-w-xl rounded-lg border border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-5 text-[var(--tenant-surface-foreground)] shadow-xl animate-scale-in">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--tenant-wine)_12%,transparent)] text-[var(--tenant-wine)]">
-              <AlertTriangle className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="font-display text-2xl font-bold">{policyTitle(pendingDrop.policy, pendingDrop.event)}</h2>
-              <p className="mt-2 text-sm leading-6 text-[var(--color-muted-foreground)]">
-                {policyMessage(pendingDrop.policy, pendingDrop.event)}
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-md p-1 text-[var(--color-muted-foreground)] transition-colors hover:bg-[var(--tenant-surface-muted)] hover:text-[var(--tenant-brass)]"
-            aria-label="Fechar aviso"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+    <AlertDialog open onOpenChange={(open) => !open && onCancel()}>
+      <AlertDialogContent className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-[var(--tenant-wine)]" />
+            {policyTitle(pendingDrop.policy, pendingDrop.event)}
+          </AlertDialogTitle>
+          <AlertDialogDescription className="text-[var(--color-muted-foreground)]">
+            {policyMessage(pendingDrop.policy, pendingDrop.event)}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
 
-        <div className="mt-4 rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-3">
+        <div className="rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-3">
           <p className="text-sm font-semibold">{pendingDrop.event.title}</p>
           <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
             Origem: {pendingDrop.event.source} · Tipo: {typeLabel[pendingDrop.event.type]} · Nova data: {targetDate}
           </p>
         </div>
 
-        <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onCancel}
-            disabled={isPending}
-            className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] hover:bg-[var(--tenant-surface-muted)]"
-          >
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={onCancel} disabled={isPending}>
             Cancelar
-          </Button>
+          </AlertDialogCancel>
           {isLocked ? (
-            <Button type="button" onClick={onCreateReminder} disabled={isPending}>
+            <AlertDialogAction onClick={onCreateReminder} disabled={isPending}>
               Criar lembrete interno
-            </Button>
+            </AlertDialogAction>
           ) : (
             <>
-              <Button
-                type="button"
-                variant="outline"
+              <AlertDialogAction
                 onClick={onCreateReminder}
                 disabled={isPending}
-                className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] hover:bg-[var(--tenant-surface-muted)]"
+                className="border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground"
               >
                 Criar lembrete interno
-              </Button>
-              <Button type="button" onClick={onConfirmMove} disabled={isPending}>
+              </AlertDialogAction>
+              <AlertDialogAction onClick={onConfirmMove} disabled={isPending}>
                 Mover mesmo assim
-              </Button>
+              </AlertDialogAction>
             </>
           )}
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function CreateEventModal({
+  isOpen,
+  isPending,
+  onClose,
+  onCreate,
+}: {
+  isOpen: boolean;
+  isPending: boolean;
+  onClose: () => void;
+  onCreate: (data: { tipo: string; titulo: string; descricao: string; data_inicio: string; data_fim: string }) => void;
+}) {
+  const [tipo, setTipo] = useState("reuniao");
+  const [titulo, setTitulo] = useState("");
+  const [descricao, setDescricao] = useState("");
+  const [dataInicio, setDataInicio] = useState("");
+  const [dataFim, setDataFim] = useState("");
+
+  function handleCreate() {
+    if (!titulo.trim() || !dataInicio) return;
+    onCreate({ tipo, titulo, descricao, data_inicio: dataInicio, data_fim: dataFim || dataInicio });
+    setTitulo("");
+    setDescricao("");
+    setDataInicio("");
+    setDataFim("");
+  }
+
+  function handleClose() {
+    setTitulo("");
+    setDescricao("");
+    setDataInicio("");
+    setDataFim("");
+    onClose();
+  }
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
+      <DialogContent className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
+        <DialogHeader>
+          <DialogTitle>Novo evento</DialogTitle>
+          <DialogDescription>Crie um novo evento na agenda do escritório.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Label>Tipo</Label>
+            <select value={tipo} onChange={(e) => setTipo(e.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+              <option value="reuniao">Reunião</option>
+              <option value="audiencia">Audiência</option>
+              <option value="prazo">Prazo</option>
+              <option value="outro">Outro</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label>Titulo *</Label>
+            <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ex: Reunião com cliente" />
+          </div>
+          <div className="space-y-1">
+            <Label>Descricao</Label>
+            <textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={2} className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label>Data e hora inicio *</Label>
+              <Input type="datetime-local" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>Data e hora fim</Label>
+              <Input type="datetime-local" value={dataFim} onChange={(e) => setDataFim(e.target.value)} />
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleClose} disabled={isPending} className="border-[var(--tenant-line)]">Cancelar</Button>
+          <Button onClick={handleCreate} disabled={isPending || !titulo.trim() || !dataInicio}>Criar evento</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -415,21 +484,87 @@ function DayShell({
   );
 }
 
-export function AgendaCalendar({ initialMonth, events }: AgendaCalendarProps) {
+function EventRow({
+  event,
+  onOpenProcess,
+}: {
+  event: AgendaItem;
+  onOpenProcess?: (processId: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-3">
+      <div className="min-w-0">
+        <p className="font-semibold text-[var(--tenant-surface-foreground)]">{event.title}</p>
+        {event.processId ? (
+          <button
+            type="button"
+            onClick={() => event.processId && onOpenProcess?.(event.processId)}
+            className="mt-1 text-left text-sm text-[var(--color-muted-foreground)] underline-offset-2 hover:underline"
+          >
+            {event.processTitle ?? event.description ?? "Processo vinculado"}
+          </button>
+        ) : event.clienteName ? (
+          <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">{event.clienteName}</p>
+        ) : (
+          <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">{event.description ?? "Sem vinculo"}</p>
+        )}
+        <div className="mt-2 flex items-center gap-2 text-xs font-medium text-[var(--color-muted-foreground)]">
+          <span
+            className="flex h-6 w-6 items-center justify-center rounded-full bg-cover bg-center font-mono text-[10px] font-bold text-white"
+            style={{
+              backgroundColor: event.responsibleColor,
+              backgroundImage: event.responsibleAvatarUrl ? `url(${event.responsibleAvatarUrl})` : undefined,
+            }}
+          >
+            {event.responsibleAvatarUrl ? null : initials(event.responsibleName)}
+          </span>
+          {event.responsibleName ?? "Sem responsavel definido"}
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Badge className={typeClass[event.type]}>{typeLabel[event.type]}</Badge>
+        <Badge variant="outline" className="gap-1 border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
+          <Clock3 className="h-3 w-3" />
+          {formatTime(event.start)}
+        </Badge>
+        <Badge variant="outline" className="gap-1 border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
+          <CalendarDays className="h-3 w-3" />
+          {event.source}
+        </Badge>
+      </div>
+    </div>
+  );
+}
+
+export function AgendaCalendar({ initialMonth, events, scope, userId }: AgendaCalendarProps) {
   const [localEvents, setLocalEvents] = useState(events);
   const [view, setView] = useState<CalendarView>("month");
+  const [groupBy, setGroupBy] = useState<GroupBy>("processos");
   const [month, setMonth] = useState(() => new Date(`${initialMonth}-01T12:00:00`));
   const [selectedDate, setSelectedDate] = useState(() => toDateKey(new Date()));
   const [dragOverDate, setDragOverDate] = useState<string | null>(null);
   const [pendingDrop, setPendingDrop] = useState<PendingDrop | null>(null);
   const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const days = useMemo(() => buildCalendarDays(month), [month]);
   const weekDays = useMemo(() => buildWeekDays(parseDateKey(selectedDate)), [selectedDate]);
+
+  const filteredEvents = useMemo(() => {
+    let result = localEvents;
+    if (scope === "mine" && userId) {
+      result = result.filter((e) => e.userId === userId);
+    }
+    if (groupBy === "processos") {
+      return result.filter((e) => e.type === "audiencia" || e.type === "prazo");
+    }
+    return result.filter((e) => e.type === "reuniao");
+  }, [localEvents, groupBy, scope, userId]);
+
   const eventsByDay = useMemo(() => {
     const map = new Map<string, AgendaItem[]>();
-    for (const event of localEvents) {
+    for (const event of filteredEvents) {
       const key = event.start.slice(0, 10);
       map.set(key, [...(map.get(key) ?? []), event]);
     }
@@ -437,7 +572,7 @@ export function AgendaCalendar({ initialMonth, events }: AgendaCalendarProps) {
       dayEvents.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
     }
     return map;
-  }, [localEvents]);
+  }, [filteredEvents]);
 
   const selectedEvents = eventsByDay.get(selectedDate) ?? [];
   const weekStart = weekDays[0];
@@ -490,6 +625,36 @@ export function AgendaCalendar({ initialMonth, events }: AgendaCalendarProps) {
     });
   }
 
+  function handleCreateEvent(data: { tipo: string; titulo: string; descricao: string; data_inicio: string; data_fim: string }) {
+    startTransition(async () => {
+      try {
+        const result = await createAgendaEvent(data);
+        const newEvent: AgendaItem = {
+          id: result.id,
+          title: data.titulo,
+          description: data.descricao || null,
+          type: data.tipo as AgendaItem["type"],
+          start: data.data_inicio,
+          end: data.data_fim || null,
+          status: "pendente",
+          source: "manual",
+          processId: null,
+          processTitle: null,
+          clienteId: null,
+          clienteName: null,
+          responsibleName: null,
+          responsibleAvatarUrl: null,
+          responsibleColor: "#5b5548",
+          userId: null,
+        };
+        setLocalEvents((current) => [...current, newEvent]);
+        setShowCreateModal(false);
+      } catch {
+        // error handled by transition
+      }
+    });
+  }
+
   function handleDrop(eventId: string, dateKey: string) {
     setDragOverDate(null);
     const event = localEvents.find((item) => item.id === eventId);
@@ -521,9 +686,14 @@ export function AgendaCalendar({ initialMonth, events }: AgendaCalendarProps) {
             Prazos, audiencias e compromissos do escritorio com remarcacao por arraste, feriados e responsaveis por cor.
           </p>
         </div>
-        <Badge className="rounded-full bg-[color-mix(in_srgb,var(--tenant-moss)_14%,transparent)] text-[var(--tenant-moss)]">
-          {localEvents.length} evento{localEvents.length === 1 ? "" : "s"} no periodo
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={() => setShowCreateModal(true)} className="gap-1">
+            <Plus className="h-4 w-4" /> Novo evento
+          </Button>
+          <Badge className="rounded-full bg-[color-mix(in_srgb,var(--tenant-moss)_14%,transparent)] text-[var(--tenant-moss)]">
+            {filteredEvents.length} evento{filteredEvents.length === 1 ? "" : "s"} no periodo
+          </Badge>
+        </div>
       </header>
 
       <Card className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
@@ -574,6 +744,21 @@ export function AgendaCalendar({ initialMonth, events }: AgendaCalendarProps) {
                     )}
                   >
                     {option === "month" ? "Mes" : "Semana"}
+                  </button>
+                ))}
+              </div>
+              <div className="inline-flex rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-1">
+                {([["processos", "Processos"], ["clientes", "Clientes"]] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setGroupBy(value)}
+                    className={cn(
+                      "rounded px-3 py-1.5 text-sm font-medium text-[var(--color-muted-foreground)] transition-colors",
+                      groupBy === value && "bg-[var(--tenant-surface)] text-[var(--tenant-brass)] shadow-sm",
+                    )}
+                  >
+                    {label}
                   </button>
                 ))}
               </div>
@@ -711,7 +896,9 @@ export function AgendaCalendar({ initialMonth, events }: AgendaCalendarProps) {
         <CardContent className="p-4">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <ListChecks className="h-5 w-5 text-primary" />
-            <h2 className="font-display text-xl font-semibold">Eventos do dia</h2>
+            <h2 className="font-display text-xl font-semibold">
+              {groupBy === "clientes" ? "Eventos por cliente" : "Eventos do dia"}
+            </h2>
             <span className="font-mono text-xs text-[var(--color-muted-foreground)]">
               {parseDateKey(selectedDate).toLocaleDateString("pt-BR")}
             </span>
@@ -720,50 +907,30 @@ export function AgendaCalendar({ initialMonth, events }: AgendaCalendarProps) {
             <div className="rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-5 text-sm text-[var(--color-muted-foreground)]">
               Nenhum evento neste dia. Arraste um card para esta data quando precisar remarcar.
             </div>
+          ) : groupBy === "clientes" ? (
+            <div className="space-y-4">
+              {Array.from(
+                selectedEvents.reduce((map, event) => {
+                  const key = event.clienteName ?? "Sem cliente";
+                  if (!map.has(key)) map.set(key, []);
+                  map.get(key)!.push(event);
+                  return map;
+                }, new Map<string, typeof selectedEvents>()),
+              ).map(([clienteName, events]) => (
+                <div key={clienteName} className="rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-3">
+                  <p className="mb-2 text-sm font-semibold">{clienteName}</p>
+                  <div className="space-y-2">
+                    {events.map((event) => (
+                      <EventRow key={event.id} event={event} onOpenProcess={setSelectedProcessId} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : (
             <div className="space-y-3">
               {selectedEvents.map((event) => (
-                <div key={event.id} className="rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-[var(--tenant-surface-foreground)]">{event.title}</p>
-                      {event.processId ? (
-                        <button
-                          type="button"
-                          onClick={() => setSelectedProcessId(event.processId)}
-                          className="mt-1 text-left text-sm text-[var(--color-muted-foreground)] underline-offset-2 hover:underline"
-                        >
-                          {event.processTitle ?? event.description ?? "Processo vinculado"}
-                        </button>
-                      ) : (
-                        <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">{event.description ?? "Sem processo vinculado"}</p>
-                      )}
-                      <div className="mt-2 flex items-center gap-2 text-xs font-medium text-[var(--color-muted-foreground)]">
-                        <span
-                          className="flex h-6 w-6 items-center justify-center rounded-full bg-cover bg-center font-mono text-[10px] font-bold text-white"
-                          style={{
-                            backgroundColor: event.responsibleColor,
-                            backgroundImage: event.responsibleAvatarUrl ? `url(${event.responsibleAvatarUrl})` : undefined,
-                          }}
-                        >
-                          {event.responsibleAvatarUrl ? null : initials(event.responsibleName)}
-                        </span>
-                        {event.responsibleName ?? "Sem responsavel definido"}
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge className={typeClass[event.type]}>{typeLabel[event.type]}</Badge>
-                      <Badge variant="outline" className="gap-1 border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
-                        <Clock3 className="h-3 w-3" />
-                        {formatTime(event.start)}
-                      </Badge>
-                      <Badge variant="outline" className="gap-1 border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
-                        <CalendarDays className="h-3 w-3" />
-                        {event.source}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
+                <EventRow key={event.id} event={event} onOpenProcess={setSelectedProcessId} />
               ))}
             </div>
           )}
@@ -780,6 +947,12 @@ export function AgendaCalendar({ initialMonth, events }: AgendaCalendarProps) {
         />
       ) : null}
       <ProcessDetailsModal processId={selectedProcessId} onClose={() => setSelectedProcessId(null)} />
+      <CreateEventModal
+        isOpen={showCreateModal}
+        isPending={isPending}
+        onClose={() => setShowCreateModal(false)}
+        onCreate={handleCreateEvent}
+      />
     </div>
   );
 }

@@ -23,6 +23,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  AlertTriangle,
   Bell,
   CalendarDays,
   Check,
@@ -38,6 +39,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -76,6 +78,7 @@ export type MonitorProcess = {
   dataUltimaMovimentacao: string | null;
   latestMovement: string | null;
   unreadMovements: number;
+  responsavelId: string | null;
 };
 
 type MonitoramentoViewProps = {
@@ -96,6 +99,8 @@ type MonitoramentoViewProps = {
     processTitle: string | null;
   }[];
   error?: string;
+  scope?: string;
+  userId?: string;
 };
 
 const statusClass: Record<MonitorProcess["status"], string> = {
@@ -224,7 +229,7 @@ function SortableColumn({
   onDraftNameChange: (value: string) => void;
   onSaveName: (column: KanbanColumn) => void;
   onCancelEdit: () => void;
-  onDeleteColumn: (column: KanbanColumn) => void;
+  onDeleteColumn: (column: KanbanColumn, processCount: number) => void;
   onOpenProcess: (processId: string) => void;
 }) {
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: column.id, data: { type: "column" } });
@@ -304,7 +309,7 @@ function SortableColumn({
             size="sm"
             variant="ghost"
             className="h-7 px-2 text-[var(--tenant-wine)]"
-            onClick={() => onDeleteColumn(column)}
+            onClick={() => onDeleteColumn(column, processes.length)}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
@@ -333,41 +338,56 @@ function DeleteColumnDialog({
   onCancel,
   onConfirm,
 }: {
-  column: KanbanColumn;
+  column: KanbanColumn & { processCount: number };
   columns: KanbanColumn[];
   onCancel: () => void;
-  onConfirm: (targetColumnId: string) => void;
+  onConfirm: (targetColumnId: string | null) => void;
 }) {
   const targets = columns.filter((item) => item.id !== column.id);
+  const hasCards = column.processCount > 0;
   const [targetColumnId, setTargetColumnId] = useState(targets[0]?.id ?? "");
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 animate-fade-in">
-      <div className="w-full max-w-lg rounded-lg border border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-5 text-[var(--tenant-surface-foreground)] shadow-xl animate-scale-in">
-        <h2 className="font-display text-2xl font-bold">Excluir coluna</h2>
-        <p className="mt-2 text-sm text-[var(--color-muted-foreground)]">
-          Os processos desta coluna precisam ser movidos para outra coluna antes da coluna ser ocultada.
-        </p>
-        <label className="mt-4 block text-sm font-medium">
-          Coluna destino
-          <select
-            value={targetColumnId}
-            onChange={(event) => setTargetColumnId(event.target.value)}
-            className="mt-2 w-full rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
+    <AlertDialog open onOpenChange={(open) => !open && onCancel()}>
+      <AlertDialogContent className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-[var(--tenant-wine)]" />
+            Excluir coluna
+          </AlertDialogTitle>
+          <AlertDialogDescription className="text-[var(--color-muted-foreground)]">
+            {hasCards
+              ? "Os processos desta coluna precisam ser movidos para outra coluna antes da exclusão."
+              : "Tem certeza que deseja excluir esta coluna vazia?"}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+
+        {hasCards && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Coluna destino</label>
+            <select
+              value={targetColumnId}
+              onChange={(event) => setTargetColumnId(event.target.value)}
+              className="w-full rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
+            >
+              {targets.map((target) => (
+                <option key={target.id} value={target.id}>{target.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={onCancel}>Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => onConfirm(hasCards ? targetColumnId : null)}
+            disabled={hasCards && !targetColumnId}
           >
-            {targets.map((target) => (
-              <option key={target.id} value={target.id}>{target.name}</option>
-            ))}
-          </select>
-        </label>
-        <div className="mt-5 flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onCancel}>Cancelar</Button>
-          <Button type="button" disabled={!targetColumnId} onClick={() => onConfirm(targetColumnId)}>
-            Mover e excluir
-          </Button>
-        </div>
-      </div>
-    </div>
+            {hasCards ? "Mover e excluir" : "Excluir"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -397,6 +417,8 @@ export function MonitoramentoView({
   metrics,
   muralItems,
   error,
+  scope,
+  userId,
 }: MonitoramentoViewProps) {
   const [view, setView] = useState<"lista" | "kanban" | "mural">("lista");
   const [query, setQuery] = useState("");
@@ -405,7 +427,7 @@ export function MonitoramentoView({
   const [activeProcess, setActiveProcess] = useState<MonitorProcess | null>(null);
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
-  const [deleteColumn, setDeleteColumn] = useState<KanbanColumn | null>(null);
+  const [deleteColumn, setDeleteColumn] = useState<(KanbanColumn & { processCount: number }) | null>(null);
   const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const boardScrollRef = useRef<HTMLDivElement | null>(null);
@@ -417,14 +439,18 @@ export function MonitoramentoView({
 
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase();
-    if (!term) return localProcesses;
-    return localProcesses.filter((process) =>
+    let result = localProcesses;
+    if (scope === "mine" && userId) {
+      result = result.filter((process) => process.responsavelId === userId);
+    }
+    if (!term) return result;
+    return result.filter((process) =>
       [process.cnj, process.title, process.subtitle, process.tribunal, process.statusLabel, ...process.tags]
         .join(" ")
         .toLowerCase()
         .includes(term),
     );
-  }, [localProcesses, query]);
+  }, [localProcesses, query, scope, userId]);
 
   const grouped = useMemo(() => {
     return localColumns.map((column) => ({
@@ -547,14 +573,27 @@ export function MonitoramentoView({
     });
   }
 
-  function handleConfirmDelete(column: KanbanColumn, targetColumnId: string) {
-    setLocalProcesses((current) => current.map((process) => (
-      process.kanbanColumnId === column.id ? { ...process, kanbanColumnId: targetColumnId } : process
-    )));
+  function handleDeleteColumn(column: KanbanColumn, processCount: number) {
+    if (processCount === 0) {
+      setLocalColumns((current) => current.filter((item) => item.id !== column.id));
+      startTransition(async () => {
+        await deleteKanbanColumn(column.id, column.id);
+      });
+    } else {
+      setDeleteColumn({ ...column, processCount });
+    }
+  }
+
+  function handleConfirmDelete(column: KanbanColumn, targetColumnId: string | null) {
+    if (targetColumnId) {
+      setLocalProcesses((current) => current.map((process) => (
+        process.kanbanColumnId === column.id ? { ...process, kanbanColumnId: targetColumnId } : process
+      )));
+    }
     setLocalColumns((current) => current.filter((item) => item.id !== column.id));
     setDeleteColumn(null);
     startTransition(async () => {
-      await deleteKanbanColumn(column.id, targetColumnId);
+      await deleteKanbanColumn(column.id, targetColumnId ?? column.id);
     });
   }
 
@@ -680,7 +719,7 @@ export function MonitoramentoView({
                         onDraftNameChange={setDraftName}
                         onSaveName={handleSaveName}
                         onCancelEdit={() => setEditingColumnId(null)}
-                        onDeleteColumn={setDeleteColumn}
+                        onDeleteColumn={handleDeleteColumn}
                         onOpenProcess={setSelectedProcessId}
                       />
                     ))}

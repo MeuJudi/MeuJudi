@@ -1,5 +1,8 @@
 import { MonitoramentoView, type KanbanColumn, type MonitorProcess } from "./monitoramento-view";
 import { requireAppUser } from "@/lib/auth/guards";
+import { unstable_noStore as noStore } from "next/cache";
+
+export const dynamic = "force-dynamic";
 
 type ProcessRow = {
   id: string;
@@ -15,6 +18,7 @@ type ProcessRow = {
   tags: string[] | null;
   is_favorito: boolean;
   data_ultima_movimentacao: string | null;
+  responsavel_id: string | null;
 };
 
 type KanbanColumnRow = {
@@ -130,11 +134,12 @@ async function ensureKanbanColumns(
 export default async function MonitoramentoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; tenant?: string }>;
+  searchParams: Promise<{ error?: string; tenant?: string; scope?: string }>;
 }) {
   const params = await searchParams;
   const { supabase, profile } = await requireAppUser();
   const tenantId = await resolveTenantId(supabase, profile, params.tenant);
+  const scope = params.scope ?? "all";
 
   if (!tenantId) {
     return (
@@ -163,7 +168,7 @@ export default async function MonitoramentoPage({
   const [{ data: processRows }, { data: movementRows }, { data: muralRows }] = await Promise.all([
     supabase
       .from("processos")
-      .select("id, cnj, tribunal, classe_nome, autor, reu, prazo_proxima_resposta, proxima_audiencia, status, kanban_column_id, tags, is_favorito, data_ultima_movimentacao")
+      .select("id, cnj, tribunal, classe_nome, autor, reu, prazo_proxima_resposta, proxima_audiencia, status, kanban_column_id, tags, is_favorito, data_ultima_movimentacao, responsavel_id")
       .eq("tenant_id", tenantId)
       .order("data_ultima_movimentacao", { ascending: false, nullsFirst: false })
       .limit(120),
@@ -212,6 +217,7 @@ export default async function MonitoramentoPage({
       dataUltimaMovimentacao: process.data_ultima_movimentacao,
       latestMovement: latestMovement?.nome ?? null,
       unreadMovements: unreadCountByProcess.get(process.id) ?? 0,
+      responsavelId: process.responsavel_id ?? null,
     };
   });
 
@@ -253,6 +259,8 @@ export default async function MonitoramentoPage({
       metrics={metrics}
       muralItems={muralItems}
       error={params.error ? decodeURIComponent(params.error) : undefined}
+      scope={scope}
+      userId={profile.id}
     />
   );
 }

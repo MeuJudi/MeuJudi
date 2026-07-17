@@ -2,18 +2,21 @@
 
 import Link from "next/link";
 import { MeuJudiLogo } from "./meujudi-logo";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   BriefcaseBusiness,
   CalendarDays,
   CheckSquare,
+  Eye,
   FileSearch,
   Search,
   Settings,
   UsersRound,
+  User,
 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { palettes, getPaletteStyles, type PaletteId } from "@/lib/themes/palettes";
 
@@ -44,9 +47,13 @@ function initials(name: string) {
 
 export function TenantShell({ children, userName, role, initialPaletteId }: TenantShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const tenantParam = searchParams.get("tenant");
+  const currentScope = searchParams.get("scope") ?? "all";
   const [paletteId, setPaletteId] = useState<PaletteId>(initialPaletteId);
+
+  const isStaff = role === "staff";
 
   useEffect(() => {
     const stored = window.localStorage.getItem("meujudi-palette") as PaletteId | null;
@@ -79,6 +86,22 @@ export function TenantShell({ children, userName, role, initialPaletteId }: Tena
     if (!tenantParam) return href;
     const separator = href.includes("?") ? "&" : "?";
     return `${href}${separator}tenant=${encodeURIComponent(tenantParam)}`;
+  }
+
+  function withScope(href: string, scope: string) {
+    let url = href;
+    if (tenantParam) {
+      url += `?tenant=${encodeURIComponent(tenantParam)}&scope=${scope}`;
+    } else {
+      url += `?scope=${scope}`;
+    }
+    return url;
+  }
+
+  function handleScopeChange(scope: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("scope", scope);
+    router.push(`${pathname}?${params.toString()}`);
   }
 
   return (
@@ -133,6 +156,48 @@ export function TenantShell({ children, userName, role, initialPaletteId }: Tena
               <span>Buscar processo, cliente ou tarefa...</span>
             </div>
             <div className="flex items-center gap-3">
+              {!isStaff && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors",
+                        currentScope === "mine"
+                          ? "border-[var(--tenant-brass)] bg-[color-mix(in_srgb,var(--tenant-brass)_10%,transparent)] text-[var(--tenant-brass)]"
+                          : "border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--color-muted-foreground)] hover:bg-[var(--tenant-surface-muted)]",
+                      )}
+                    >
+                      {currentScope === "mine" ? <User className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      <span className="hidden sm:inline">{currentScope === "mine" ? "Meus casos" : "Todos"}</span>
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-48 border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-1">
+                    <button
+                      type="button"
+                      onClick={() => handleScopeChange("all")}
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left transition-colors hover:bg-[var(--tenant-surface-muted)]",
+                        currentScope === "all" && "bg-[var(--tenant-surface-muted)] text-[var(--tenant-brass)]",
+                      )}
+                    >
+                      <Eye className="h-4 w-4" />
+                      Todos os casos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleScopeChange("mine")}
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left transition-colors hover:bg-[var(--tenant-surface-muted)]",
+                        currentScope === "mine" && "bg-[var(--tenant-surface-muted)] text-[var(--tenant-brass)]",
+                      )}
+                    >
+                      <User className="h-4 w-4" />
+                      Meus casos
+                    </button>
+                  </PopoverContent>
+                </Popover>
+              )}
               <div className="text-right text-sm">
                 <strong className="block text-[var(--color-card-foreground)]">{userName}</strong>
                 <span className="text-xs text-[var(--color-muted-foreground)]">{role}</span>

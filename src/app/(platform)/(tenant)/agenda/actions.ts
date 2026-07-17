@@ -134,8 +134,52 @@ export async function createInternalReminderFromAgendaEvent(eventId: string, dat
     source: reminder.fonte,
     processId: event.processo_id,
     processTitle: null,
+    clienteId: null,
+    clienteName: null,
     responsibleName: profile.name,
     responsibleAvatarUrl: null,
     responsibleColor: "#5b5548",
+    userId: profile.id,
   };
+}
+
+/* ─── Create Event ─── */
+
+export async function createAgendaEvent(data: {
+  tipo: string;
+  titulo: string;
+  descricao?: string;
+  data_inicio: string;
+  data_fim?: string;
+  cliente_id?: string;
+  processo_id?: string;
+}) {
+  const cleanTitulo = data.titulo.trim();
+  if (!cleanTitulo) throw new Error("Informe um titulo para o evento.");
+  if (!data.data_inicio) throw new Error("Informe a data e hora do evento.");
+
+  const { supabase, profile } = await requireAppUser();
+
+  const { data: event, error } = await supabase
+    .from("agenda_eventos")
+    .insert({
+      tenant_id: profile.tenant_id,
+      user_id: profile.id,
+      tipo: data.tipo,
+      titulo: cleanTitulo,
+      descricao: data.descricao?.trim() || null,
+      data_inicio: data.data_inicio,
+      data_fim: data.data_fim || null,
+      cliente_id: data.cliente_id || null,
+      processo_id: data.processo_id || null,
+      fonte: "manual",
+      status: "pendente",
+    })
+    .select("id")
+    .single();
+
+  if (error || !event) throw new Error(error?.message ?? "Nao foi possivel criar o evento.");
+
+  revalidatePath("/agenda");
+  return { id: event.id };
 }

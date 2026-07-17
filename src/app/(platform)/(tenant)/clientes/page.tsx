@@ -1,6 +1,8 @@
 import { ClientesView, type ClientColumn, type ClientItem } from "./clientes-view";
 import { requireAppUser } from "@/lib/auth/guards";
 
+export const dynamic = "force-dynamic";
+
 const defaults = [
   { name: "Novo contato", color: "#9a6a22" },
   { name: "Em atendimento", color: "#2563eb" },
@@ -15,9 +17,15 @@ async function resolveTenantId(supabase: Awaited<ReturnType<typeof requireAppUse
   return data?.id ?? null;
 }
 
-export default async function ClientesPage() {
+export default async function ClientesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ scope?: string }>;
+}) {
+  const params = await searchParams;
   const { supabase, profile } = await requireAppUser();
   const tenantId = await resolveTenantId(supabase, profile);
+  const scope = params.scope ?? "all";
   if (!tenantId) return <ClientesView tenantId={null} columns={[]} clients={[]} />;
 
   let { data: columnRows } = await supabase.from("client_kanban_columns").select("id, name, position, color, is_default").eq("tenant_id", tenantId).eq("is_active", true).order("position");
@@ -29,6 +37,8 @@ export default async function ClientesPage() {
   const columns = (columnRows ?? []) as ClientColumn[];
   const firstColumnId = columns[0]?.id;
   if (firstColumnId) await supabase.from("clientes").update({ kanban_column_id: firstColumnId }).eq("tenant_id", tenantId).is("kanban_column_id", null);
-  const { data: clientRows } = await supabase.from("clientes").select("id, name, document, email, phone, notes, kanban_column_id, created_at").eq("tenant_id", tenantId).order("created_at", { ascending: false });
-  return <ClientesView tenantId={tenantId} columns={columns} clients={(clientRows ?? []) as ClientItem[]} />;
+
+  const clientQuery = supabase.from("clientes").select("id, name, document, email, phone, notes, kanban_column_id, status, created_at, created_by").eq("tenant_id", tenantId).order("created_at", { ascending: false });
+  const { data: clientRows } = await clientQuery;
+  return <ClientesView tenantId={tenantId} columns={columns} clients={(clientRows ?? []) as ClientItem[]} scope={scope} userId={profile.id} />;
 }

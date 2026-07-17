@@ -1,6 +1,8 @@
 import { AgendaCalendar, type AgendaItem } from "./agenda-calendar";
 import { requireAppUser } from "@/lib/auth/guards";
 
+export const dynamic = "force-dynamic";
+
 type AgendaRow = {
   id: string;
   tipo: AgendaItem["type"];
@@ -11,6 +13,7 @@ type AgendaRow = {
   status: AgendaItem["status"];
   fonte: string;
   processo_id: string | null;
+  cliente_id: string | null;
   user_id: string | null;
 };
 
@@ -19,6 +22,12 @@ type ProcessRow = {
   classe_nome: string | null;
   autor: string | null;
   reu: string | null;
+};
+
+type ClienteRow = {
+  id: string;
+  name: string;
+  document: string | null;
 };
 
 type UserRow = {
@@ -78,24 +87,27 @@ async function resolveTenantId(
 export default async function AgendaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tenant?: string }>;
+  searchParams: Promise<{ tenant?: string; scope?: string }>;
 }) {
   const params = await searchParams;
   const { supabase, profile } = await requireAppUser();
   const { start, end, initialMonth } = monthRange();
   const tenantId = await resolveTenantId(supabase, profile, params.tenant);
+  const scope = params.scope ?? "all";
 
   if (!tenantId) {
     return <AgendaCalendar initialMonth={initialMonth} events={[]} />;
   }
 
-  const { data: agendaRows } = await supabase
+  let agendaQuery = supabase
     .from("agenda_eventos")
-    .select("id, tipo, titulo, descricao, data_inicio, data_fim, status, fonte, processo_id, user_id")
+    .select("id, tipo, titulo, descricao, data_inicio, data_fim, status, fonte, processo_id, cliente_id, user_id")
     .eq("tenant_id", tenantId)
     .gte("data_inicio", start.toISOString())
     .lte("data_inicio", end.toISOString())
     .order("data_inicio", { ascending: true });
+
+  const { data: agendaRows } = await agendaQuery;
 
   const processIds = Array.from(new Set((agendaRows ?? []).map((event) => event.processo_id).filter(Boolean)));
   const { data: processRows } = processIds.length
@@ -103,6 +115,14 @@ export default async function AgendaPage({
         .from("processos")
         .select("id, classe_nome, autor, reu")
         .in("id", processIds)
+    : { data: [] };
+
+  const clienteIds = Array.from(new Set((agendaRows ?? []).map((event) => event.cliente_id).filter(Boolean)));
+  const { data: clienteRows } = clienteIds.length
+    ? await supabase
+        .from("clientes")
+        .select("id, name, document")
+        .in("id", clienteIds)
     : { data: [] };
 
   const userIds = Array.from(new Set((agendaRows ?? []).map((event) => event.user_id).filter(Boolean)));
@@ -114,6 +134,7 @@ export default async function AgendaPage({
     : { data: [] };
 
   const processById = new Map(((processRows ?? []) as ProcessRow[]).map((process) => [process.id, process]));
+  const clienteById = new Map(((clienteRows ?? []) as ClienteRow[]).map((cliente) => [cliente.id, cliente]));
   const userById = new Map(((userRows ?? []) as UserRow[]).map((user) => [user.id, user]));
   const events: AgendaItem[] = ((agendaRows ?? []) as AgendaRow[]).map((event) => ({
     id: event.id,
@@ -126,10 +147,13 @@ export default async function AgendaPage({
     source: event.fonte,
     processId: event.processo_id,
     processTitle: event.processo_id ? buildProcessTitle(processById.get(event.processo_id)) : null,
+    clienteId: event.cliente_id,
+    clienteName: event.cliente_id ? clienteById.get(event.cliente_id)?.name ?? null : null,
     responsibleName: event.user_id ? userById.get(event.user_id)?.name ?? null : null,
     responsibleAvatarUrl: event.user_id ? userById.get(event.user_id)?.avatar_url ?? null : null,
     responsibleColor: colorForUser(event.user_id),
+    userId: event.user_id ?? null,
   }));
 
-  return <AgendaCalendar initialMonth={initialMonth} events={events} />;
+  return <AgendaCalendar initialMonth={initialMonth} events={events} scope={scope} userId={profile.id} />;
 }

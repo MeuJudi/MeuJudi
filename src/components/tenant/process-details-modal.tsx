@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CalendarDays, Clock3, FileText, Scale, X } from "lucide-react";
+import { CalendarDays, Clock3, FileText, Scale } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getProcessDetails, type ProcessDetails } from "@/lib/process-details/actions";
 
 type ProcessDetailsModalProps = {
@@ -60,35 +61,26 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
     };
   }, [processId]);
 
-  if (!processId) return null;
-
   const details = state.processId === processId ? state.details : null;
   const error = state.processId === processId ? state.error : null;
   const loading = state.processId !== processId;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 animate-fade-in">
-      <div className="max-h-[88vh] w-full max-w-5xl overflow-hidden rounded-lg border border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] shadow-xl animate-scale-in">
-        <div className="flex items-start justify-between gap-4 border-b border-[var(--tenant-line)] p-5">
-          <div>
+    <Dialog open={!!processId} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-5xl border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
+        <DialogHeader>
+          <DialogTitle>
             <p className="font-mono text-xs text-[var(--color-muted-foreground)]">
               {details?.process.cnj ?? "Carregando processo"}
             </p>
             <h2 className="mt-1 font-display text-2xl font-bold">
               {details?.process.classe_nome ?? "Detalhes do processo"}
             </h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md p-1 text-[var(--color-muted-foreground)] transition-colors hover:bg-[var(--tenant-surface-muted)] hover:text-[var(--tenant-brass)]"
-            aria-label="Fechar detalhes do processo"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+          </DialogTitle>
+          <DialogDescription>Informações detalhadas do processo selecionado.</DialogDescription>
+        </DialogHeader>
 
-        <div className="max-h-[calc(88vh-86px)] overflow-y-auto p-5">
+        <div className="max-h-[60vh] overflow-y-auto">
           {loading ? (
             <div className="rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-8 text-center text-sm text-[var(--color-muted-foreground)]">
               Carregando informacoes do processo...
@@ -218,15 +210,15 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
                   }))}
                 />
               </section>
-
-              <div className="flex justify-end">
-                <Button type="button" variant="outline" onClick={onClose}>Fechar</Button>
-              </div>
             </div>
           ) : null}
         </div>
-      </div>
-    </div>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>Fechar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

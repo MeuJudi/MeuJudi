@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BarChart3, Bell, CalendarDays, CheckSquare, Download, FileDown, FileText, UsersRound, X } from "lucide-react";
+import { BarChart3, Bell, CalendarDays, CheckSquare, Download, FileDown, FileText, UsersRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 export type ReportData = {
@@ -59,7 +60,33 @@ function ExportDialog({ lines, sections, onToggle, onClose }: { lines: ReportLin
     pdf.save("relatorio-meujudi.pdf");
   }
 
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 animate-fade-in"><div className="w-full max-w-xl rounded-lg border border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-5 text-[var(--tenant-surface-foreground)] shadow-xl animate-scale-in"><div className="flex items-start justify-between gap-4"><div><h2 className="font-display text-2xl font-bold">Baixar relatório</h2><p className="mt-1 text-sm text-[var(--color-muted-foreground)]">Escolha quais informações deseja incluir no arquivo.</p></div><Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={onClose} aria-label="Fechar"><X className="h-4 w-4" /></Button></div><div className="mt-5 grid gap-2 sm:grid-cols-2">{(Object.keys(sectionLabels) as SectionId[]).map((section) => <label key={section} className="flex cursor-pointer items-center gap-3 rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-3 text-sm"><input type="checkbox" checked={sections[section]} onChange={() => onToggle(section)} className="h-4 w-4 accent-[var(--tenant-brass)]" />{sectionLabels[section]}</label>)}</div><p className="mt-4 text-xs text-[var(--color-muted-foreground)]">{exportedLines.length} linha{exportedLines.length === 1 ? "" : "s"} serão incluídas.</p><div className="mt-5 flex flex-wrap justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancelar</Button><Button variant="outline" onClick={exportCsv} disabled={!exportedLines.length}><FileDown className="h-4 w-4" />Baixar CSV</Button><Button onClick={exportPdf} disabled={!exportedLines.length}><Download className="h-4 w-4" />Baixar PDF</Button></div></div></div>;
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-xl border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
+        <DialogHeader>
+          <DialogTitle>Baixar relatório</DialogTitle>
+          <DialogDescription>Escolha quais informações deseja incluir no arquivo.</DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-2 sm:grid-cols-2">
+          {(Object.keys(sectionLabels) as SectionId[]).map((section) => (
+            <label key={section} className="flex cursor-pointer items-center gap-3 rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-3 text-sm">
+              <input type="checkbox" checked={sections[section]} onChange={() => onToggle(section)} className="h-4 w-4 accent-[var(--tenant-brass)]" />
+              {sectionLabels[section]}
+            </label>
+          ))}
+        </div>
+
+        <p className="text-xs text-[var(--color-muted-foreground)]">{exportedLines.length} linha{exportedLines.length === 1 ? "" : "s"} serão incluídas.</p>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button variant="outline" onClick={exportCsv} disabled={!exportedLines.length}><FileDown className="h-4 w-4" />Baixar CSV</Button>
+          <Button onClick={exportPdf} disabled={!exportedLines.length}><Download className="h-4 w-4" />Baixar PDF</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export function RelatoriosView({ data }: { data: ReportData }) {
