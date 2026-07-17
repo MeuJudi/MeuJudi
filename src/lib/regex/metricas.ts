@@ -3,6 +3,8 @@
 // 8.1 (origem humana).
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { validarPromocaoParaConfiavel } from "./promocao-guard";
+import type { CampoExtraido } from "@/lib/ia/types";
 
 export interface RegistrarValidacaoParams {
   regexId: string;
@@ -13,6 +15,7 @@ export interface RegistrarValidacaoParams {
   matchCorrigido: string | null;
   correto: boolean;
   origemValidacao: "ia" | "humano";
+  campo: CampoExtraido;
   tokensUsados?: number;
   custoUsd?: number;
 }
@@ -46,4 +49,9 @@ export async function registrarValidacao(
   });
 
   await supabase.rpc("check_regex_transition", { p_regex_id: params.regexId });
+
+  // Se essa validação promoveu a regex pra 'confiavel', confirma contra o
+  // golden dataset antes de aceitar de vez (Parte 6) — reverte pra 'quente'
+  // se falhar em algum caso-armadilha já conhecido.
+  await validarPromocaoParaConfiavel(supabase, params.regexId, params.campo);
 }

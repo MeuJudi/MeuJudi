@@ -22,6 +22,8 @@ export interface RegexMetadata {
   pattern: string;
   flags: string;
   state: EstadoRegex;
+  /** Campo que essa regex tenta capturar (prazo/valor/audiencia/oab) — achado como gap de schema na Parte 6. */
+  campo: CampoExtraido | null;
   total_uses: number;
   total_hits: number;
   total_errors: number;
@@ -39,6 +41,8 @@ export interface MatchResult {
   confianca: NivelConfianca | null;
   validadoIA: boolean;
   regexUsada?: string;
+  /** id da regex em `regex_metadata` que gerou o match — necessário pra Camada 3 (Parte 5) registrar a validação contra a regex certa. */
+  regexId?: string;
   /** true quando a IA falhou ao validar (erro/timeout/parse) — NUNCA tratar como "correto". */
   incerto?: boolean;
 }

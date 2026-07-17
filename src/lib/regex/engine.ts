@@ -44,11 +44,15 @@ export async function executarRegex(
   const cacheHit = await buscarNoCache(supabase, hash, campo);
   if (cacheHit) return cacheHit;
 
-  // CAMADA 1: regex ativas (tenant + globais), ordenadas por taxa de acerto
+  // CAMADA 1: regex ativas (tenant + globais) PRA ESSE CAMPO, ordenadas por
+  // taxa de acerto. Filtrar por `campo` evita que uma regex de "valor"
+  // seja testada contra um texto de "prazo" por engano (gap de schema
+  // corrigido na Parte 6 — `campo` não existia antes).
   const { data: regexes, error } = await supabase
     .from("regex_metadata")
     .select("*")
     .or(`tenant_id.is.null,tenant_id.eq.${tenantId}`)
+    .eq("campo", campo)
     .in("state", ["novo", "quente", "confiavel"])
     .order("taxa_acerto", { ascending: false });
 
@@ -94,6 +98,7 @@ export async function executarRegex(
         confianca: "media",
         validadoIA: false,
         regexUsada: regex.pattern,
+        regexId: regex.id,
       };
     }
 
@@ -103,6 +108,7 @@ export async function executarRegex(
       confianca: "alta",
       validadoIA: false,
       regexUsada: regex.pattern,
+      regexId: regex.id,
     };
     await salvarNoCache(supabase, hash, campo, resultado, regex.pattern);
     return resultado;
