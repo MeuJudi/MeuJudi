@@ -285,7 +285,7 @@ function MoveGuardModal({
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-md p-1 text-[var(--color-muted-foreground)] transition-colors hover:bg-[var(--tenant-surface-muted)] hover:text-[var(--tenant-surface-foreground)]"
+            className="rounded-md p-1 text-[var(--color-muted-foreground)] transition-colors hover:bg-[var(--tenant-surface-muted)] hover:text-[var(--tenant-brass)]"
             aria-label="Fechar aviso"
           >
             <X className="h-5 w-5" />
@@ -535,11 +535,11 @@ export function AgendaCalendar({ initialMonth, events }: AgendaCalendarProps) {
                 size="sm"
                 aria-label="Periodo anterior"
                 onClick={() => changePeriod(-1)}
-                className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] hover:bg-[var(--tenant-surface-muted)]"
+                className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-brass)] hover:bg-[var(--tenant-brass)] hover:text-[var(--tenant-surface)]"
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <h2 className="min-w-52 text-center font-display text-xl font-bold capitalize text-[var(--tenant-surface-foreground)]">
+              <h2 className="min-w-52 text-center font-display text-xl font-bold capitalize text-[var(--tenant-brass)]">
                 {periodLabel}
               </h2>
               <Button
@@ -547,7 +547,7 @@ export function AgendaCalendar({ initialMonth, events }: AgendaCalendarProps) {
                 size="sm"
                 aria-label="Proximo periodo"
                 onClick={() => changePeriod(1)}
-                className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] hover:bg-[var(--tenant-surface-muted)]"
+                className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-brass)] hover:bg-[var(--tenant-brass)] hover:text-[var(--tenant-surface)]"
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -555,7 +555,7 @@ export function AgendaCalendar({ initialMonth, events }: AgendaCalendarProps) {
                 variant="outline"
                 size="sm"
                 onClick={goToday}
-                className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] hover:bg-[var(--tenant-surface-muted)]"
+                className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-brass)] hover:bg-[var(--tenant-brass)] hover:text-[var(--tenant-surface)]"
               >
                 Hoje
               </Button>
@@ -570,7 +570,7 @@ export function AgendaCalendar({ initialMonth, events }: AgendaCalendarProps) {
                     onClick={() => setView(option)}
                     className={cn(
                       "rounded px-3 py-1.5 text-sm font-medium text-[var(--color-muted-foreground)] transition-colors",
-                      view === option && "bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] shadow-sm",
+                      view === option && "bg-[var(--tenant-surface)] text-[var(--tenant-brass)] shadow-sm",
                     )}
                   >
                     {option === "month" ? "Mes" : "Semana"}

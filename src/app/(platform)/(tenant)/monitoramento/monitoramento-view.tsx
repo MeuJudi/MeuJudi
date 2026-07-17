@@ -614,7 +614,7 @@ export function MonitoramentoView({
                   onClick={() => setView(value as "lista" | "kanban" | "mural")}
                   className={cn(
                     "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                    view === value ? "bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] shadow-sm" : "text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]",
+                    view === value ? "bg-[var(--tenant-surface)] text-[var(--tenant-brass)] shadow-sm" : "text-[var(--color-muted-foreground)] hover:text-[var(--tenant-brass)]",
                   )}
                 >
                   <Icon className="h-4 w-4" />

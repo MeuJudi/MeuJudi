@@ -1,46 +1,31 @@
-import { BarChart3, CalendarClock, FileText, Users } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RelatoriosView, type ReportData } from "./relatorios-view";
+import { requireAppUser } from "@/lib/auth/guards";
 
-const reports = [
-  { title: "Processos por status", value: "12 ativos", icon: FileText },
-  { title: "Prazos por periodo", value: "5 proximos", icon: CalendarClock },
-  { title: "Tarefas por responsavel", value: "4 pessoas", icon: Users },
-  { title: "Movimentacoes por tribunal", value: "3 novas", icon: BarChart3 },
-];
+async function resolveTenantId(supabase: Awaited<ReturnType<typeof requireAppUser>>["supabase"], profile: Awaited<ReturnType<typeof requireAppUser>>["profile"]) {
+  if (profile.tenant_id) return profile.tenant_id;
+  if (profile.role !== "super_admin") return null;
+  const { data } = await supabase.from("tenants").select("id").eq("slug", "escritorio-demo-meujudi").maybeSingle();
+  return data?.id ?? null;
+}
 
-export default function RelatoriosPage() {
-  return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <header>
-        <h1 className="font-display text-3xl font-bold text-[var(--color-card-foreground)]">Relatorios</h1>
-        <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-          Visoes consolidadas do escritorio para acompanhar processos, prazos, tarefas e comunicacoes sem transformar o MVP em BI complexo.
-        </p>
-      </header>
+export default async function RelatoriosPage() {
+  const { supabase, profile } = await requireAppUser();
+  const tenantId = await resolveTenantId(supabase, profile);
+  if (!tenantId) return <RelatoriosView data={{ processes: [], clients: 0, tasks: [], movements: 0 }} />;
 
-      <section className="grid gap-4 md:grid-cols-4">
-        {reports.map((report) => (
-          <Card key={report.title}>
-            <CardHeader>
-              <report.icon className="h-5 w-5 text-primary" />
-              <CardTitle>{report.title}</CardTitle>
-            </CardHeader>
-            <CardContent className="text-2xl font-semibold">{report.value}</CardContent>
-          </Card>
-        ))}
-      </section>
+  const [{ data: processes }, { count: clients }, { data: tasks }, { count: movements }] = await Promise.all([
+    supabase.from("processos").select("id, status, tribunal, prazo_proxima_resposta").eq("tenant_id", tenantId),
+    supabase.from("clientes").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),
+    supabase.from("tarefas").select("id, priority, due_date").eq("tenant_id", tenantId),
+    supabase.from("movimentacoes").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("is_novo", true),
+  ]);
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Proximas visoes</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-3 text-sm text-muted-foreground md:grid-cols-2">
-          <p>Relatorio por cliente, com processos vinculados e ultimo contato.</p>
-          <p>Relatorio de risco, destacando prazos criticos e comunicacoes pendentes.</p>
-          <p>Exportacao em PDF/CSV quando os dados reais estiverem conectados.</p>
-          <p>Indicadores financeiros quando o modulo financeiro for liberado.</p>
-        </CardContent>
-      </Card>
-    </div>
-  );
+  const data: ReportData = {
+    processes: (processes ?? []) as ReportData["processes"],
+    clients: clients ?? 0,
+    tasks: (tasks ?? []) as ReportData["tasks"],
+    movements: movements ?? 0,
+  };
+
+  return <RelatoriosView data={data} />;
 }

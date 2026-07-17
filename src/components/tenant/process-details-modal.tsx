@@ -81,7 +81,7 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-1 text-[var(--color-muted-foreground)] transition-colors hover:bg-[var(--tenant-surface-muted)] hover:text-[var(--tenant-surface-foreground)]"
+            className="rounded-md p-1 text-[var(--color-muted-foreground)] transition-colors hover:bg-[var(--tenant-surface-muted)] hover:text-[var(--tenant-brass)]"
             aria-label="Fechar detalhes do processo"
           >
             <X className="h-5 w-5" />

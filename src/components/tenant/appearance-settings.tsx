@@ -1,69 +1,118 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import type { ThemeMode } from "@/components/tenant/tenant-shell";
-
-const options: { value: ThemeMode; label: string; description: string }[] = [
-  { value: "default", label: "Padrao MeuJudi", description: "Azul escuro, papel claro e brass." },
-  { value: "light", label: "Tema claro", description: "Fundos mais brancos e neutros." },
-  { value: "dark", label: "Tema escuro", description: "Grafite/preto com alto contraste." },
-  { value: "custom", label: "Personalizado", description: "Gera menu escuro e pagina clara pela cor." },
-];
+import { palettes, type PaletteId } from "@/lib/themes/palettes";
 
 export function AppearanceSettings() {
-  const [theme, setTheme] = useState<ThemeMode>(() => {
-    if (typeof window === "undefined") return "default";
-    return (window.localStorage.getItem("meujudi-theme") as ThemeMode | null) ?? "default";
-  });
-  const [color, setColor] = useState(() => {
-    if (typeof window === "undefined") return "#d9468f";
-    return window.localStorage.getItem("meujudi-custom-color") ?? "#d9468f";
+  const [paletteId, setPaletteId] = useState<PaletteId>(() => {
+    if (typeof window === "undefined") return "padrao";
+    return (window.localStorage.getItem("meujudi-palette") as PaletteId | null) ?? "padrao";
   });
 
-  function updateTheme(nextTheme: ThemeMode, nextColor = color) {
-    setTheme(nextTheme);
-    setColor(nextColor);
-    window.localStorage.setItem("meujudi-theme", nextTheme);
-    window.localStorage.setItem("meujudi-custom-color", nextColor);
-    window.dispatchEvent(new CustomEvent("meujudi-theme-change", {
-      detail: { theme: nextTheme, color: nextColor },
-    }));
+  function updatePalette(nextPalette: PaletteId) {
+    setPaletteId(nextPalette);
+    window.localStorage.setItem("meujudi-palette", nextPalette);
+    document.cookie = `meujudi-palette=${nextPalette};path=/;max-age=31536000;SameSite=Lax`;
+    window.dispatchEvent(
+      new CustomEvent("meujudi-theme-change", {
+        detail: { theme: "custom", palette: nextPalette },
+      }),
+    );
   }
 
+  const currentPalette = palettes.find((p) => p.id === paletteId) ?? palettes[0];
+
   return (
-    <div className="space-y-4">
-      <div className="grid gap-2 sm:grid-cols-2">
-        {options.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => updateTheme(option.value)}
-            className={`rounded-md border p-3 text-left transition-colors ${
-              theme === option.value ? "border-primary bg-primary/10" : "border-border bg-background hover:bg-muted"
-            }`}
-          >
-            <span className="block text-sm font-semibold text-[var(--color-card-foreground)]">{option.label}</span>
-            <span className="mt-1 block text-xs text-muted-foreground">{option.description}</span>
-          </button>
-        ))}
+    <div className="space-y-6">
+      <div>
+        <h4 className="mb-3 text-sm font-semibold text-[var(--color-card-foreground)]">
+          Aparência
+        </h4>
+        <div className="grid grid-cols-4 gap-3 sm:grid-cols-7">
+          {palettes.map((palette) => {
+            const active = paletteId === palette.id;
+            return (
+              <button
+                key={palette.id}
+                type="button"
+                onClick={() => updatePalette(palette.id)}
+                className={`group flex flex-col items-center gap-2 rounded-lg p-2 transition-all ${
+                  active
+                    ? "bg-[var(--color-primary)]/8 ring-2 ring-[var(--color-primary)]"
+                    : "hover:bg-[var(--color-muted)]"
+                }`}
+              >
+                <div className="relative">
+                  <div
+                    className="h-10 w-10 rounded-full ring-2 ring-offset-2 ring-offset-[var(--color-card)] transition-shadow group-hover:ring-[var(--color-primary)]/50"
+                    style={{
+                      background: palette.swatch,
+                    }}
+                  />
+                  {active && (
+                    <div
+                      className="absolute inset-0 flex items-center justify-center rounded-full"
+                      style={{ color: palette.sidebar }}
+                    >
+                      <svg className="h-4 w-4 drop-shadow" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+                <span
+                  className={`text-[11px] font-medium leading-tight text-center ${
+                    active ? "text-[var(--color-primary)]" : "text-[var(--color-muted-foreground)]"
+                  }`}
+                >
+                  {palette.name}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-muted/30 p-3">
-        <label htmlFor="theme-color" className="text-sm font-medium text-[var(--color-card-foreground)]">
-          Cor personalizada
-        </label>
-        <input
-          id="theme-color"
-          type="color"
-          value={color}
-          onChange={(event) => updateTheme("custom", event.target.value)}
-          className="h-9 w-12 rounded border border-border bg-transparent"
-        />
-        <span className="font-mono text-xs text-muted-foreground">{color}</span>
-        <Button type="button" variant="outline" size="sm" onClick={() => updateTheme("custom", color)}>
-          Aplicar cor
-        </Button>
+      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-4">
+        <h4 className="mb-3 text-sm font-semibold text-[var(--color-card-foreground)]">
+          Pré-visualização
+        </h4>
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <div
+              className="h-8 w-8 rounded-md"
+              style={{ background: currentPalette.accent }}
+            />
+            <div className="flex-1">
+              <div className="h-3 w-32 rounded bg-[var(--color-muted)]" />
+              <div className="mt-1.5 h-2 w-48 rounded bg-[var(--color-muted)]/60" />
+            </div>
+            <div
+              className="h-7 rounded-md px-3 py-1 text-xs font-medium text-white"
+              style={{ background: currentPalette.accent }}
+            >
+              Botão
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <div
+              className="h-6 w-6 rounded-full border-2 border-white"
+              style={{ background: currentPalette.sidebar }}
+            />
+            <div
+              className="h-6 w-6 rounded-full border-2 border-white"
+              style={{ background: currentPalette.accent }}
+            />
+            <div
+              className="h-6 w-6 rounded-full border-2 border-white"
+              style={{ background: currentPalette.paper }}
+            />
+            <div
+              className="h-6 w-6 rounded-full border-2 border-white"
+              style={{ background: currentPalette.surfaceMuted }}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

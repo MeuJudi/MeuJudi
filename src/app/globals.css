@@ -48,11 +48,11 @@ a {
 
 .logo-outline-white {
   filter:
-    drop-shadow(0 0.5px 0 rgb(255 255 255 / 0.78))
-    drop-shadow(0.5px 0 0 rgb(255 255 255 / 0.78))
-    drop-shadow(0 -0.5px 0 rgb(255 255 255 / 0.78))
-    drop-shadow(-0.5px 0 0 rgb(255 255 255 / 0.78))
-    drop-shadow(0 3px 8px rgb(0 0 0 / 0.14));
+    drop-shadow(0 1px 0 rgb(255 255 255 / 0.9))
+    drop-shadow(1px 0 0 rgb(255 255 255 / 0.9))
+    drop-shadow(0 -1px 0 rgb(255 255 255 / 0.9))
+    drop-shadow(-1px 0 0 rgb(255 255 255 / 0.9))
+    drop-shadow(0 4px 12px rgb(0 0 0 / 0.18));
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -67,86 +67,27 @@ a {
 }
 
 .tenant-shell {
-  --color-background: #f6f3ea;
-  --color-foreground: #1a1a1a;
-  --color-card: #ffffff;
-  --color-card-foreground: #16233a;
-  --color-popover: #ffffff;
-  --color-popover-foreground: #16233a;
-  --color-primary: #8c6425;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #ede9dd;
-  --color-secondary-foreground: #1f3350;
-  --color-muted: #ede9dd;
-  --color-muted-foreground: #5b5548;
-  --color-accent: #ede9dd;
-  --color-accent-foreground: #16233a;
-  --color-destructive: #7a2e2e;
-  --color-destructive-foreground: #ffffff;
-  --color-border: #d9d2bf;
-  --color-input: #d9d2bf;
-  --color-ring: #8c6425;
-  --tenant-sidebar: #16233a;
-  --tenant-sidebar-foreground: #d7d2c2;
-  --tenant-sidebar-muted: #b9b29b;
-  --tenant-sidebar-active: #f1ede0;
-  --tenant-paper: #f6f3ea;
-  --tenant-surface: #ffffff;
-  --tenant-surface-muted: #ede9dd;
-  --tenant-surface-foreground: #16233a;
-  --tenant-line: #d9d2bf;
-  --tenant-brass: #9a6a22;
-  --tenant-brass-light: #d9b372;
-  --tenant-wine: #7a2e2e;
-  --tenant-moss: #4b6b4e;
   color: var(--color-foreground);
   background: var(--tenant-paper);
 }
 
-.tenant-shell[data-theme="light"] {
-  --color-background: #fbfbfa;
-  --color-foreground: #151515;
-  --color-card: #ffffff;
-  --color-card-foreground: #16233a;
-  --color-secondary: #f1f1ef;
-  --color-secondary-foreground: #16233a;
-  --color-muted: #f1f1ef;
-  --color-muted-foreground: #41464f;
-  --color-accent: #ebebe7;
-  --color-accent-foreground: #16233a;
-  --color-border: #d2d2ca;
-  --color-input: #d2d2ca;
-  --tenant-sidebar: #f7f7f4;
-  --tenant-sidebar-foreground: #243044;
-  --tenant-sidebar-muted: #3e4754;
-  --tenant-sidebar-active: #16233a;
-  --tenant-paper: #fbfbfa;
-  --tenant-surface: #ffffff;
-  --tenant-surface-muted: #f1f1ef;
-  --tenant-surface-foreground: #16233a;
-  --tenant-line: #d2d2ca;
+/* Keep controls and metric values readable when a tenant theme changes the
+   base foreground tokens. These elements otherwise inherit the wrong token
+   in the task board's white surfaces. */
+.tenant-shell .text-3xl.font-semibold {
+  color: var(--tenant-surface-foreground);
 }
 
-.tenant-shell[data-theme="dark"] {
-  --color-background: #111111;
-  --color-foreground: #f4f1e9;
-  --color-card: #1a1a1a;
-  --color-card-foreground: #f4f1e9;
-  --color-secondary: #262626;
-  --color-secondary-foreground: #f4f1e9;
-  --color-muted: #262626;
-  --color-muted-foreground: #b8b1a2;
-  --color-accent: #262626;
-  --color-accent-foreground: #f4f1e9;
-  --color-border: #333333;
-  --color-input: #333333;
-  --tenant-sidebar: #070707;
-  --tenant-sidebar-foreground: #e8e2d3;
-  --tenant-sidebar-muted: #aaa394;
-  --tenant-sidebar-active: #ffffff;
-  --tenant-paper: #111111;
-  --tenant-surface: #171717;
-  --tenant-surface-muted: #202020;
-  --tenant-surface-foreground: #f4f1e9;
-  --tenant-line: #333333;
+.tenant-shell input[placeholder="Buscar tarefas"] {
+  color: var(--tenant-surface-foreground);
+}
+
+.tenant-shell input[placeholder="Buscar tarefas"]::placeholder {
+  color: var(--color-muted-foreground);
+  opacity: 1;
+}
+
+.tenant-shell textarea,
+.tenant-shell select {
+  color: var(--tenant-surface-foreground);
 }
