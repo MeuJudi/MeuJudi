@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { signUp } from "../actions";
 
 const errorMessages: Record<string, string> = {
@@ -50,7 +51,7 @@ export default async function RegisterPage({
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="password">Senha</Label>
-              <Input id="password" name="password" type="password" minLength={8} />
+              <PasswordInput id="password" name="password" minLength={8} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="oab">OAB</Label>

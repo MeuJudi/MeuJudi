@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { signIn } from "../actions";
 
 const errorMessages: Record<string, string> = {
@@ -40,7 +41,7 @@ export default async function LoginPage({
           </div>
           <div className="space-y-2">
             <Label htmlFor="password">Senha</Label>
-            <Input id="password" name="password" type="password" />
+            <PasswordInput id="password" name="password" />
           </div>
           <Button className="w-full" type="submit">
             <LogIn className="h-4 w-4" />
