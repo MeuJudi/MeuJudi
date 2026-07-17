@@ -67,8 +67,8 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
   const loading = state.processId !== processId;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-      <div className="max-h-[88vh] w-full max-w-5xl overflow-hidden rounded-lg border border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 animate-fade-in">
+      <div className="max-h-[88vh] w-full max-w-5xl overflow-hidden rounded-lg border border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] shadow-xl animate-scale-in">
         <div className="flex items-start justify-between gap-4 border-b border-[var(--tenant-line)] p-5">
           <div>
             <p className="font-mono text-xs text-[var(--color-muted-foreground)]">

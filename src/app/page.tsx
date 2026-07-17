@@ -49,7 +49,7 @@ export default function HomePage() {
         </header>
 
         <div className="relative grid flex-1 items-center gap-14 py-16 lg:grid-cols-[1.05fr_0.95fr] lg:py-20">
-          <div>
+          <div className="animate-fade-in-up">
             <p className="mb-5 inline-flex items-center gap-2 rounded-full border border-sky-400/25 bg-sky-400/10 px-3 py-1.5 text-sm font-medium text-sky-200">
               <CheckCircle2 className="h-4 w-4" /> Feito para escritórios de advocacia
             </p>
@@ -70,9 +70,9 @@ export default function HomePage() {
             <p className="mt-5 text-sm text-slate-400">Comece pelo cadastro do seu escritório e convide sua equipe quando estiver pronto.</p>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2 animate-stagger-in">
             {benefits.map((benefit) => (
-              <Card key={benefit.title} className="border-white/10 bg-white/[0.06] text-white shadow-xl shadow-black/10 backdrop-blur-sm">
+              <Card key={benefit.title} className="border-white/10 bg-white/[0.06] text-white shadow-xl shadow-black/10 backdrop-blur-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-2xl">
                 <CardContent className="p-6">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-400/15 text-sky-300">
                     <benefit.icon className="h-5 w-5" />

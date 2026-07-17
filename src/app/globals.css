@@ -91,3 +91,67 @@ a {
 .tenant-shell select {
   color: var(--tenant-surface-foreground);
 }
+
+/* ── Animation keyframes ── */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes grow-width {
+  from { width: 0; }
+}
+
+@keyframes stagger-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Animation utility classes ── */
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out both;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.25s ease-out both;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s ease-out both;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.25s ease-out both;
+}
+
+.animate-stagger-in > * {
+  animation: stagger-in 0.3s ease-out both;
+}
+
+.animate-stagger-in > *:nth-child(1) { animation-delay: 0ms; }
+.animate-stagger-in > *:nth-child(2) { animation-delay: 50ms; }
+.animate-stagger-in > *:nth-child(3) { animation-delay: 100ms; }
+.animate-stagger-in > *:nth-child(4) { animation-delay: 150ms; }
+.animate-stagger-in > *:nth-child(5) { animation-delay: 200ms; }
+.animate-stagger-in > *:nth-child(6) { animation-delay: 250ms; }
+.animate-stagger-in > *:nth-child(7) { animation-delay: 300ms; }
+.animate-stagger-in > *:nth-child(8) { animation-delay: 350ms; }
+
+.animate-grow-width {
+  animation: grow-width 0.5s ease-out both;
+}

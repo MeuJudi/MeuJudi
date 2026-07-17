@@ -342,8 +342,8 @@ function DeleteColumnDialog({
   const [targetColumnId, setTargetColumnId] = useState(targets[0]?.id ?? "");
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-      <div className="w-full max-w-lg rounded-lg border border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-5 text-[var(--tenant-surface-foreground)] shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 animate-fade-in">
+      <div className="w-full max-w-lg rounded-lg border border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-5 text-[var(--tenant-surface-foreground)] shadow-xl animate-scale-in">
         <h2 className="font-display text-2xl font-bold">Excluir coluna</h2>
         <p className="mt-2 text-sm text-[var(--color-muted-foreground)]">
           Os processos desta coluna precisam ser movidos para outra coluna antes da coluna ser ocultada.
