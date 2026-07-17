@@ -36,8 +36,7 @@ export default function HomePage() {
 
         <header className="relative flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3" aria-label="MeuJudi">
-            <Image src="/meujudi-icon.png" alt="" width={42} height={42} className="h-10 w-10 object-contain" priority />
-            <span className="text-xl font-semibold tracking-tight">MeuJudi</span>
+            <img src="/meujudi-logo-white.svg" alt="MeuJudi" className="h-10 w-auto" />
           </Link>
           <div className="flex items-center gap-2 sm:gap-3">
             <Button asChild variant="ghost" className="text-slate-200 hover:bg-white/10 hover:text-white">
