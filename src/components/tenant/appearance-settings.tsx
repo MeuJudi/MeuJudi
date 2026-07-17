@@ -12,7 +12,8 @@ export function AppearanceSettings() {
   function updatePalette(nextPalette: PaletteId) {
     setPaletteId(nextPalette);
     window.localStorage.setItem("meujudi-palette", nextPalette);
-    document.cookie = `meujudi-palette=${nextPalette};path=/;max-age=31536000;SameSite=Lax`;
+    // eslint-disable-next-line react-hooks/immutability -- Persistencia intencional em cookie para SSR ler o tema.
+    window.document.cookie = `meujudi-palette=${nextPalette};path=/;max-age=31536000;SameSite=Lax`;
     window.dispatchEvent(
       new CustomEvent("meujudi-theme-change", {
         detail: { theme: "custom", palette: nextPalette },

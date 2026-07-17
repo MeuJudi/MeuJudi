@@ -9,13 +9,12 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { createTask, createTaskColumn, deleteTaskColumn, moveTask, renameTaskColumn, reorderTaskColumns } from "./actions";
+import { TarefaModal, normalizeTask, type TaskItem } from "./tarefa-modal";
+export type { TaskItem };
 
 export type TaskColumn = { id: string; name: string; position: number; color: string; is_default: boolean };
-export type TaskItem = { id: string; title: string; description: string | null; priority: "alta" | "media" | "baixa"; due_date: string | null; kanban_column_id: string | null };
 
 const priorityClass = {
   alta: "bg-[color-mix(in_srgb,var(--tenant-wine)_10%,transparent)] text-[var(--tenant-wine)]",
@@ -24,31 +23,55 @@ const priorityClass = {
 };
 const priorityLabel = { alta: "Alta", media: "Média", baixa: "Baixa" };
 
-function TaskCard({ task, handle }: { task: TaskItem; handle?: React.ReactNode }) {
+function isCompletedColumnName(name: string) {
+  return /conclu/i.test(name);
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "NÃ£o foi possÃ­vel salvar esta alteraÃ§Ã£o.";
+}
+
+function TaskCard({ task, completed, handle, onClick }: { task: TaskItem; completed?: boolean; handle?: React.ReactNode; onClick?: () => void }) {
   return (
-    <Card className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] shadow-sm transition-shadow hover:shadow-md">
+    <Card
+      onClick={onClick}
+      className={cn(
+        "border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] shadow-sm transition-shadow hover:shadow-md",
+        completed && "border-green-200 bg-[color-mix(in_srgb,#16a34a_6%,var(--tenant-surface))]",
+        onClick && "cursor-pointer",
+      )}
+    >
       <CardContent className="p-3">
         <div className="flex gap-2">
           {handle}
-          <p className="min-w-0 flex-1 font-semibold text-[var(--tenant-surface-foreground)]">{task.title}</p>
+          <p className={cn("min-w-0 flex-1 font-semibold text-[var(--tenant-surface-foreground)]", completed && "text-green-800 line-through decoration-green-700/50")}>{task.title}</p>
+          {completed ? (
+            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-green-200 bg-green-100 text-green-700" title="Concluida">
+              <CheckCircle2 className="h-4 w-4" />
+            </span>
+          ) : null}
         </div>
-        {task.description ? <p className="mt-2 text-sm leading-5 text-[var(--color-muted-foreground)]">{task.description}</p> : null}
-        <Badge className={cn("mt-3 border-transparent uppercase tracking-wide", priorityClass[task.priority])}>{priorityLabel[task.priority]}</Badge>
+        {task.description ? <p className="mt-2 text-sm leading-5 text-[var(--color-muted-foreground)] line-clamp-2">{task.description}</p> : null}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Badge className={cn("border-transparent uppercase tracking-wide", priorityClass[task.priority])}>{priorityLabel[task.priority]}</Badge>
+          {task.due_date && <Badge className="rounded-full bg-[var(--tenant-surface-muted)] text-[var(--color-muted-foreground)]">{new Date(task.due_date).toLocaleDateString("pt-BR")}</Badge>}
+          {(task.checklist?.length ?? 0) > 0 && <Badge className="rounded-full bg-[var(--tenant-surface-muted)] text-[var(--color-muted-foreground)]">{task.checklist.filter((i) => i.done).length}/{task.checklist.length}</Badge>}
+        </div>
       </CardContent>
     </Card>
   );
 }
 
-function SortableTask({ task }: { task: TaskItem }) {
+function SortableTask({ task, completed, onClick }: { task: TaskItem; completed?: boolean; onClick?: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id, data: { type: "task", columnId: task.kanban_column_id } });
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={cn(isDragging && "opacity-40")} data-kanban-card>
-      <TaskCard task={task} handle={<button type="button" aria-label="Arrastar tarefa" className="cursor-grab text-[var(--color-muted-foreground)] active:cursor-grabbing" {...attributes} {...listeners}><GripVertical className="h-4 w-4" /></button>} />
+      <TaskCard task={task} completed={completed} onClick={onClick} handle={<button type="button" aria-label="Arrastar tarefa" className="cursor-grab text-[var(--color-muted-foreground)] active:cursor-grabbing" {...attributes} {...listeners}><GripVertical className="h-4 w-4" /></button>} />
     </div>
   );
 }
 
-function Column({ column, tasks, editing, draft, onEdit, onDraft, onSave, onCancel, onDelete }: { column: TaskColumn; tasks: TaskItem[]; editing: boolean; draft: string; onEdit: () => void; onDraft: (value: string) => void; onSave: () => void; onCancel: () => void; onDelete: (taskCount: number) => void }) {
+function Column({ column, tasks, completed, editing, draft, onEdit, onDraft, onSave, onCancel, onDelete, onTaskClick, creating, newTaskTitle, onNewTaskTitleChange, onCreateTask, onCreateTaskCancel, onCreateTaskConfirm }: { column: TaskColumn; tasks: TaskItem[]; completed: boolean; editing: boolean; draft: string; onEdit: () => void; onDraft: (value: string) => void; onSave: () => void; onCancel: () => void; onDelete: (taskCount: number) => void; onTaskClick: (taskId: string) => void; creating: boolean; newTaskTitle: string; onNewTaskTitleChange: (value: string) => void; onCreateTask: () => void; onCreateTaskCancel: () => void; onCreateTaskConfirm: () => void }) {
   const { setNodeRef: dropRef, isOver } = useDroppable({ id: column.id, data: { type: "column" } });
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: column.id, data: { type: "column" } });
   return (
@@ -62,14 +85,33 @@ function Column({ column, tasks, editing, draft, onEdit, onDraft, onSave, onCanc
         </div>
         <div className="flex items-center justify-between">
           <div>{editing ? <><Button size="sm" className="mr-1 h-7 px-2" onClick={onSave}><Check className="h-3.5 w-3.5" /></Button><Button size="sm" variant="outline" className="h-7 px-2" onClick={onCancel}><X className="h-3.5 w-3.5" /></Button></> : <p className="text-xs text-[var(--color-muted-foreground)]">Arraste tarefas para esta coluna</p>}</div>
-          <Button size="sm" variant="ghost" className="h-7 px-2 text-[var(--tenant-wine)]" onClick={() => onDelete(tasks.length)}><Trash2 className="h-3.5 w-3.5" /></Button>
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-[var(--tenant-brass)]" onClick={() => { onNewTaskTitleChange(""); onCreateTask(); }} title="Adicionar tarefa"><Plus className="h-4 w-4" /></Button>
+            <Button size="sm" variant="ghost" className="h-7 px-2 text-[var(--tenant-wine)]" onClick={() => onDelete(tasks.length)}><Trash2 className="h-3.5 w-3.5" /></Button>
+          </div>
         </div>
       </header>
       <div ref={dropRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
         <SortableContext items={tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
-          {tasks.map((task) => <SortableTask key={task.id} task={task} />)}
+          {tasks.map((task) => <SortableTask key={task.id} task={task} completed={completed} onClick={() => onTaskClick(task.id)} />)}
         </SortableContext>
-        {tasks.length === 0 ? <div className="rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-4 text-center text-xs text-[var(--color-muted-foreground)]">Arraste tarefas para esta coluna</div> : null}
+        {creating && (
+          <div className="rounded-lg border border-[var(--tenant-brass)] bg-[var(--tenant-surface)] p-2">
+            <input
+              autoFocus
+              value={newTaskTitle}
+              onChange={(e) => onNewTaskTitleChange(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && newTaskTitle.trim()) onCreateTask(); if (e.key === "Escape") onCreateTaskCancel(); }}
+              placeholder="Nome da tarefa..."
+              className="w-full bg-transparent px-2 py-1 text-sm font-semibold text-[var(--tenant-surface-foreground)] outline-none placeholder:text-[var(--color-muted-foreground)]"
+            />
+            <div className="mt-2 flex gap-1">
+              <Button size="sm" className="h-7 px-3 text-xs" disabled={!newTaskTitle.trim()} onClick={onCreateTaskConfirm}>Criar</Button>
+              <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={onCreateTaskCancel}>Cancelar</Button>
+            </div>
+          </div>
+        )}
+        {tasks.length === 0 && !creating ? <div className="rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-4 text-center text-xs text-[var(--color-muted-foreground)]">Arraste tarefas para esta coluna</div> : null}
       </div>
     </section>
   );
@@ -134,7 +176,7 @@ function DeleteColumnDialog({
   );
 }
 
-export function TarefasView({ tenantId, columns, tasks }: { tenantId: string | null; columns: TaskColumn[]; tasks: TaskItem[] }) {
+export function TarefasView({ tenantId, columns, tasks, users, currentUser, loadError }: { tenantId: string | null; columns: TaskColumn[]; tasks: TaskItem[]; users: { id: string; name: string; email: string }[]; currentUser: { id: string; name: string; email: string }; loadError?: string | null }) {
   const [view, setView] = useState<"kanban" | "lista">("kanban");
   const [localColumns, setColumns] = useState(columns);
   const [localTasks, setTasks] = useState(tasks);
@@ -143,19 +185,25 @@ export function TarefasView({ tenantId, columns, tasks }: { tenantId: string | n
   const [draft, setDraft] = useState("");
   const [active, setActive] = useState<TaskItem | null>(null);
   const [deleting, setDeleting] = useState<(TaskColumn & { taskCount: number }) | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [priority, setPriority] = useState<TaskItem["priority"]>("media");
-  const [pending, startTransition] = useTransition();
+  const [creatingColumnId, setCreatingColumnId] = useState<string | null>(null);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [creatingNewColumn, setCreatingNewColumn] = useState(false);
+  const [newColumnName, setNewColumnName] = useState("");
+  const [isMutating, startTransition] = useTransition();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(loadError ?? null);
+
+  const topLevelTasks = useMemo(() => localTasks.filter((task) => !task.parent_task_id), [localTasks]);
 
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase();
-    return term ? localTasks.filter((task) => `${task.title} ${task.description ?? ""} ${priorityLabel[task.priority]}`.toLowerCase().includes(term)) : localTasks;
-  }, [query, localTasks]);
+    return term ? topLevelTasks.filter((task) => `${task.title} ${task.description ?? ""} ${priorityLabel[task.priority]}`.toLowerCase().includes(term)) : topLevelTasks;
+  }, [query, topLevelTasks]);
 
   const grouped = useMemo(() => localColumns.map((column) => ({ ...column, tasks: filtered.filter((task) => task.kanban_column_id === column.id) })), [localColumns, filtered]);
+
+  const selectedTask = selectedTaskId ? localTasks.find((t) => t.id === selectedTaskId) ?? null : null;
 
   function dragEnd(event: DragEndEvent) {
     setActive(null);
@@ -165,23 +213,48 @@ export function TarefasView({ tenantId, columns, tasks }: { tenantId: string | n
     if (type === "column" && overType === "column") {
       const oldIndex = localColumns.findIndex((x) => x.id === active.id), newIndex = localColumns.findIndex((x) => x.id === over.id);
       const ordered = arrayMove(localColumns, oldIndex, newIndex).map((x, position) => ({ ...x, position }));
+      const previous = localColumns;
       setColumns(ordered);
-      startTransition(() => reorderTaskColumns(ordered.map((x) => x.id)));
+      setMutationError(null);
+      startTransition(async () => {
+        try {
+          await reorderTaskColumns(ordered.map((x) => x.id));
+        } catch (error) {
+          setColumns(previous);
+          setMutationError(getErrorMessage(error));
+        }
+      });
     }
     if (type === "task") {
       const target = overType === "task" ? String(over.data.current?.columnId) : String(over.id);
       const task = localTasks.find((x) => x.id === active.id);
       if (!task || task.kanban_column_id === target || !localColumns.some((x) => x.id === target)) return;
+      const previous = localTasks;
       setTasks((current) => current.map((x) => x.id === task.id ? { ...x, kanban_column_id: target } : x));
-      startTransition(() => moveTask(task.id, target));
+      setMutationError(null);
+      startTransition(async () => {
+        try {
+          await moveTask(task.id, target);
+        } catch (error) {
+          setTasks(previous);
+          setMutationError(getErrorMessage(error));
+        }
+      });
     }
   }
 
   function handleDeleteColumn(column: TaskColumn, taskCount: number) {
     if (taskCount === 0) {
+      const previous = localColumns;
       setColumns((current) => current.filter((x) => x.id !== column.id));
+      setMutationError(null);
       startTransition(async () => {
-        await deleteTaskColumn(column.id, column.id);
+        try {
+          await deleteTaskColumn(column.id, null);
+        } catch (error) {
+          setColumns(previous);
+          setMutationError(getErrorMessage(error));
+        }
       });
     } else {
       setDeleting({ ...column, taskCount });
@@ -189,25 +262,71 @@ export function TarefasView({ tenantId, columns, tasks }: { tenantId: string | n
   }
 
   function handleConfirmDelete(column: TaskColumn & { taskCount: number }, targetColumnId: string | null) {
+    const previousColumns = localColumns;
+    const previousTasks = localTasks;
     if (targetColumnId) {
       setTasks((current) => current.map((x) => x.kanban_column_id === column.id ? { ...x, kanban_column_id: targetColumnId } : x));
     }
     setColumns((current) => current.filter((x) => x.id !== column.id));
     setDeleting(null);
+    setMutationError(null);
     startTransition(async () => {
-      await deleteTaskColumn(column.id, targetColumnId ?? column.id);
+      try {
+        await deleteTaskColumn(column.id, targetColumnId);
+      } catch (error) {
+        setColumns(previousColumns);
+        setTasks(previousTasks);
+        setMutationError(getErrorMessage(error));
+      }
     });
   }
 
-  function addTask() {
-    if (!tenantId || !localColumns[0] || !title.trim()) return;
-    const columnId = localColumns[0].id;
+  function addTaskToColumn(columnId: string) {
+    if (!tenantId || !newTaskTitle.trim()) return;
+    setMutationError(null);
     startTransition(async () => {
-      const task = await createTask(tenantId, columnId, title, description, priority);
-      setTasks((current) => [task as TaskItem, ...current]);
-      setCreating(false);
-      setTitle("");
-      setDescription("");
+      try {
+        const task = normalizeTask(await createTask(tenantId, columnId, newTaskTitle.trim(), "", "media") as TaskItem);
+        setTasks((current) => [task, ...current]);
+        setCreatingColumnId(null);
+        setNewTaskTitle("");
+      } catch (error) {
+        setMutationError(getErrorMessage(error));
+      }
+    });
+  }
+
+  function addNewColumn() {
+    if (!tenantId || !newColumnName.trim()) return;
+    setMutationError(null);
+    startTransition(async () => {
+      try {
+        const column = await createTaskColumn(tenantId);
+        const clean = newColumnName.trim();
+        await renameTaskColumn(column.id, clean);
+        setColumns((current) => [...current, { ...column, name: clean }]);
+        setCreatingNewColumn(false);
+        setNewColumnName("");
+      } catch (error) {
+        setMutationError(getErrorMessage(error));
+      }
+    });
+  }
+
+  function saveColumnName(column: TaskColumn) {
+    const clean = draft.trim();
+    if (!clean) return;
+    const previous = localColumns;
+    setColumns((current) => current.map((x) => x.id === column.id ? { ...x, name: clean } : x));
+    setEditingId(null);
+    setMutationError(null);
+    startTransition(async () => {
+      try {
+        await renameTaskColumn(column.id, clean);
+      } catch (error) {
+        setColumns(previous);
+        setMutationError(getErrorMessage(error));
+      }
     });
   }
 
@@ -218,11 +337,24 @@ export function TarefasView({ tenantId, columns, tasks }: { tenantId: string | n
           <h1 className="font-display text-3xl font-bold text-[var(--color-card-foreground)]">Tarefas</h1>
           <p className="mt-2 max-w-3xl text-sm text-[var(--color-muted-foreground)]">Organize o trabalho interno do escritório em um quadro próprio, ligado ou não a processos.</p>
         </div>
-        <Badge className="rounded-full bg-[color-mix(in_srgb,var(--tenant-moss)_14%,transparent)] text-[var(--tenant-moss)]">{localTasks.length} tarefa{localTasks.length === 1 ? "" : "s"}</Badge>
+        <div className="flex items-center gap-2">
+          {isMutating ? <Badge className="rounded-full bg-[color-mix(in_srgb,var(--tenant-brass)_14%,transparent)] text-[var(--tenant-brass)]">Salvando...</Badge> : null}
+          <Badge className="rounded-full bg-[color-mix(in_srgb,var(--tenant-moss)_14%,transparent)] text-[var(--tenant-moss)]">{topLevelTasks.length} tarefa{topLevelTasks.length === 1 ? "" : "s"}</Badge>
+        </div>
       </header>
 
+      {mutationError ? (
+        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="min-w-0">
+            <p>NÃ£o foi possÃ­vel salvar no Supabase.</p>
+            <p className="mt-1 break-words font-normal">{mutationError}</p>
+          </div>
+        </div>
+      ) : null}
+
       <section className="grid gap-3 md:grid-cols-3">
-        {[{ label: "Total", value: localTasks.length, icon: ListFilter }, { label: "Em andamento", value: grouped.find((x) => /andamento/i.test(x.name))?.tasks.length ?? 0, icon: CircleDotDashed }, { label: "Concluídas", value: grouped.find((x) => /conclu/i.test(x.name))?.tasks.length ?? 0, icon: CheckCircle2 }].map((metric) => (
+        {[{ label: "Total", value: topLevelTasks.length, icon: ListFilter }, { label: "Em andamento", value: grouped.find((x) => /andamento/i.test(x.name))?.tasks.length ?? 0, icon: CircleDotDashed }, { label: "Concluídas", value: grouped.find((x) => /conclu/i.test(x.name))?.tasks.length ?? 0, icon: CheckCircle2 }].map((metric) => (
           <Card key={metric.label} className="border-[var(--tenant-line)] bg-[var(--tenant-surface)]">
             <CardContent className="flex items-center justify-between p-4">
               <div><p className="text-sm text-[var(--color-muted-foreground)]">{metric.label}</p><p className="mt-1 text-3xl font-semibold">{metric.value}</p></div>
@@ -242,25 +374,11 @@ export function TarefasView({ tenantId, columns, tasks }: { tenantId: string | n
                 </button>
               ))}
             </div>
-            <div className="flex min-w-[260px] flex-1 flex-wrap items-center justify-end gap-2">
-              {view === "kanban" ? <Button type="button" onClick={() => setCreating(true)} disabled={!tenantId || pending} className="h-9"><Plus className="h-4 w-4" />Tarefa</Button> : null}
-              <label className="flex min-w-[260px] flex-1 items-center gap-2 rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-2 text-sm text-[var(--color-muted-foreground)] md:max-w-md">
-                <Search className="h-4 w-4" />
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filtrar por titulo ou prioridade" className="w-full bg-transparent text-[var(--tenant-surface-foreground)] outline-none placeholder:text-[var(--color-muted-foreground)]" />
-              </label>
-            </div>
+            <label className="flex min-w-[260px] flex-1 items-center gap-2 rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-2 text-sm text-[var(--color-muted-foreground)] md:max-w-md">
+              <Search className="h-4 w-4" />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filtrar por titulo ou prioridade" className="w-full bg-transparent text-[var(--tenant-surface-foreground)] outline-none placeholder:text-[var(--color-muted-foreground)]" />
+            </label>
           </div>
-
-          {creating && (
-            <div className="rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-4 space-y-3">
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="space-y-1"><Label className="text-xs">Título *</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex: Preparar petição" className="h-8 text-xs" /></div>
-                <div className="space-y-1"><Label className="text-xs">Descrição</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Opcional" className="h-8 text-xs" /></div>
-                <div className="space-y-1"><Label className="text-xs">Prioridade</Label><select value={priority} onChange={(e) => setPriority(e.target.value as TaskItem["priority"])} className="flex h-8 rounded-md border border-input bg-background px-2 text-xs"><option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option></select></div>
-              </div>
-              <div className="flex gap-2"><Button size="sm" className="h-8" disabled={!title.trim() || pending} onClick={addTask}>Criar</Button><Button size="sm" variant="outline" className="h-8" onClick={() => { setCreating(false); setTitle(""); setDescription(""); }}>Cancelar</Button></div>
-            </div>
-          )}
 
           {view === "kanban" ? (
             <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={(event) => { if (event.active.data.current?.type === "task") setActive(localTasks.find((x) => x.id === event.active.id) ?? null); }} onDragEnd={dragEnd}>
@@ -268,22 +386,64 @@ export function TarefasView({ tenantId, columns, tasks }: { tenantId: string | n
                 <SortableContext items={localColumns.map((x) => x.id)} strategy={horizontalListSortingStrategy}>
                   <div className="flex min-h-[500px] gap-4 rounded-md">
                     {grouped.map((column) => (
-                      <Column key={column.id} column={column} tasks={column.tasks} editing={editingId === column.id} draft={draft} onEdit={() => { setEditingId(column.id); setDraft(column.name); }} onDraft={setDraft} onSave={() => { const clean = draft.trim(); if (!clean) return; setColumns((current) => current.map((x) => x.id === column.id ? { ...x, name: clean } : x)); setEditingId(null); startTransition(() => renameTaskColumn(column.id, clean)); }} onCancel={() => setEditingId(null)} onDelete={(taskCount) => handleDeleteColumn(column, taskCount)} />
+                      <Column key={column.id} column={column} tasks={column.tasks} completed={isCompletedColumnName(column.name)} editing={editingId === column.id} draft={draft} onEdit={() => { setEditingId(column.id); setDraft(column.name); }} onDraft={setDraft} onSave={() => saveColumnName(column)} onCancel={() => setEditingId(null)} onDelete={(taskCount) => handleDeleteColumn(column, taskCount)} onTaskClick={(taskId) => setSelectedTaskId(taskId)} creating={creatingColumnId === column.id} newTaskTitle={newTaskTitle} onNewTaskTitleChange={setNewTaskTitle} onCreateTask={() => setCreatingColumnId(column.id)} onCreateTaskCancel={() => { setCreatingColumnId(null); setNewTaskTitle(""); }} onCreateTaskConfirm={() => addTaskToColumn(column.id)} />
                     ))}
+                    <div className="w-[320px] shrink-0">
+                      {creatingNewColumn ? (
+                        <div className="rounded-lg border border-dashed border-[var(--tenant-brass)] bg-[var(--tenant-surface-muted)] p-3">
+                          <input
+                            autoFocus
+                            value={newColumnName}
+                            onChange={(e) => setNewColumnName(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter" && newColumnName.trim()) addNewColumn(); if (e.key === "Escape") { setCreatingNewColumn(false); setNewColumnName(""); } }}
+                            placeholder="Nome da coluna..."
+                            className="w-full bg-transparent px-2 py-1 text-sm font-semibold text-[var(--tenant-surface-foreground)] outline-none placeholder:text-[var(--color-muted-foreground)]"
+                          />
+                          <div className="mt-2 flex gap-1">
+                            <Button size="sm" className="h-7 px-3 text-xs" disabled={!newColumnName.trim()} onClick={addNewColumn}>Criar</Button>
+                            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => { setCreatingNewColumn(false); setNewColumnName(""); }}>Cancelar</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => { setNewColumnName(""); setCreatingNewColumn(true); }}
+                          className="flex h-full min-h-[460px] w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[var(--tenant-line)] text-[var(--color-muted-foreground)] transition-colors hover:border-[var(--tenant-brass)] hover:text-[var(--tenant-brass)]"
+                        >
+                          <Plus className="h-6 w-6" />
+                          <span className="text-sm font-medium">Nova coluna</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </SortableContext>
               </div>
-              <DragOverlay>{active ? <div className="w-[300px] rotate-1 shadow-xl"><TaskCard task={active} /></div> : null}</DragOverlay>
+              <DragOverlay>{active ? <div className="w-[300px] rotate-1 shadow-xl"><TaskCard task={active} completed={isCompletedColumnName(localColumns.find((column) => column.id === active.kanban_column_id)?.name ?? "")} /></div> : null}</DragOverlay>
             </DndContext>
           ) : (
             <div className="space-y-3">
-              {filtered.length === 0 ? <div className="rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-5 text-sm text-[var(--color-muted-foreground)]">Nenhuma tarefa encontrada.</div> : filtered.map((task) => <TaskCard key={task.id} task={task} />)}
+              {filtered.length === 0 ? <div className="rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-5 text-sm text-[var(--color-muted-foreground)]">Nenhuma tarefa encontrada.</div> : filtered.map((task) => <TaskCard key={task.id} task={task} completed={isCompletedColumnName(localColumns.find((column) => column.id === task.kanban_column_id)?.name ?? "")} onClick={() => setSelectedTaskId(task.id)} />)}
             </div>
           )}
         </CardContent>
       </Card>
 
       {deleting ? <DeleteColumnDialog column={deleting} columns={localColumns} onCancel={() => setDeleting(null)} onConfirm={(targetColumnId) => handleConfirmDelete(deleting, targetColumnId)} /> : null}
+      {selectedTask ? (
+        <TarefaModal
+          task={selectedTask}
+          columns={localColumns}
+          users={users}
+          allTasks={localTasks}
+          currentUser={currentUser}
+          tenantId={tenantId ?? ""}
+          open={true}
+          onClose={() => setSelectedTaskId(null)}
+          onTaskChange={(updated) => setTasks((current) => current.map((task) => task.id === updated.id ? normalizeTask(updated) : task))}
+          onTaskCreate={(created) => setTasks((current) => [normalizeTask(created), ...current])}
+          onTaskDelete={(taskId) => setTasks((current) => current.filter((task) => task.id !== taskId && task.parent_task_id !== taskId))}
+        />
+      ) : null}
     </div>
   );
 }

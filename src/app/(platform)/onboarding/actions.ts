@@ -44,9 +44,15 @@ export async function uploadAvatar(formData: FormData) {
   const fileExt = file.name.split(".").pop();
   const fileName = `${user.id}/avatar.${fileExt}`;
 
+  const arrayBuffer = await file.arrayBuffer();
+  const buffer = new Uint8Array(arrayBuffer);
+
   const { error: uploadError } = await supabase.storage
     .from("avatars")
-    .upload(fileName, file, { upsert: true });
+    .upload(fileName, buffer, {
+      upsert: true,
+      contentType: file.type || "image/png",
+    });
 
   if (uploadError) throw uploadError;
 

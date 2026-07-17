@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { useTransition } from "react";
 import { Upload, Loader2, Check } from "lucide-react";
 import { updateProfile, uploadAvatar } from "../actions";
@@ -70,9 +70,9 @@ export function PerfilForm({ profile }: Props) {
       const formData = new FormData();
       formData.append("file", file);
       await uploadAvatar(formData);
-    } catch {
+    } catch (err) {
       setAvatarPreview(profile.avatar_url);
-      setError("Erro ao fazer upload da imagem.");
+      setError(err instanceof Error ? err.message : "Erro ao fazer upload da imagem.");
     } finally {
       setUploadingAvatar(false);
     }
@@ -255,17 +255,16 @@ export function PerfilForm({ profile }: Props) {
 }
 
 export function AparenciaSection() {
-  const [selectedPalette, setSelectedPalette] = useState<PaletteId>("padrao");
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem("meujudi-palette") as PaletteId | null;
-    if (stored) setSelectedPalette(stored);
-  }, []);
+  const [selectedPalette, setSelectedPalette] = useState<PaletteId>(() => {
+    if (typeof window === "undefined") return "padrao";
+    return (window.localStorage.getItem("meujudi-palette") as PaletteId | null) ?? "padrao";
+  });
 
   function handlePaletteChange(id: PaletteId) {
     setSelectedPalette(id);
     window.localStorage.setItem("meujudi-palette", id);
-    document.cookie = `meujudi-palette=${id};path=/;max-age=31536000;SameSite=Lax`;
+    // eslint-disable-next-line react-hooks/immutability -- Persistencia intencional em cookie para SSR ler o tema.
+    window.document.cookie = `meujudi-palette=${id};path=/;max-age=31536000;SameSite=Lax`;
     window.dispatchEvent(new CustomEvent("meujudi-theme-change", { detail: { palette: id } }));
   }
 

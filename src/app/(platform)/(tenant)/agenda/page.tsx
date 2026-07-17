@@ -99,7 +99,7 @@ export default async function AgendaPage({
     return <AgendaCalendar initialMonth={initialMonth} events={[]} />;
   }
 
-  let agendaQuery = supabase
+  const agendaQuery = supabase
     .from("agenda_eventos")
     .select("id, tipo, titulo, descricao, data_inicio, data_fim, status, fonte, processo_id, cliente_id, user_id")
     .eq("tenant_id", tenantId)

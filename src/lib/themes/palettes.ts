@@ -323,6 +323,10 @@ export function getPaletteStyles(palette: Palette): React.CSSProperties {
     "--tenant-sidebar-active": palette.sidebarActive,
     "--tenant-paper": palette.paper,
     "--tenant-surface": palette.surface,
+    "--tenant-subtask-surface":
+      palette.id === "escuro"
+        ? `color-mix(in srgb, #ffffff 7%, ${palette.surface})`
+        : `color-mix(in srgb, ${palette.brass} 9%, ${palette.surface})`,
     "--tenant-surface-muted": palette.surfaceMuted,
     "--tenant-surface-foreground": palette.surfaceForeground,
     "--tenant-line": palette.line,

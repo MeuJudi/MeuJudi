@@ -1,6 +1,8 @@
 import { TarefasView, type TaskColumn, type TaskItem } from "./tarefas-view";
 import { requireAppUser } from "@/lib/auth/guards";
 
+export const dynamic = "force-dynamic";
+
 const defaults = [
   { name: "A fazer", color: "#9a6a22" },
   { name: "Em andamento", color: "#2563eb" },
@@ -22,7 +24,7 @@ async function resolveTenantId(
 export default async function TarefasPage() {
   const { supabase, profile } = await requireAppUser();
   const tenantId = await resolveTenantId(supabase, profile);
-  if (!tenantId) return <TarefasView tenantId={null} columns={[]} tasks={[]} />;
+  if (!tenantId) return <TarefasView tenantId={null} columns={[]} tasks={[]} users={[]} currentUser={{ id: profile.id, name: profile.name, email: profile.email }} />;
 
   let { data: columnRows } = await supabase.from("task_kanban_columns").select("id, name, position, color, is_default").eq("tenant_id", tenantId).eq("is_active", true).order("position");
   if (!columnRows?.length) {
@@ -41,7 +43,9 @@ export default async function TarefasPage() {
   const columns = (columnRows ?? []) as TaskColumn[];
   const firstColumn = columns[0]?.id ?? null;
   if (firstColumn) await supabase.from("tarefas").update({ kanban_column_id: firstColumn }).eq("tenant_id", tenantId).is("kanban_column_id", null);
-  const { data: taskRows } = await supabase.from("tarefas").select("id, title, description, priority, due_date, kanban_column_id").eq("tenant_id", tenantId).order("created_at", { ascending: false });
+  const { data: taskRows, error: taskError } = await supabase.from("tarefas").select("id, title, description, priority, due_date, kanban_column_id, created_by, responsible_id, processo_id, assigned_to, parent_task_id, is_private, visibility, checklist, comments, attachments").eq("tenant_id", tenantId).order("created_at", { ascending: false });
 
-  return <TarefasView tenantId={tenantId} columns={columns} tasks={(taskRows ?? []) as TaskItem[]} />;
+  const { data: userRows } = await supabase.from("users").select("id, name, email").eq("tenant_id", tenantId);
+
+  return <TarefasView tenantId={tenantId} columns={columns} tasks={(taskRows ?? []) as TaskItem[]} users={(userRows ?? []) as { id: string; name: string; email: string }[]} currentUser={{ id: profile.id, name: profile.name, email: profile.email }} loadError={taskError?.message ?? null} />;
 }

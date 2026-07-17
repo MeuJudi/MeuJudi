@@ -91,3 +91,9 @@ export async function forgotPassword(formData: FormData) {
   }
   redirect("/forgot-password?success=sent");
 }
+
+export async function signOut() {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  redirect("/login");
+}

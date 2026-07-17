@@ -16,8 +16,11 @@ import {
   UsersRound,
   User,
   Bell,
+  LogOut,
+  UserCircle,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { signOut } from "@/app/(auth)/actions";
 import { cn } from "@/lib/utils";
 import { palettes, getPaletteStyles, type PaletteId } from "@/lib/themes/palettes";
 
@@ -25,6 +28,7 @@ type TenantShellProps = {
   children: React.ReactNode;
   userName: string;
   role: string;
+  avatarUrl: string | null;
   initialPaletteId: PaletteId;
 };
 
@@ -46,23 +50,20 @@ function initials(name: string) {
     .join("") || "MJ";
 }
 
-export function TenantShell({ children, userName, role, initialPaletteId }: TenantShellProps) {
+export function TenantShell({ children, userName, role, avatarUrl, initialPaletteId }: TenantShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
   const tenantParam = searchParams.get("tenant");
   const currentScope = searchParams.get("scope") ?? "all";
-  const [paletteId, setPaletteId] = useState<PaletteId>(initialPaletteId);
+  const [paletteId, setPaletteId] = useState<PaletteId>(() => {
+    if (typeof window === "undefined") return initialPaletteId;
+    return (window.localStorage.getItem("meujudi-palette") as PaletteId | null) ?? initialPaletteId;
+  });
   const [notifOpen, setNotifOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const isStaff = role === "staff";
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem("meujudi-palette") as PaletteId | null;
-    if (stored && stored !== initialPaletteId) {
-      setPaletteId(stored);
-    }
-  }, [initialPaletteId]);
 
   useEffect(() => {
     function handleThemeChange(event: Event) {
@@ -79,10 +80,33 @@ export function TenantShell({ children, userName, role, initialPaletteId }: Tena
     document.cookie = `meujudi-palette=${paletteId};path=/;max-age=31536000;SameSite=Lax`;
   }, [paletteId]);
 
+  useEffect(() => {
+    function handleClickOutside() {
+      setProfileOpen(false);
+    }
+    if (profileOpen) {
+      document.addEventListener("click", handleClickOutside);
+      return () => document.removeEventListener("click", handleClickOutside);
+    }
+  }, [profileOpen]);
+
   const paletteStyles = useMemo(() => {
     const palette = palettes.find((p) => p.id === paletteId) ?? palettes[0];
     return getPaletteStyles(palette);
   }, [paletteId]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    for (const [property, value] of Object.entries(paletteStyles)) {
+      root.style.setProperty(property, String(value));
+    }
+
+    return () => {
+      for (const property of Object.keys(paletteStyles)) {
+        root.style.removeProperty(property);
+      }
+    };
+  }, [paletteStyles]);
 
   function withTenantContext(href: string) {
     if (!tenantParam) return href;
@@ -284,12 +308,56 @@ export function TenantShell({ children, userName, role, initialPaletteId }: Tena
                   </div>
                 )}
               </div>
-              <div className="text-right text-sm">
-                <strong className="block text-gray-900">{userName}</strong>
-                <span className="text-xs text-gray-500">{role}</span>
-              </div>
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--tenant-sidebar)] font-mono text-xs font-bold text-[var(--tenant-brass-light)]">
-                {initials(userName)}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setProfileOpen(!profileOpen); }}
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-gray-50"
+                >
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--tenant-sidebar)]">
+                    {avatarUrl ? (
+                      <img src={avatarUrl} alt={userName} className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="font-mono text-xs font-bold text-[var(--tenant-brass-light)]">{initials(userName)}</span>
+                    )}
+                  </div>
+                  <span className="hidden text-sm font-medium text-gray-900 md:block">{userName}</span>
+                </button>
+                {profileOpen && (
+                  <div onClick={(e) => e.stopPropagation()} className="absolute right-0 top-full z-50 mt-1 w-56 rounded-md border border-gray-200 bg-white shadow-lg">
+                    <div className="border-b border-gray-200 px-4 py-3">
+                      <p className="text-sm font-medium text-gray-900">{userName}</p>
+                      <p className="text-xs text-gray-500">{role}</p>
+                    </div>
+                    <div className="py-1">
+                      <Link
+                        href={withTenantContext("/configuracoes/perfil")}
+                        className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                      >
+                        <UserCircle className="h-4 w-4" />
+                        Meu Perfil
+                      </Link>
+                      <Link
+                        href={withTenantContext("/configuracoes")}
+                        className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                      >
+                        <Settings className="h-4 w-4" />
+                        Configurações
+                      </Link>
+                    </div>
+                    <div className="border-t border-gray-200 py-1">
+                      <form action={signOut}>
+                        <button
+                          type="submit"
+                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 transition-colors hover:bg-red-50"
+                        >
+                          <LogOut className="h-4 w-4" />
+                          Sair
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
