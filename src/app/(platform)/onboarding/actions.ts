@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
 export async function completeOnboarding(formData: FormData) {
@@ -18,11 +19,96 @@ export async function completeOnboarding(formData: FormData) {
     p_state: String(formData.get("state") ?? ""),
     p_oab_number: String(formData.get("oab_number") ?? ""),
     p_oab_uf: String(formData.get("oab_uf") ?? ""),
+    p_phone: String(formData.get("phone") ?? ""),
+    p_cnpj: String(formData.get("cnpj") ?? ""),
   });
 
   if (error) {
-    redirect(`/onboarding?error=${encodeURIComponent(error.message)}`);
+    return { success: false, error: error.message };
   }
 
-  redirect("/monitoramento");
+  return { success: true };
+}
+
+export async function uploadAvatar(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("Não autenticado");
+
+  const file = formData.get("file") as File;
+  if (!file || file.size === 0) throw new Error("Nenhum arquivo selecionado");
+
+  const fileExt = file.name.split(".").pop();
+  const fileName = `${user.id}/avatar.${fileExt}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from("avatars")
+    .upload(fileName, file, { upsert: true });
+
+  if (uploadError) throw uploadError;
+
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from("avatars").getPublicUrl(fileName);
+
+  const { error: updateError } = await supabase
+    .from("users")
+    .update({ avatar_url: publicUrl })
+    .eq("id", user.id);
+
+  if (updateError) throw updateError;
+
+  revalidatePath("/onboarding");
+  return { url: publicUrl };
+}
+
+export async function createInvites(
+  invites: Array<{ email: string; role: string }>
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("Não autenticado");
+
+  const { data: profile } = await supabase
+    .from("users")
+    .select("tenant_id")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile?.tenant_id) throw new Error("Tenant não encontrado");
+
+  const results: Array<{ email: string; error?: string }> = [];
+
+  for (const invite of invites) {
+    const { error } = await supabase.from("tenant_invites").insert({
+      tenant_id: profile.tenant_id,
+      email: invite.email.toLowerCase().trim(),
+      role: invite.role,
+      invited_by: user.id,
+    });
+
+    results.push({
+      email: invite.email,
+      error: error?.message,
+    });
+  }
+
+  return results;
+}
+
+export async function resendConfirmation() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user?.email) {
+    await supabase.auth.resend({ type: "signup", email: user.email });
+  }
+  redirect("/onboarding?success=email_resent");
 }

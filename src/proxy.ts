@@ -14,8 +14,8 @@ const protectedPrefixes = [
   "/team",
   "/admin",
 ];
-const authPrefixes = ["/login", "/register"];
-const publicPrefixes = ["/admin/login"];
+const authPrefixes = ["/login", "/register", "/forgot-password", "/reset-password"];
+const publicPrefixes = ["/admin/login", "/forgot-password", "/reset-password"];
 
 export function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;

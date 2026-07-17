@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MeuJudi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700;9..144,900&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#16233A;
+    --ink-2:#1F3350;
+    --paper:#EDE9DD;
+    --paper-2:#F6F3EA;
+    --brass:#B8863B;
+    --brass-light:#D9B372;
+    --wine:#7A2E2E;
+    --moss:#4B6B4E;
+    --text:#1A1A1A;
+    --text-soft:#5B5548;
+    --line:#D9D2BF;
+  }
+  *{box-sizing:border-box;}
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important;}
+  }
+  html,body{height:100%;}
+  body{
+    margin:0;
+    font-family:'IBM Plex Sans', sans-serif;
+    background:var(--paper-2);
+    color:var(--text);
+  }
+  .mono{font-family:'IBM Plex Mono', monospace;}
+  button{font-family:inherit;}
+
+  /* ---------- APP SHELL (tela cheia) ---------- */
+  .shell{
+    display:grid;
+    grid-template-columns:230px 1fr;
+    min-height:100vh;
+    width:100%;
+  }
+  .sidebar{
+    background:var(--ink);
+    color:#D7D2C2;
+    padding:22px 14px;
+    display:flex;
+    flex-direction:column;
+    position:sticky; top:0; height:100vh;
+  }
+  .brand{
+    display:flex;align-items:center;gap:10px;
+    padding:4px 8px 22px;
+    border-bottom:1px solid rgba(216,211,194,0.14);
+    margin-bottom:16px;
+  }
+  .brand .mark{
+    width:30px;height:30px;border-radius:50%;
+    border:1.5px solid var(--brass);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Fraunces',serif;font-weight:700;font-size:13px;color:var(--brass-light);
+    flex-shrink:0;
+  }
+  .brand strong{
+    font-family:'Fraunces', serif;
+    font-size:17px;
+    letter-spacing:0.4px;
+    color:#F1EDE0;
+  }
+  nav{display:flex;flex-direction:column;gap:3px;}
+  .nav-btn{
+    display:flex;align-items:center;gap:12px;
+    background:transparent;border:none;
+    color:#B9B29B;
+    font-size:14.5px;
+    font-weight:500;
+    text-align:left;
+    padding:11px 12px;
+    border-radius:8px;
+    cursor:pointer;
+    width:100%;
+    transition:background 0.18s ease, color 0.18s ease;
+  }
+  .nav-btn svg{width:18px;height:18px;flex-shrink:0;opacity:0.85;}
+  .nav-btn:hover{background:rgba(216,211,194,0.08); color:#EFEAD9;}
+  .nav-btn:focus-visible{outline:2px solid var(--brass-light); outline-offset:2px;}
+  .nav-btn.active{
+    background:linear-gradient(90deg, rgba(184,134,59,0.22), rgba(184,134,59,0.05));
+    color:#F1EDE0;
+    box-shadow:inset 3px 0 0 var(--brass);
+  }
+  .nav-spacer{flex:1;}
+  .nav-bottom{
+    border-top:1px solid rgba(216,211,194,0.14);
+    padding-top:8px;
+    margin-top:8px;
+  }
+
+  .main{
+    padding:24px 34px 50px;
+    background:var(--paper-2);
+    min-width:0;
+  }
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:16px; margin-bottom:26px;
+  }
+  .search{
+    flex:1; max-width:360px;
+    display:flex; align-items:center; gap:8px;
+    background:#fff; border:1px solid var(--line); border-radius:9px;
+    padding:9px 14px; color:var(--text-soft); font-size:13.5px;
+  }
+  .search svg{width:15px;height:15px; opacity:0.6; flex-shrink:0;}
+  .user{
+    display:flex; align-items:center; gap:10px;
+  }
+  .user .avatar{width:34px;height:34px; font-size:12px;}
+  .user .who{font-size:13px; line-height:1.3;}
+  .user .who strong{display:block; color:var(--ink); font-size:13.5px;}
+  .user .who span{color:var(--text-soft); font-size:12px;}
+
+  .main-top{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    margin-bottom:22px;
+    gap:16px;
+    flex-wrap:wrap;
+  }
+  .main-top h2{
+    font-family:'Fraunces', serif;
+    font-size:25px;
+    font-weight:700;
+    margin:0 0 6px;
+    color:var(--ink);
+  }
+  .main-top p{
+    margin:0;
+    color:var(--text-soft);
+    font-size:14.5px;
+    max-width:460px;
+  }
+  .pill{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px;
+    color:var(--moss);
+    background:rgba(75,107,78,0.1);
+    border:1px solid rgba(75,107,78,0.25);
+    padding:6px 12px;
+    border-radius:20px;
+    white-space:nowrap;
+  }
+
+  .view{display:none;}
+  .view.active{display:block; animation:fadeUp 0.3s ease both;}
+  @keyframes fadeUp{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+
+  /* ---------- STAMP ---------- */
+  .stamp{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:10.5px;
+    font-weight:600;
+    letter-spacing:1.2px;
+    color:var(--wine);
+    border:1.5px solid var(--wine);
+    border-radius:4px;
+    padding:3px 8px;
+    display:inline-block;
+    transform:rotate(-6deg);
+    position:relative;
+    text-transform:uppercase;
+  }
+  .stamp::after{
+    content:"";
+    position:absolute; inset:-3px;
+    border:1px dotted rgba(122,46,46,0.35);
+    border-radius:6px;
+  }
+
+  /* ---------- MONITORAMENTO ---------- */
+  .proc-card{
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:16px 18px;
+    margin-bottom:12px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:16px;
+    flex-wrap:wrap;
+    transition:box-shadow 0.18s ease;
+  }
+  .proc-card:hover{box-shadow:0 8px 22px -12px rgba(22,35,58,0.25);}
+  .proc-left{flex:1;min-width:240px;}
+  .proc-num{font-size:13px;color:var(--text-soft); margin-bottom:5px;}
+  .proc-title{font-weight:600; font-size:15.5px; color:var(--ink); margin-bottom:4px;}
+  .proc-meta{font-size:12.5px; color:var(--text-soft);}
+  .proc-right{display:flex;align-items:center;gap:14px; flex-shrink:0;}
+  .tag{font-size:11.5px; font-weight:600; padding:5px 10px; border-radius:20px; white-space:nowrap;}
+  .tag.tribunal{background:rgba(22,35,58,0.07); color:var(--ink-2);}
+  .tag.status-andamento{background:rgba(184,134,59,0.14); color:#8C6425;}
+  .tag.status-aguardando{background:rgba(91,85,72,0.1); color:var(--text-soft);}
+  .tag.status-concluido{background:rgba(75,107,78,0.14); color:var(--moss);}
+
+  /* ---------- AGENDA (mensal) ---------- */
+  .cal-head{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:14px;
+  }
+  .cal-nav{display:flex; align-items:center; gap:10px;}
+  .cal-nav button{
+    width:30px;height:30px; border-radius:7px; border:1px solid var(--line);
+    background:#fff; color:var(--ink); cursor:pointer; display:flex;
+    align-items:center; justify-content:center;
+  }
+  .cal-nav button:hover{background:var(--paper);}
+  .cal-month{font-family:'Fraunces', serif; font-size:19px; font-weight:700; color:var(--ink); min-width:170px;}
+  .legend{display:flex; gap:14px; font-size:12px; color:var(--text-soft); align-items:center;}
+  .legend .dot{width:8px;height:8px;border-radius:50%; display:inline-block; margin-right:5px;}
+  .legend .dot.urgent{background:var(--wine);}
+  .legend .dot.normal{background:var(--brass);}
+  .legend .dot.later{background:var(--moss);}
+
+  .calendar{
+    background:#fff; border:1px solid var(--line); border-radius:12px; overflow:hidden;
+  }
+  .cal-weekdays{
+    display:grid; grid-template-columns:repeat(7,1fr);
+    background:var(--ink); color:#C9C2AD;
+    font-size:11.5px; font-weight:600; letter-spacing:0.4px; text-transform:uppercase;
+  }
+  .cal-weekdays div{padding:10px 8px; text-align:center;}
+  .cal-grid{
+    display:grid; grid-template-columns:repeat(7,1fr);
+    grid-auto-rows:106px;
+  }
+  .cal-cell{
+    border-right:1px solid var(--line); border-bottom:1px solid var(--line);
+    padding:7px; position:relative; font-size:12.5px;
+  }
+  .cal-cell:nth-child(7n){border-right:none;}
+  .cal-cell.muted{background:rgba(22,35,58,0.02); color:#B8B2A0;}
+  .cal-cell .num{font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--text-soft); font-weight:500;}
+  .cal-cell.today{background:rgba(184,134,59,0.07);}
+  .cal-cell.today .num{
+    background:var(--brass); color:#fff; border-radius:50%;
+    width:20px;height:20px; display:flex; align-items:center; justify-content:center;
+    font-weight:700;
+  }
+  .ev{
+    margin-top:4px; padding:2.5px 6px; border-radius:5px; font-size:10.8px;
+    line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    border-left:2.5px solid transparent;
+  }
+  .ev.urgent{background:rgba(122,46,46,0.1); color:var(--wine); border-color:var(--wine);}
+  .ev.normal{background:rgba(184,134,59,0.12); color:#8C6425; border-color:var(--brass);}
+  .ev.later{background:rgba(75,107,78,0.1); color:var(--moss); border-color:var(--moss);}
+
+  /* ---------- KANBAN ---------- */
+  .kanban{display:grid; grid-template-columns:repeat(4, 1fr); gap:14px; align-items:start;}
+  .kcol{background:rgba(22,35,58,0.03); border:1px solid var(--line); border-radius:10px; padding:12px;}
+  .kcol h4{
+    font-size:12.5px; text-transform:uppercase; letter-spacing:0.6px;
+    color:var(--text-soft); margin:2px 4px 12px; display:flex; justify-content:space-between;
+  }
+  .kcol h4 .count{
+    background:rgba(22,35,58,0.08); color:var(--ink-2); border-radius:20px;
+    padding:1px 8px; font-family:'IBM Plex Mono', monospace; font-size:11px;
+  }
+  .kcard{
+    background:#fff; border:1px solid var(--line); border-radius:8px;
+    padding:11px 12px; margin-bottom:9px; font-size:13px; color:var(--ink);
+    box-shadow:0 2px 6px -3px rgba(22,35,58,0.15);
+  }
+  .kcard .ktitle{font-weight:600; margin-bottom:5px;}
+  .kcard .kdesc{font-size:11.8px; color:var(--text-soft); margin-bottom:8px; line-height:1.4;}
+  .kcard .kprio{
+    display:inline-block; font-size:10px; font-weight:700; letter-spacing:0.4px;
+    padding:2px 7px; border-radius:5px; margin-bottom:8px; text-transform:uppercase;
+  }
+  .kprio.alta{background:rgba(122,46,46,0.1); color:var(--wine);}
+  .kprio.media{background:rgba(184,134,59,0.14); color:#8C6425;}
+  .kprio.baixa{background:rgba(75,107,78,0.1); color:var(--moss);}
+  .kcard .kmeta{display:flex; justify-content:space-between; align-items:center;}
+  .avatar{
+    width:22px;height:22px;border-radius:50%; background:var(--ink); color:var(--brass-light);
+    font-size:10px; font-weight:700; display:flex;align-items:center;justify-content:center;
+    font-family:'IBM Plex Mono', monospace; flex-shrink:0;
+  }
+
+  /* ---------- CLIENTES / TABS ---------- */
+  .tabs{display:flex; gap:4px; border-bottom:1px solid var(--line); margin-bottom:22px;}
+  .tab-btn{
+    background:none; border:none; padding:10px 16px; font-size:14px; font-weight:600;
+    color:var(--text-soft); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px;
+  }
+  .tab-btn.active{color:var(--ink); border-bottom-color:var(--brass);}
+  .subview{display:none;}
+  .subview.active{display:block;}
+
+  table{width:100%; border-collapse:collapse;}
+  thead th{
+    text-align:left; font-size:12px; text-transform:uppercase; letter-spacing:0.5px;
+    color:var(--text-soft); padding:0 14px 10px; border-bottom:1px solid var(--line); font-weight:600;
+  }
+  tbody td{padding:14px; border-bottom:1px solid var(--line); font-size:14px; color:var(--ink);}
+  tbody tr:hover{background:rgba(22,35,58,0.02);}
+  .client-status{font-size:11.5px; font-weight:600; padding:4px 10px; border-radius:20px;}
+  .client-status.ativo{background:rgba(75,107,78,0.14); color:var(--moss);}
+  .client-status.pendente{background:rgba(184,134,59,0.14); color:#8C6425;}
+
+  .crm-item{
+    display:flex; gap:14px; background:#fff; border:1px solid var(--line);
+    border-radius:10px; padding:14px 16px; margin-bottom:10px;
+  }
+  .crm-chan{
+    width:36px;height:36px; border-radius:9px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(184,134,59,0.12); color:#8C6425;
+  }
+  .crm-chan svg{width:17px;height:17px;}
+  .crm-body strong{display:block; font-size:14px; color:var(--ink); margin-bottom:2px;}
+  .crm-body .crm-note{font-size:13px; color:var(--text-soft); margin-bottom:4px; line-height:1.4;}
+  .crm-body .crm-when{font-size:11.5px; color:#A29C88; font-family:'IBM Plex Mono', monospace;}
+
+  /* ---------- CONFIGURAÇÕES ---------- */
+  .settings-grid{display:flex; flex-direction:column; gap:16px; max-width:680px;}
+  .set-card{background:#fff; border:1px solid var(--line); border-radius:10px; padding:20px 22px;}
+  .set-card h3{
+    font-family:'Fraunces', serif; font-size:16.5px; margin:0 0 4px; color:var(--ink);
+  }
+  .set-card > p{margin:0 0 16px; font-size:13px; color:var(--text-soft);}
+  .set-row{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:11px 0; border-top:1px solid var(--line);
+  }
+  .set-row:first-of-type{border-top:none;}
+  .set-row .label{font-size:13.8px; color:var(--ink); font-weight:500;}
+  .set-row .desc{font-size:12px; color:var(--text-soft); margin-top:2px;}
+  .switch{
+    width:38px; height:22px; border-radius:20px; background:var(--line);
+    position:relative; cursor:pointer; flex-shrink:0; border:none;
+  }
+  .switch.on{background:var(--moss);}
+  .switch::after{
+    content:""; position:absolute; top:2px; left:2px; width:18px; height:18px;
+    border-radius:50%; background:#fff; transition:transform 0.18s ease;
+  }
+  .switch.on::after{transform:translateX(16px);}
+  .team-row{display:flex; align-items:center; gap:12px; padding:10px 0; border-top:1px solid var(--line);}
+  .team-row:first-of-type{border-top:none;}
+  .team-row .who{flex:1;}
+  .team-row .who strong{display:block; font-size:13.8px; color:var(--ink);}
+  .team-row .who span{font-size:12px; color:var(--text-soft);}
+  .role-badge{
+    font-size:11px; font-weight:600; padding:4px 10px; border-radius:20px;
+    background:rgba(22,35,58,0.07); color:var(--ink-2);
+  }
+
+  @media (max-width:900px){
+    .kanban{grid-template-columns:1fr 1fr;}
+    .cal-grid{grid-auto-rows:88px;}
+  }
+  @media (max-width:760px){
+    .shell{grid-template-columns:1fr;}
+    .sidebar{position:relative; height:auto; flex-direction:row; overflow-x:auto; padding:14px 12px; align-items:center; gap:4px;}
+    .brand{border:none; padding:0 10px 0 0; margin:0;}
+    nav{flex-direction:row;}
+    .nav-spacer{display:none;}
+    .nav-bottom{border:none; margin:0; padding:0;}
+    .nav-btn span{display:none;}
+    .main{padding:20px 16px 30px;}
+    .kanban{grid-template-columns:1fr;}
+    .cal-grid{grid-auto-rows:auto;}
+    .cal-cell{min-height:70px;}
+    table, thead, tbody, tr, td{display:block;}
+    thead{display:none;}
+    tbody tr{border-bottom:1px solid var(--line); padding:10px 0;}
+    tbody td{border:none; padding:3px 4px;}
+    .topbar{flex-wrap:wrap;}
+  }
+</style>
+</head>
+<body>
+
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="mark">MJ</div>
+        <strong>MeuJudi</strong>
+      </div>
+      <nav>
+        <button class="nav-btn active" data-view="monitoramento">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 4h9l4 4v12H6z"/><path d="M9 12h6M9 16h6M9 8h3"/></svg>
+          <span>Monitoramento</span>
+        </button>
+        <button class="nav-btn" data-view="agenda">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/></svg>
+          <span>Agenda</span>
+        </button>
+        <button class="nav-btn" data-view="kanban">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.5 4.5v15M15 4.5v9"/></svg>
+          <span>Tarefas</span>
+        </button>
+        <button class="nav-btn" data-view="clientes">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5"/><circle cx="17" cy="9" r="2.2"/><path d="M15.5 19c0-2.3 1.6-4 3.8-4.4"/></svg>
+          <span>Clientes</span>
+        </button>
+      </nav>
+      <div class="nav-spacer"></div>
+      <div class="nav-bottom">
+        <button class="nav-btn" data-view="config">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a7.9 7.9 0 000-3l2-1.4-2-3.4-2.3.7a8 8 0 00-2.6-1.5L14 2.5h-4l-.5 2.4a8 8 0 00-2.6 1.5l-2.3-.7-2 3.4 2 1.4a7.9 7.9 0 000 3l-2 1.4 2 3.4 2.3-.7a8 8 0 002.6 1.5l.5 2.4h4l.5-2.4a8 8 0 002.6-1.5l2.3.7 2-3.4-2-1.4z"/></svg>
+          <span>Configurações</span>
+        </button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div class="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          Buscar processo, cliente ou tarefa…
+        </div>
+        <div class="user">
+          <div class="who"><strong>Julia.Gorgel</strong><span>Advogada</span></div>
+          <div class="avatar" style="width:34px;height:34px;font-size:12px;">JG</div>
+        </div>
+      </div>
+
+      <!-- MONITORAMENTO -->
+      <div class="view active" id="view-monitoramento">
+        <div class="main-top">
+          <div>
+            <h2>Monitoramento de processos</h2>
+            <p>Atualizações puxadas automaticamente dos tribunais — nada é consultado manualmente.</p>
+          </div>
+          <div class="pill">● 12 processos ativos</div>
+        </div>
+
+        <div class="tabgroup">
+          <div class="tabs">
+            <button class="tab-btn active" data-target="mon-lista">Lista</button>
+            <button class="tab-btn" data-target="mon-kanban">Kanban</button>
+          </div>
+
+          <div class="subview active" id="mon-lista">
+            <div class="proc-card">
+              <div class="proc-left">
+                <div class="proc-num mono">0001234-56.2024.8.26.0100</div>
+                <div class="proc-title">Ação de Cobrança — Mercado Central Ltda.</div>
+                <div class="proc-meta">Juntada de petição do requerido · há 2 horas</div>
+              </div>
+              <div class="proc-right">
+                <span class="stamp">Novo hoje</span>
+                <span class="tag tribunal">TJSP</span>
+                <span class="tag status-andamento">Em andamento</span>
+              </div>
+            </div>
+
+            <div class="proc-card">
+              <div class="proc-left">
+                <div class="proc-num mono">0004567-89.2023.5.02.0040</div>
+                <div class="proc-title">Reclamação Trabalhista — J. Andrade</div>
+                <div class="proc-meta">Audiência de instrução designada · há 1 dia</div>
+              </div>
+              <div class="proc-right">
+                <span class="tag tribunal">TRT-2</span>
+                <span class="tag status-andamento">Em andamento</span>
+              </div>
+            </div>
+
+            <div class="proc-card">
+              <div class="proc-left">
+                <div class="proc-num mono">0007890-12.2024.8.26.0224</div>
+                <div class="proc-title">Divórcio Litigioso — Família Ramos</div>
+                <div class="proc-meta">Aguardando manifestação da parte contrária</div>
+              </div>
+              <div class="proc-right">
+                <span class="tag tribunal">TJSP</span>
+                <span class="tag status-aguardando">Aguardando</span>
+              </div>
+            </div>
+
+            <div class="proc-card">
+              <div class="proc-left">
+                <div class="proc-num mono">1002345-67.2022.4.03.6100</div>
+                <div class="proc-title">Execução Fiscal — Insumos Bertoni ME</div>
+                <div class="proc-meta">Penhora on-line em análise · há 3 dias</div>
+              </div>
+              <div class="proc-right">
+                <span class="tag tribunal">TRF-3</span>
+                <span class="tag status-andamento">Em andamento</span>
+              </div>
+            </div>
+
+            <div class="proc-card">
+              <div class="proc-left">
+                <div class="proc-num mono">0009988-77.2024.8.26.0577</div>
+                <div class="proc-title">Inventário — Espólio de A. Ferraz</div>
+                <div class="proc-meta">Sentença homologatória publicada</div>
+              </div>
+              <div class="proc-right">
+                <span class="tag tribunal">TJSP</span>
+                <span class="tag status-concluido">Concluído</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="subview" id="mon-kanban">
+            <div class="kanban" style="grid-template-columns:repeat(3, 1fr);">
+              <div class="kcol">
+                <h4>Em processo <span class="count">3</span></h4>
+                <div class="kcard">
+                  <div class="ktitle">Ação de Cobrança</div>
+                  <div class="kdesc">Mercado Central Ltda.</div>
+                  <div class="kmeta"><span class="mono" style="font-size:11px;color:var(--text-soft);">0001234-56</span><span class="tag tribunal" style="font-size:10.5px;">TJSP</span></div>
+                </div>
+                <div class="kcard">
+                  <div class="ktitle">Reclamação Trabalhista</div>
+                  <div class="kdesc">J. Andrade</div>
+                  <div class="kmeta"><span class="mono" style="font-size:11px;color:var(--text-soft);">0004567-89</span><span class="tag tribunal" style="font-size:10.5px;">TRT-2</span></div>
+                </div>
+                <div class="kcard">
+                  <div class="ktitle">Execução Fiscal</div>
+                  <div class="kdesc">Insumos Bertoni ME</div>
+                  <div class="kmeta"><span class="mono" style="font-size:11px;color:var(--text-soft);">1002345-67</span><span class="tag tribunal" style="font-size:10.5px;">TRF-3</span></div>
+                </div>
+              </div>
+              <div class="kcol">
+                <h4>Aguardando tribunal <span class="count">1</span></h4>
+                <div class="kcard">
+                  <div class="ktitle">Divórcio Litigioso</div>
+                  <div class="kdesc">Família Ramos</div>
+                  <div class="kmeta"><span class="mono" style="font-size:11px;color:var(--text-soft);">0007890-12</span><span class="tag tribunal" style="font-size:10.5px;">TJSP</span></div>
+                </div>
+              </div>
+              <div class="kcol">
+                <h4>Concluído <span class="count">1</span></h4>
+                <div class="kcard">
+                  <div class="ktitle">Inventário</div>
+                  <div class="kdesc">Espólio de A. Ferraz</div>
+                  <div class="kmeta"><span class="mono" style="font-size:11px;color:var(--text-soft);">0009988-77</span><span class="tag tribunal" style="font-size:10.5px;">TJSP</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AGENDA MENSAL -->
+      <div class="view" id="view-agenda">
+        <div class="main-top">
+          <div>
+            <h2>Agenda</h2>
+            <p>Prazos e audiências, com contagem automática em dias úteis.</p>
+          </div>
+          <div class="pill">● 3 prazos essa semana</div>
+        </div>
+
+        <div class="cal-head">
+          <div class="cal-nav">
+            <button aria-label="Mês anterior">‹</button>
+            <div class="cal-month">Julho 2026</div>
+            <button aria-label="Próximo mês">›</button>
+          </div>
+          <div class="legend">
+            <span><span class="dot urgent"></span>Prazo fatal</span>
+            <span><span class="dot normal"></span>Audiência</span>
+            <span><span class="dot later"></span>Interno</span>
+          </div>
+        </div>
+
+        <div class="calendar">
+          <div class="cal-weekdays">
+            <div>Dom</div><div>Seg</div><div>Ter</div><div>Qua</div><div>Qui</div><div>Sex</div><div>Sáb</div>
+          </div>
+          <div class="cal-grid">
+            <div class="cal-cell muted"><span class="num">28</span></div>
+            <div class="cal-cell muted"><span class="num">29</span></div>
+            <div class="cal-cell muted"><span class="num">30</span></div>
+            <div class="cal-cell"><span class="num">1</span></div>
+            <div class="cal-cell"><span class="num">2</span></div>
+            <div class="cal-cell"><span class="num">3</span></div>
+            <div class="cal-cell"><span class="num">4</span></div>
+
+            <div class="cal-cell"><span class="num">5</span></div>
+            <div class="cal-cell"><span class="num">6</span></div>
+            <div class="cal-cell"><span class="num">7</span></div>
+            <div class="cal-cell"><span class="num">8</span></div>
+            <div class="cal-cell"><span class="num">9</span></div>
+            <div class="cal-cell"><span class="num">10</span></div>
+            <div class="cal-cell"><span class="num">11</span></div>
+
+            <div class="cal-cell"><span class="num">12</span></div>
+            <div class="cal-cell today">
+              <span class="num">13</span>
+              <div class="ev later">Reunião — Ramos</div>
+            </div>
+            <div class="cal-cell"><span class="num">14</span></div>
+            <div class="cal-cell">
+              <span class="num">15</span>
+              <div class="ev later">Retorno cliente Bertoni</div>
+            </div>
+            <div class="cal-cell">
+              <span class="num">16</span>
+              <div class="ev urgent">Contestação — Cobrança</div>
+            </div>
+            <div class="cal-cell"><span class="num">17</span></div>
+            <div class="cal-cell"><span class="num">18</span></div>
+
+            <div class="cal-cell"><span class="num">19</span></div>
+            <div class="cal-cell"><span class="num">20</span></div>
+            <div class="cal-cell">
+              <span class="num">21</span>
+              <div class="ev normal">Audiência — Andrade, 14h</div>
+            </div>
+            <div class="cal-cell">
+              <span class="num">22</span>
+              <div class="ev later">Prazo interno — minuta recurso</div>
+            </div>
+            <div class="cal-cell"><span class="num">23</span></div>
+            <div class="cal-cell"><span class="num">24</span></div>
+            <div class="cal-cell">
+              <span class="num">25</span>
+              <div class="ev urgent">Embargos — Bertoni</div>
+            </div>
+
+            <div class="cal-cell"><span class="num">26</span></div>
+            <div class="cal-cell"><span class="num">27</span></div>
+            <div class="cal-cell"><span class="num">28</span></div>
+            <div class="cal-cell"><span class="num">29</span></div>
+            <div class="cal-cell">
+              <span class="num">30</span>
+              <div class="ev normal">Manifestação laudo — Ramos</div>
+            </div>
+            <div class="cal-cell"><span class="num">31</span></div>
+            <div class="cal-cell muted"><span class="num">1</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- KANBAN -->
+      <div class="view" id="view-kanban">
+        <div class="main-top">
+          <div>
+            <h2>Painel de tarefas</h2>
+            <p>Cada processo com uma etapa clara, prioridade e responsável definido.</p>
+          </div>
+          <div class="pill">● 4 pessoas na equipe</div>
+        </div>
+
+        <div class="kanban">
+          <div class="kcol">
+            <h4>A fazer <span class="count">3</span></h4>
+            <div class="kcard">
+              <div class="ktitle">Redigir contestação</div>
+              <div class="kdesc">Mercado Central Ltda. — Ação de Cobrança</div>
+              <span class="kprio alta">Alta</span>
+              <div class="kmeta"><span class="mono" style="font-size:11px;color:var(--text-soft);">0001234-56</span><div class="avatar">CP</div></div>
+            </div>
+            <div class="kcard">
+              <div class="ktitle">Levantar documentos do espólio</div>
+              <div class="kdesc">Inventário — Família Ferraz</div>
+              <span class="kprio media">Média</span>
+              <div class="kmeta"><span class="mono" style="font-size:11px;color:var(--text-soft);">0009988-77</span><div class="avatar">RM</div></div>
+            </div>
+            <div class="kcard">
+              <div class="ktitle">Responder e-mail do cliente</div>
+              <div class="kdesc">Insumos Bertoni ME — dúvida sobre penhora</div>
+              <span class="kprio baixa">Baixa</span>
+              <div class="kmeta"><span class="mono" style="font-size:11px;color:var(--text-soft);">1002345-67</span><div class="avatar">DA</div></div>
+            </div>
+          </div>
+
+          <div class="kcol">
+            <h4>Em andamento <span class="count">2</span></h4>
+            <div class="kcard">
+              <div class="ktitle">Preparar quesitos periciais</div>
+              <div class="kdesc">Divórcio Litigioso — Família Ramos</div>
+              <span class="kprio alta">Alta</span>
+              <div class="kmeta"><span class="mono" style="font-size:11px;color:var(--text-soft);">0007890-12</span><div class="avatar">DA</div></div>
+            </div>
+            <div class="kcard">
+              <div class="ktitle">Organizar cópias do processo</div>
+              <div class="kdesc">Reclamação Trabalhista — J. Andrade</div>
+              <span class="kprio media">Média</span>
+              <div class="kmeta"><span class="mono" style="font-size:11px;color:var(--text-soft);">0004567-89</span><div class="avatar">CP</div></div>
+            </div>
+          </div>
+
+          <div class="kcol">
+            <h4>Em revisão <span class="count">2</span></h4>
+            <div class="kcard">
+              <div class="ktitle">Revisar minuta de recurso</div>
+              <div class="kdesc">Reclamação Trabalhista — J. Andrade</div>
+              <span class="kprio media">Média</span>
+              <div class="kmeta"><span class="mono" style="font-size:11px;color:var(--text-soft);">0004567-89</span><div class="avatar">CP</div></div>
+            </div>
+            <div class="kcard">
+              <div class="ktitle">Revisar contrato de honorários</div>
+              <div class="kdesc">Mercado Central Ltda.</div>
+              <span class="kprio baixa">Baixa</span>
+              <div class="kmeta"><span class="mono" style="font-size:11px;color:var(--text-soft);">0001234-56</span><div class="avatar">RM</div></div>
+            </div>
+          </div>
+
+          <div class="kcol">
+            <h4>Concluído <span class="count">2</span></h4>
+            <div class="kcard">
+              <div class="ktitle">Protocolar sentença homologada</div>
+              <div class="kdesc">Inventário — Espólio de A. Ferraz</div>
+              <span class="kprio baixa">Baixa</span>
+              <div class="kmeta"><span class="mono" style="font-size:11px;color:var(--text-soft);">0009988-77</span><div class="avatar">RM</div></div>
+            </div>
+            <div class="kcard">
+              <div class="ktitle">Enviar procuração assinada</div>
+              <div class="kdesc">Mercado Central Ltda.</div>
+              <span class="kprio baixa">Baixa</span>
+              <div class="kmeta"><span class="mono" style="font-size:11px;color:var(--text-soft);">0001234-56</span><div class="avatar">CP</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CLIENTES (com abas: Clientes / CRM) -->
+      <div class="view" id="view-clientes">
+        <div class="main-top">
+          <div>
+            <h2>Clientes</h2>
+            <p>Cadastro e histórico de relacionamento com cada cliente do escritório.</p>
+          </div>
+          <div class="pill">● 9 clientes ativos</div>
+        </div>
+
+        <div class="tabgroup">
+        <div class="tabs">
+          <button class="tab-btn active" data-target="tab-lista">Clientes</button>
+          <button class="tab-btn" data-target="tab-crm">CRM</button>
+        </div>
+
+        <div class="subview active" id="tab-lista">
+          <table>
+            <thead>
+              <tr><th>Cliente</th><th>Processos</th><th>Último contato</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Mercado Central Ltda.</td><td>1</td><td>há 2 dias</td><td><span class="client-status ativo">Ativo</span></td></tr>
+              <tr><td>J. Andrade</td><td>1</td><td>há 5 dias</td><td><span class="client-status ativo">Ativo</span></td></tr>
+              <tr><td>Família Ramos</td><td>1</td><td>há 1 dia</td><td><span class="client-status pendente">Aguardando retorno</span></td></tr>
+              <tr><td>Insumos Bertoni ME</td><td>1</td><td>há 6 dias</td><td><span class="client-status ativo">Ativo</span></td></tr>
+              <tr><td>Espólio de A. Ferraz</td><td>1</td><td>há 3 dias</td><td><span class="client-status ativo">Ativo</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="subview" id="tab-crm">
+          <div class="kanban" style="margin-bottom:26px;">
+            <div class="kcol">
+              <h4>Novo contato <span class="count">1</span></h4>
+              <div class="kcard">
+                <div class="ktitle">R. Souza</div>
+                <div class="kdesc">Consulta inicial · interesse em ação trabalhista</div>
+              </div>
+            </div>
+            <div class="kcol">
+              <h4>Em atendimento <span class="count">2</span></h4>
+              <div class="kcard">
+                <div class="ktitle">Família Ramos</div>
+                <div class="kdesc">Divórcio litigioso em andamento</div>
+              </div>
+              <div class="kcard">
+                <div class="ktitle">Insumos Bertoni ME</div>
+                <div class="kdesc">Execução fiscal em andamento</div>
+              </div>
+            </div>
+            <div class="kcol">
+              <h4>Aguardando documentos <span class="count">1</span></h4>
+              <div class="kcard">
+                <div class="ktitle">J. Andrade</div>
+                <div class="kdesc">Aguardando comprovantes para a audiência</div>
+              </div>
+            </div>
+            <div class="kcol">
+              <h4>Cliente ativo <span class="count">2</span></h4>
+              <div class="kcard">
+                <div class="ktitle">Mercado Central Ltda.</div>
+                <div class="kdesc">Relacionamento recorrente</div>
+              </div>
+              <div class="kcard">
+                <div class="ktitle">Espólio de A. Ferraz</div>
+                <div class="kdesc">Processo concluído recentemente</div>
+              </div>
+            </div>
+          </div>
+
+          <h3 style="font-family:'Fraunces',serif; font-size:16px; color:var(--ink); margin:0 0 12px;">Histórico recente</h3>
+
+          <div class="crm-item">
+            <div class="crm-chan">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 11.5a8.4 8.4 0 01-8.9 8.4 8.5 8.5 0 01-4-1L3 20l1.2-4a8.4 8.4 0 01-1-4A8.4 8.4 0 0111.6 3.6 8.4 8.4 0 0120 11.5z"/></svg>
+            </div>
+            <div class="crm-body">
+              <strong>Família Ramos</strong>
+              <div class="crm-note">Mensagem via WhatsApp perguntando sobre a data da próxima audiência. Respondido e agendada reunião de alinhamento.</div>
+              <div class="crm-when">Hoje, 13/07 · 10:24</div>
+            </div>
+          </div>
+          <div class="crm-item">
+            <div class="crm-chan">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>
+            </div>
+            <div class="crm-body">
+              <strong>Insumos Bertoni ME</strong>
+              <div class="crm-note">E-mail solicitando atualização sobre a penhora on-line. Encaminhado retorno com posição do processo.</div>
+              <div class="crm-when">08/07 · 16:40</div>
+            </div>
+          </div>
+          <div class="crm-item">
+            <div class="crm-chan">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/><circle cx="10" cy="7" r="4"/></svg>
+            </div>
+            <div class="crm-body">
+              <strong>J. Andrade</strong>
+              <div class="crm-note">Reunião presencial para preparação da audiência de instrução — documentos revisados juntos.</div>
+              <div class="crm-when">07/07 · 09:00</div>
+            </div>
+          </div>
+          <div class="crm-item">
+            <div class="crm-chan">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 11.5a8.4 8.4 0 01-8.9 8.4 8.5 8.5 0 01-4-1L3 20l1.2-4a8.4 8.4 0 01-1-4A8.4 8.4 0 0111.6 3.6 8.4 8.4 0 0120 11.5z"/></svg>
+            </div>
+            <div class="crm-body">
+              <strong>Espólio de A. Ferraz</strong>
+              <div class="crm-note">Confirmação por WhatsApp do recebimento da sentença homologatória. Cliente agradeceu o andamento.</div>
+              <div class="crm-when">04/07 · 18:12</div>
+            </div>
+          </div>
+        </div>
+        </div>
+      </div>
+
+      <!-- CONFIGURAÇÕES -->
+      <div class="view" id="view-config">
+        <div class="main-top">
+          <div>
+            <h2>Configurações</h2>
+            <p>Preferências de notificação, permissões da equipe e integrações do sistema.</p>
+          </div>
+        </div>
+
+        <div class="settings-grid">
+          <div class="set-card">
+            <h3>Notificações</h3>
+            <p>Como você e a equipe recebem alertas de prazo e movimentação.</p>
+            <div class="set-row">
+              <div><div class="label">E-mail</div><div class="desc">Resumo diário e alertas de prazo</div></div>
+              <button class="switch on"></button>
+            </div>
+            <div class="set-row">
+              <div><div class="label">WhatsApp</div><div class="desc">Alertas urgentes em tempo real</div></div>
+              <button class="switch on"></button>
+            </div>
+            <div class="set-row">
+              <div><div class="label">Antecedência do alerta de prazo</div><div class="desc">Avisar com quantos dias de antecedência</div></div>
+              <span class="role-badge">5 dias</span>
+            </div>
+          </div>
+
+          <div class="set-card">
+            <h3>Equipe e permissões</h3>
+            <p>Quem vê o quê dentro do sistema.</p>
+            <div class="team-row">
+              <div class="who"><strong>Advogada responsável</strong><span>Vê todos os processos · prioridade para os atribuídos</span></div>
+              <span class="role-badge">Admin</span>
+            </div>
+            <div class="team-row">
+              <div class="who"><strong>C. Porto</strong><span>Vê todos os processos · prioridade para os atribuídos</span></div>
+              <span class="role-badge">Advogado</span>
+            </div>
+            <div class="team-row">
+              <div class="who"><strong>R. Martins</strong><span>Vê apenas processos atribuídos</span></div>
+              <span class="role-badge">Estagiário</span>
+            </div>
+            <div class="team-row">
+              <div class="who"><strong>D. Alves</strong><span>Vê apenas processos atribuídos</span></div>
+              <span class="role-badge">Estagiário</span>
+            </div>
+          </div>
+
+          <div class="set-card">
+            <h3>Integração de monitoramento</h3>
+            <p>Fonte dos dados de andamento processual.</p>
+            <div class="set-row">
+              <div><div class="label">API de monitoramento</div><div class="desc">Conectada · verificando tribunais diariamente</div></div>
+              <span class="role-badge" style="background:rgba(75,107,78,0.14); color:var(--moss);">Ativa</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+<script>
+  const buttons = document.querySelectorAll('.nav-btn');
+  const views = document.querySelectorAll('.view');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      buttons.forEach(b => b.classList.remove('active'));
+      views.forEach(v => v.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('view-' + btn.dataset.view).classList.add('active');
+    });
+  });
+
+  document.querySelectorAll('.tabgroup').forEach(group => {
+    const btns = group.querySelectorAll('.tab-btn');
+    const subs = group.querySelectorAll('.subview');
+    btns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        btns.forEach(b => b.classList.remove('active'));
+        subs.forEach(v => v.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.target).classList.add('active');
+      });
+    });
+  });
+
+  document.querySelectorAll('.switch').forEach(sw => {
+    sw.addEventListener('click', () => sw.classList.toggle('on'));
+  });
+</script>
+
+</body>
+</html>

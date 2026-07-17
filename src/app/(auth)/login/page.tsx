@@ -30,7 +30,7 @@ export default async function LoginPage({
       </CardHeader>
       <CardContent>
         {errorMessage ? (
-          <div className="mb-4 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             {errorMessage}
           </div>
         ) : null}
@@ -40,7 +40,12 @@ export default async function LoginPage({
             <Input id="email" name="email" type="email" placeholder="voce@escritorio.com.br" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Senha</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Senha</Label>
+              <Link href="/forgot-password" className="text-xs text-muted-foreground hover:text-primary">
+                Esqueci minha senha
+              </Link>
+            </div>
             <PasswordInput id="password" name="password" />
           </div>
           <Button className="w-full" type="submit">

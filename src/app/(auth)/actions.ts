@@ -35,11 +35,16 @@ function getSafeRedirect(value: FormDataEntryValue | null, fallback: string) {
 export async function signUp(formData: FormData) {
   const email = requireString(formData, "email");
   const password = requireString(formData, "password");
+  const passwordConfirmation = formData.get("password_confirmation");
   const name = requireString(formData, "name");
   const terms = formData.get("terms");
 
   if (terms !== "on") {
     redirect("/register?error=terms_required");
+  }
+
+  if (typeof passwordConfirmation !== "string" || password !== passwordConfirmation) {
+    redirect("/register?error=password_mismatch");
   }
 
   const supabase = await createClient();
@@ -62,4 +67,27 @@ export async function signUp(formData: FormData) {
   }
 
   redirect("/onboarding");
+}
+
+export async function resendConfirmation() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user?.email) {
+    await supabase.auth.resend({ type: "signup", email: user.email });
+  }
+  redirect("/onboarding?success=email_resent");
+}
+
+export async function forgotPassword(formData: FormData) {
+  const email = requireString(formData, "email");
+  const supabase = await createClient();
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/reset-password`,
+  });
+  if (error) {
+    redirect("/forgot-password?error=send_failed");
+  }
+  redirect("/forgot-password?success=sent");
 }

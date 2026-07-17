@@ -10,6 +10,7 @@ import { signUp } from "../actions";
 const errorMessages: Record<string, string> = {
   terms_required: "Voce precisa aceitar os termos de uso.",
   "User already registered": "Este email ja esta cadastrado.",
+  password_mismatch: "As senhas nao coincidem.",
 };
 
 export default async function RegisterPage({
@@ -31,7 +32,7 @@ export default async function RegisterPage({
       </CardHeader>
       <CardContent>
         {errorMessage ? (
-          <div className="mb-4 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             {errorMessage}
           </div>
         ) : null}
@@ -53,9 +54,13 @@ export default async function RegisterPage({
               <Label htmlFor="password">Senha</Label>
               <PasswordInput id="password" name="password" minLength={8} />
             </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="password_confirmation">Confirmar senha</Label>
+              <PasswordInput id="password_confirmation" name="password_confirmation" minLength={8} />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="oab">OAB</Label>
-              <Input id="oab" name="oab" placeholder="67553" />
+              <Input id="oab" name="oab" placeholder="67553" inputMode="numeric" pattern="[0-9]*" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="uf">UF</Label>
@@ -66,7 +71,15 @@ export default async function RegisterPage({
           <label className="flex items-start gap-3 rounded-md border border-border p-3 text-sm text-muted-foreground">
             <input className="mt-1" type="checkbox" name="terms" required />
             <span>
-              Aceito os termos de uso e a politica de privacidade do MeuJudi.
+              Aceito os{" "}
+              <Link href="/termos" target="_blank" className="font-medium text-primary underline">
+                termos de uso
+              </Link>{" "}
+              e a{" "}
+              <Link href="/privacidade" target="_blank" className="font-medium text-primary underline">
+                politica de privacidade
+              </Link>{" "}
+              do MeuJudi.
             </span>
           </label>
 
