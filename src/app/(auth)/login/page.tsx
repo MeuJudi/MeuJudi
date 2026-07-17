@@ -6,7 +6,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { signIn } from "../actions";
 
-export default function LoginPage() {
+const errorMessages: Record<string, string> = {
+  "Invalid login credentials": "Email ou senha incorretos.",
+  "Email not confirmed": "Confirme seu email antes de entrar.",
+  auth_callback_failed: "Erro ao autenticar. Tente novamente.",
+};
+
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const params = await searchParams;
+  const errorKey = params.error ? decodeURIComponent(params.error) : null;
+  const errorMessage = errorKey ? (errorMessages[errorKey] ?? "Erro ao entrar. Tente novamente.") : null;
+
   return (
     <Card>
       <CardHeader>
@@ -14,6 +28,11 @@ export default function LoginPage() {
         <CardDescription>Acesse o painel do seu escritorio.</CardDescription>
       </CardHeader>
       <CardContent>
+        {errorMessage ? (
+          <div className="mb-4 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {errorMessage}
+          </div>
+        ) : null}
         <form action={signIn} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>

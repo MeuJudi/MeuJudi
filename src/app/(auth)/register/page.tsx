@@ -6,7 +6,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { signUp } from "../actions";
 
-export default function RegisterPage() {
+const errorMessages: Record<string, string> = {
+  terms_required: "Voce precisa aceitar os termos de uso.",
+  "User already registered": "Este email ja esta cadastrado.",
+};
+
+export default async function RegisterPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const params = await searchParams;
+  const errorKey = params.error ? decodeURIComponent(params.error) : null;
+  const errorMessage = errorKey ? (errorMessages[errorKey] ?? "Erro ao criar conta. Tente novamente.") : null;
+
   return (
     <Card>
       <CardHeader>
@@ -16,6 +29,11 @@ export default function RegisterPage() {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {errorMessage ? (
+          <div className="mb-4 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {errorMessage}
+          </div>
+        ) : null}
         <form action={signUp} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">
