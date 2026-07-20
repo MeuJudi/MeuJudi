@@ -104,7 +104,7 @@ type MonitoramentoViewProps = {
 };
 
 const statusClass: Record<MonitorProcess["status"], string> = {
-  ativo: "bg-[color-mix(in_srgb,var(--tenant-brass)_15%,transparent)] text-[#8c6425]",
+  ativo: "bg-[color-mix(in_srgb,var(--tenant-brass)_15%,transparent)] text-[var(--tenant-brass)]",
   suspenso: "bg-muted text-muted-foreground",
   arquivado: "bg-[color-mix(in_srgb,var(--tenant-sidebar)_8%,transparent)] text-[var(--color-card-foreground)]",
   concluido: "bg-[color-mix(in_srgb,var(--tenant-moss)_14%,transparent)] text-[var(--tenant-moss)]",
@@ -248,7 +248,7 @@ function SortableColumn({
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(
-        "flex max-h-[680px] min-h-[460px] w-[320px] shrink-0 flex-col rounded-lg border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-3",
+        "flex h-[min(68vh,720px)] min-h-[460px] w-[320px] shrink-0 flex-col rounded-lg border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-3",
         isDragging && "opacity-50",
         isOver && "ring-2 ring-primary",
       )}
@@ -428,6 +428,8 @@ export function MonitoramentoView({
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   const [deleteColumn, setDeleteColumn] = useState<(KanbanColumn & { processCount: number }) | null>(null);
+  const [creatingNewColumn, setCreatingNewColumn] = useState(false);
+  const [newColumnName, setNewColumnName] = useState("");
   const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const boardScrollRef = useRef<HTMLDivElement | null>(null);
@@ -544,10 +546,10 @@ export function MonitoramentoView({
     }
   }
 
-  function handleCreateColumn() {
+  function handleCreateColumn(name = "Nova coluna") {
     if (!tenantId) return;
     startTransition(async () => {
-      const column = await createKanbanColumn(tenantId);
+      const column = await createKanbanColumn(tenantId, name);
       setLocalColumns((current) => [...current, {
         id: column.id,
         name: column.name,
@@ -556,6 +558,14 @@ export function MonitoramentoView({
         isDefault: column.is_default,
       }]);
     });
+  }
+
+  function addNewColumn() {
+    const cleanName = newColumnName.trim();
+    if (!cleanName) return;
+    handleCreateColumn(cleanName);
+    setCreatingNewColumn(false);
+    setNewColumnName("");
   }
 
   function handleStartEdit(column: KanbanColumn) {
@@ -644,7 +654,7 @@ export function MonitoramentoView({
             <div className="inline-flex rounded-lg border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-1">
               {[
                 ["lista", ListFilter, "Lista"],
-                ["kanban", KanbanSquare, "Kanban"],
+                ["kanban", KanbanSquare, "Quadro"],
                 ["mural", Megaphone, "Mural"],
               ].map(([value, Icon, label]) => (
                 <button
@@ -663,12 +673,6 @@ export function MonitoramentoView({
             </div>
 
             <div className="flex min-w-[260px] flex-1 flex-wrap items-center justify-end gap-2">
-              {view === "kanban" ? (
-                <Button type="button" onClick={handleCreateColumn} disabled={!tenantId || isPending} className="h-9">
-                  <Plus className="h-4 w-4" />
-                  Coluna
-                </Button>
-              ) : null}
               <label className="flex min-w-[260px] flex-1 items-center gap-2 rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-2 text-sm text-[var(--color-muted-foreground)] md:max-w-md">
                 <Search className="h-4 w-4" />
                 <input
@@ -723,6 +727,35 @@ export function MonitoramentoView({
                         onOpenProcess={setSelectedProcessId}
                       />
                     ))}
+                    <div className="w-[320px] shrink-0">
+                      {creatingNewColumn ? (
+                        <div className="flex h-[min(68vh,720px)] min-h-[460px] flex-col justify-center rounded-lg border-2 border-dashed border-[var(--tenant-brass)] bg-[var(--tenant-surface-muted)] p-4">
+                          <input
+                            autoFocus
+                            value={newColumnName}
+                            onChange={(event) => setNewColumnName(event.target.value)}
+                            onKeyDown={(event) => { if (event.key === "Enter" && newColumnName.trim()) addNewColumn(); if (event.key === "Escape") { setCreatingNewColumn(false); setNewColumnName(""); } }}
+                            placeholder="Nome da coluna..."
+                            className="w-full rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-2 text-sm font-semibold text-[var(--tenant-surface-foreground)] outline-none focus:ring-2 focus:ring-primary"
+                          />
+                          <div className="mt-3 flex gap-2">
+                            <Button type="button" size="sm" disabled={!newColumnName.trim() || isPending} onClick={addNewColumn}>Criar coluna</Button>
+                            <Button type="button" size="sm" variant="ghost" onClick={() => { setCreatingNewColumn(false); setNewColumnName(""); }}>Cancelar</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={!tenantId || isPending}
+                          onClick={() => { setNewColumnName(""); setCreatingNewColumn(true); }}
+                          className="flex h-[min(68vh,720px)] min-h-[460px] w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] text-[var(--color-muted-foreground)] transition-colors hover:border-[var(--tenant-brass)] hover:text-[var(--tenant-brass)] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <Plus className="h-7 w-7" />
+                          <span className="text-sm font-medium">Adicionar coluna</span>
+                          <span className="text-xs">Organize o fluxo do escritório</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </SortableContext>
               </div>
@@ -752,7 +785,7 @@ export function MonitoramentoView({
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Badge variant="outline">{item.tribunal}</Badge>
-                        <Badge className="bg-[color-mix(in_srgb,var(--tenant-brass)_14%,transparent)] text-[#8c6425]">
+                        <Badge className="bg-[color-mix(in_srgb,var(--tenant-brass)_14%,transparent)] text-[var(--tenant-brass)]">
                           {shortDate(item.date)}
                         </Badge>
                       </div>

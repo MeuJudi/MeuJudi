@@ -18,7 +18,7 @@ export type TaskColumn = { id: string; name: string; position: number; color: st
 
 const priorityClass = {
   alta: "bg-[color-mix(in_srgb,var(--tenant-wine)_10%,transparent)] text-[var(--tenant-wine)]",
-  media: "bg-[color-mix(in_srgb,var(--tenant-brass)_14%,transparent)] text-[#8c6425]",
+  media: "bg-[color-mix(in_srgb,var(--tenant-brass)_14%,transparent)] text-[var(--tenant-brass)]",
   baixa: "bg-[color-mix(in_srgb,var(--tenant-moss)_10%,transparent)] text-[var(--tenant-moss)]",
 };
 const priorityLabel = { alta: "Alta", media: "Média", baixa: "Baixa" };
@@ -37,7 +37,7 @@ function TaskCard({ task, completed, handle, onClick }: { task: TaskItem; comple
       onClick={onClick}
       className={cn(
         "border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] shadow-sm transition-shadow hover:shadow-md",
-        completed && "border-green-200 bg-[color-mix(in_srgb,#16a34a_6%,var(--tenant-surface))]",
+        completed && "border-[color-mix(in_srgb,var(--tenant-moss)_35%,var(--tenant-line))] bg-[color-mix(in_srgb,var(--tenant-moss)_8%,var(--tenant-surface))]",
         onClick && "cursor-pointer",
       )}
     >
@@ -75,7 +75,7 @@ function Column({ column, tasks, completed, editing, draft, onEdit, onDraft, onS
   const { setNodeRef: dropRef, isOver } = useDroppable({ id: column.id, data: { type: "column" } });
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: column.id, data: { type: "column" } });
   return (
-    <section ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} data-kanban-column className={cn("flex min-h-[460px] w-[320px] shrink-0 flex-col rounded-lg border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-3 text-[var(--tenant-surface-foreground)]", isDragging && "opacity-50", isOver && "ring-2 ring-primary")}>
+    <section ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} data-kanban-column className={cn("flex h-[min(68vh,720px)] min-h-[460px] w-[320px] shrink-0 flex-col rounded-lg border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-3 text-[var(--tenant-surface-foreground)]", isDragging && "opacity-50", isOver && "ring-2 ring-primary")}>
       <header className="mb-3 space-y-2">
         <div className="flex items-center gap-2">
           <button type="button" aria-label="Arrastar coluna" className="cursor-grab text-[var(--color-muted-foreground)] active:cursor-grabbing" {...attributes} {...listeners}><GripVertical className="h-4 w-4" /></button>
@@ -368,7 +368,7 @@ export function TarefasView({ tenantId, columns, tasks, users, currentUser, load
         <CardContent className="space-y-4 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="inline-flex rounded-lg border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-1">
-              {[["kanban", KanbanSquare, "Kanban"], ["lista", ListFilter, "Lista"]].map(([value, Icon, label]) => (
+              {[["kanban", KanbanSquare, "Quadro"], ["lista", ListFilter, "Lista"]].map(([value, Icon, label]) => (
                 <button key={value as string} type="button" onClick={() => setView(value as "kanban" | "lista")} className={cn("inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors", view === value ? "bg-[var(--tenant-surface)] text-[var(--tenant-brass)] shadow-sm" : "text-[var(--color-muted-foreground)] hover:text-[var(--tenant-brass)]")}>
                   <Icon className="h-4 w-4" />{label as string}
                 </button>

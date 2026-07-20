@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { MeuJudiLogo } from "./meujudi-logo";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   BarChart3,
   BriefcaseBusiness,
@@ -62,6 +62,7 @@ export function TenantShell({ children, userName, role, avatarUrl, initialPalett
   });
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [isSigningOut, startSignOut] = useTransition();
 
   const isStaff = role === "staff";
 
@@ -175,9 +176,9 @@ export function TenantShell({ children, userName, role, avatarUrl, initialPalett
           </div>
         </aside>
 
-        <main className="min-w-0 bg-[var(--tenant-paper)] px-4 py-5 text-gray-900 sm:px-6 lg:px-8">
+        <main className="min-w-0 bg-[var(--tenant-paper)] px-4 py-5 text-[var(--tenant-surface-foreground)] sm:px-6 lg:px-8">
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex min-w-[240px] flex-1 items-center gap-2 rounded-md border border-[var(--tenant-line)] bg-white px-3 py-2 text-sm text-gray-500">
+            <div className="flex min-w-[240px] flex-1 items-center gap-2 rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-2 text-sm text-[var(--color-muted-foreground)]">
               <Search className="h-4 w-4" />
               <span>Buscar processo, cliente ou tarefa...</span>
             </div>
@@ -191,21 +192,20 @@ export function TenantShell({ children, userName, role, avatarUrl, initialPalett
                         "flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors",
                         currentScope === "mine"
                           ? "border-[var(--tenant-brass)] bg-[color-mix(in_srgb,var(--tenant-brass)_10%,transparent)] text-[var(--tenant-brass)]"
-                          : "border-[var(--tenant-line)] bg-white text-gray-700 hover:bg-gray-50",
+                          : "border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] hover:bg-[var(--tenant-surface-muted)]",
                       )}
                     >
                       {currentScope === "mine" ? <User className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       <span className="hidden sm:inline">{currentScope === "mine" ? "Meus casos" : "Todos"}</span>
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-48 border-[var(--tenant-line)] bg-white !p-1" style={{ color: "#111827" }}>
+                  <PopoverContent className="w-48 border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] !p-1">
                     <button
                       type="button"
                       onClick={() => handleScopeChange("all")}
-                      style={{ color: currentScope === "all" ? undefined : "#111827" }}
                       className={cn(
-                        "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left transition-colors hover:bg-gray-50",
-                        currentScope === "all" && "bg-gray-50 !text-[var(--tenant-brass)]",
+                        "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-[var(--tenant-surface-foreground)] transition-colors hover:bg-[var(--tenant-surface-muted)]",
+                        currentScope === "all" && "bg-[var(--tenant-surface-muted)] !text-[var(--tenant-brass)]",
                       )}
                     >
                       <Eye className="h-4 w-4" />
@@ -214,10 +214,9 @@ export function TenantShell({ children, userName, role, avatarUrl, initialPalett
                     <button
                       type="button"
                       onClick={() => handleScopeChange("mine")}
-                      style={{ color: currentScope === "mine" ? undefined : "#111827" }}
                       className={cn(
-                        "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left transition-colors hover:bg-gray-50",
-                        currentScope === "mine" && "bg-gray-50 !text-[var(--tenant-brass)]",
+                        "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-[var(--tenant-surface-foreground)] transition-colors hover:bg-[var(--tenant-surface-muted)]",
+                        currentScope === "mine" && "bg-[var(--tenant-surface-muted)] !text-[var(--tenant-brass)]",
                       )}
                     >
                       <User className="h-4 w-4" />
@@ -233,7 +232,7 @@ export function TenantShell({ children, userName, role, avatarUrl, initialPalett
               >
                 <button
                   type="button"
-                  className="relative flex h-9 w-9 items-center justify-center rounded-md border border-[var(--tenant-line)] bg-white text-gray-500 transition-colors hover:bg-gray-50 hover:text-[var(--tenant-brass)]"
+                  className="relative flex h-9 w-9 items-center justify-center rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--color-muted-foreground)] transition-colors hover:bg-[var(--tenant-surface-muted)] hover:text-[var(--tenant-brass)]"
                 >
                   <Bell className="h-4 w-4" />
                   <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[var(--tenant-brass)] text-[8px] font-bold text-white">
@@ -241,63 +240,63 @@ export function TenantShell({ children, userName, role, avatarUrl, initialPalett
                   </span>
                 </button>
                 {notifOpen && (
-                  <div className="absolute right-0 top-full z-50 mt-1 w-80 rounded-md border border-[var(--tenant-line)] bg-white shadow-lg">
-                    <div className="border-b border-gray-200 px-4 py-3">
-                      <p className="text-sm font-semibold text-gray-900">
+                <div className="absolute right-0 top-full z-50 mt-1 w-80 rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] shadow-lg">
+                    <div className="border-b border-[var(--tenant-line)] px-4 py-3">
+                      <p className="text-sm font-semibold text-[var(--tenant-surface-foreground)]">
                         Notificações
                       </p>
                     </div>
                     <div className="max-h-72 overflow-y-auto">
-                      <div className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-gray-50">
-                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                      <div className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-[var(--tenant-surface-muted)]">
+                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--tenant-brass)_14%,transparent)] text-[var(--tenant-brass)]">
                           <CheckSquare className="h-4 w-4" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm text-gray-900">
+                          <p className="text-sm text-[var(--tenant-surface-foreground)]">
                             Prazo de <strong>Recurso INSS</strong> amanhã
                           </p>
-                          <p className="mt-0.5 text-xs text-gray-500">
+                          <p className="mt-0.5 text-xs text-[var(--color-muted-foreground)]">
                             Processo 0001234-56.2024.8.16.0001
                           </p>
-                          <p className="mt-0.5 text-xs text-gray-400">
+                          <p className="mt-0.5 text-xs text-[var(--color-muted-foreground)] opacity-75">
                             há 2 horas
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-gray-50">
-                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                      <div className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-[var(--tenant-surface-muted)]">
+                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--tenant-moss)_14%,transparent)] text-[var(--tenant-moss)]">
                           <UsersRound className="h-4 w-4" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm text-gray-900">
+                          <p className="text-sm text-[var(--tenant-surface-foreground)]">
                             Novo cliente <strong>Maria Santos</strong> cadastrado
                           </p>
-                          <p className="mt-0.5 text-xs text-gray-500">
+                          <p className="mt-0.5 text-xs text-[var(--color-muted-foreground)]">
                             por João Silva
                           </p>
-                          <p className="mt-0.5 text-xs text-gray-400">
+                          <p className="mt-0.5 text-xs text-[var(--color-muted-foreground)] opacity-75">
                             há 5 horas
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-gray-50">
-                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                      <div className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-[var(--tenant-surface-muted)]">
+                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--tenant-moss)_14%,transparent)] text-[var(--tenant-moss)]">
                           <FileSearch className="h-4 w-4" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm text-gray-900">
+                          <p className="text-sm text-[var(--tenant-surface-foreground)]">
                             Processo <strong>0009876-54.2024.8.16.0002</strong> movimentado
                           </p>
-                          <p className="mt-0.5 text-xs text-gray-500">
+                          <p className="mt-0.5 text-xs text-[var(--color-muted-foreground)]">
                             Despacho: Cite o réu
                           </p>
-                          <p className="mt-0.5 text-xs text-gray-400">
+                          <p className="mt-0.5 text-xs text-[var(--color-muted-foreground)] opacity-75">
                             ontem
                           </p>
                         </div>
                       </div>
                     </div>
-                    <div className="border-t border-gray-200 px-4 py-2">
+                    <div className="border-t border-[var(--tenant-line)] px-4 py-2">
                       <button
                         type="button"
                         className="w-full text-center text-xs font-medium text-[var(--tenant-brass)] hover:underline"
@@ -312,7 +311,7 @@ export function TenantShell({ children, userName, role, avatarUrl, initialPalett
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setProfileOpen(!profileOpen); }}
-                  className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-gray-50"
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-[var(--tenant-surface-muted)]"
                 >
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--tenant-sidebar)]">
                     {avatarUrl ? (
@@ -321,40 +320,40 @@ export function TenantShell({ children, userName, role, avatarUrl, initialPalett
                       <span className="font-mono text-xs font-bold text-[var(--tenant-brass-light)]">{initials(userName)}</span>
                     )}
                   </div>
-                  <span className="hidden text-sm font-medium text-gray-900 md:block">{userName}</span>
+                  <span className="hidden text-sm font-medium text-[var(--tenant-surface-foreground)] md:block">{userName}</span>
                 </button>
                 {profileOpen && (
-                  <div onClick={(e) => e.stopPropagation()} className="absolute right-0 top-full z-50 mt-1 w-56 rounded-md border border-gray-200 bg-white shadow-lg">
-                    <div className="border-b border-gray-200 px-4 py-3">
-                      <p className="text-sm font-medium text-gray-900">{userName}</p>
-                      <p className="text-xs text-gray-500">{role}</p>
+                  <div onClick={(e) => e.stopPropagation()} className="absolute right-0 top-full z-50 mt-1 w-56 rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] shadow-lg">
+                    <div className="border-b border-[var(--tenant-line)] px-4 py-3">
+                      <p className="text-sm font-medium text-[var(--tenant-surface-foreground)]">{userName}</p>
+                      <p className="text-xs text-[var(--color-muted-foreground)]">{role}</p>
                     </div>
                     <div className="py-1">
                       <Link
                         href={withTenantContext("/configuracoes/perfil")}
-                        className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                        className="flex items-center gap-2 px-4 py-2 text-sm text-[var(--tenant-surface-foreground)] transition-colors hover:bg-[var(--tenant-surface-muted)]"
                       >
                         <UserCircle className="h-4 w-4" />
                         Meu Perfil
                       </Link>
                       <Link
                         href={withTenantContext("/configuracoes")}
-                        className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                        className="flex items-center gap-2 px-4 py-2 text-sm text-[var(--tenant-surface-foreground)] transition-colors hover:bg-[var(--tenant-surface-muted)]"
                       >
                         <Settings className="h-4 w-4" />
                         Configurações
                       </Link>
                     </div>
-                    <div className="border-t border-gray-200 py-1">
-                      <form action={signOut}>
-                        <button
-                          type="submit"
-                          className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 transition-colors hover:bg-red-50"
-                        >
-                          <LogOut className="h-4 w-4" />
-                          Sair
-                        </button>
-                      </form>
+                    <div className="border-t border-[var(--tenant-line)] py-1">
+                      <button
+                        type="button"
+                        disabled={isSigningOut}
+                        onClick={() => startSignOut(() => { void signOut(); })}
+                        className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-[var(--tenant-wine)] transition-colors hover:bg-[color-mix(in_srgb,var(--tenant-wine)_10%,transparent)] disabled:cursor-wait disabled:opacity-60"
+                      >
+                        <LogOut className="h-4 w-4" />
+                        {isSigningOut ? "Saindo..." : "Sair"}
+                      </button>
                     </div>
                   </div>
                 )}

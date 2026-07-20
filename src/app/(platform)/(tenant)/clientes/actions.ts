@@ -12,12 +12,14 @@ async function clientColumn(columnId: string) {
   return { supabase, column: data as { id: string; tenant_id: string } };
 }
 
-export async function createClientColumn(tenantId: string) {
+export async function createClientColumn(tenantId: string, name = "Nova coluna") {
   const { supabase, profile } = await requireAppUser();
   if (profile.tenant_id !== tenantId && profile.role !== "super_admin") throw new Error("Sem acesso ao escritório.");
   const { data: rows } = await supabase.from("client_kanban_columns").select("position").eq("tenant_id", tenantId).order("position", { ascending: false }).limit(1);
   const position = ((rows?.[0]?.position as number | undefined) ?? -1) + 1;
-  const { data, error } = await supabase.from("client_kanban_columns").insert({ tenant_id: tenantId, name: "Nova coluna", position, color: colors[position % colors.length], created_by: profile.id }).select("id, name, position, color, is_default").single();
+  const cleanName = name.trim();
+  if (!cleanName || cleanName.length > 60) throw new Error("Nome de coluna inválido.");
+  const { data, error } = await supabase.from("client_kanban_columns").insert({ tenant_id: tenantId, name: cleanName, position, color: colors[position % colors.length], created_by: profile.id }).select("id, name, position, color, is_default").single();
   if (error || !data) throw new Error(error?.message ?? "Não foi possível criar a coluna.");
   revalidatePath("/clientes");
   return data;

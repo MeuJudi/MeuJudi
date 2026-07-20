@@ -1,4 +1,4 @@
--- Dynamic per-tenant process Kanban columns.
+-- Dynamic per-tenant process board columns.
 
 create table if not exists public.process_kanban_columns (
   id uuid primary key default gen_random_uuid(),

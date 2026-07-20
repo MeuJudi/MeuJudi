@@ -60,7 +60,7 @@ const typeLabel = {
 };
 
 const typeClass = {
-  audiencia: "border-[var(--tenant-brass)] bg-[color-mix(in_srgb,var(--tenant-brass)_12%,transparent)] text-[#6f4e1c]",
+  audiencia: "border-[var(--tenant-brass)] bg-[color-mix(in_srgb,var(--tenant-brass)_12%,transparent)] text-[var(--tenant-brass)]",
   prazo: "border-[var(--tenant-wine)] bg-[color-mix(in_srgb,var(--tenant-wine)_10%,transparent)] text-[var(--tenant-wine)]",
   reuniao: "border-[var(--tenant-moss)] bg-[color-mix(in_srgb,var(--tenant-moss)_10%,transparent)] text-[var(--tenant-moss)]",
   outro: "border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] text-[var(--tenant-surface-foreground)]",
@@ -361,15 +361,15 @@ function CreateEventModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
+      <DialogContent className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Novo evento</DialogTitle>
-          <DialogDescription>Crie um novo evento na agenda do escritório.</DialogDescription>
+          <DialogTitle className="text-[var(--tenant-surface-foreground)]">Novo evento</DialogTitle>
+          <DialogDescription className="text-[var(--color-muted-foreground)]">Crie um novo evento na agenda do escritório.</DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="space-y-1">
             <Label>Tipo</Label>
-            <select value={tipo} onChange={(e) => setTipo(e.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <select value={tipo} onChange={(e) => setTipo(e.target.value)} className="flex h-10 w-full rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-2 text-sm text-[var(--tenant-surface-foreground)] outline-none transition-shadow focus:ring-2 focus:ring-[var(--color-ring)]">
               <option value="reuniao">Reunião</option>
               <option value="audiencia">Audiência</option>
               <option value="prazo">Prazo</option>
@@ -377,26 +377,26 @@ function CreateEventModal({
             </select>
           </div>
           <div className="space-y-1">
-            <Label>Titulo *</Label>
+            <Label>Título *</Label>
             <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ex: Reunião com cliente" />
           </div>
           <div className="space-y-1">
-            <Label>Descricao</Label>
-            <textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={2} className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+            <Label>Descrição</Label>
+            <textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={3} className="flex w-full resize-y rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-2 text-sm text-[var(--tenant-surface-foreground)] outline-none placeholder:text-[var(--color-muted-foreground)] transition-shadow focus:ring-2 focus:ring-[var(--color-ring)]" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label>Data e hora inicio *</Label>
+              <Label>Data e hora de início *</Label>
               <Input type="datetime-local" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} />
             </div>
             <div className="space-y-1">
-              <Label>Data e hora fim</Label>
+              <Label>Data e hora de fim</Label>
               <Input type="datetime-local" value={dataFim} onChange={(e) => setDataFim(e.target.value)} />
             </div>
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={handleClose} disabled={isPending} className="border-[var(--tenant-line)]">Cancelar</Button>
+          <Button variant="outline" onClick={handleClose} disabled={isPending}>Cancelar</Button>
           <Button onClick={handleCreate} disabled={isPending || !titulo.trim() || !dataInicio}>Criar evento</Button>
         </DialogFooter>
       </DialogContent>

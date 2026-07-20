@@ -34,12 +34,12 @@ import {
 } from "../actions";
 
 const statusColors: Record<string, string> = {
-  lead: "bg-gray-100 text-gray-700",
-  contato: "bg-blue-100 text-blue-700",
-  reuniao_agendada: "bg-amber-100 text-amber-700",
-  proposta: "bg-purple-100 text-purple-700",
-  fechado: "bg-green-100 text-green-700",
-  perdido: "bg-red-100 text-red-700",
+  lead: "bg-[color-mix(in_srgb,var(--tenant-brass)_12%,transparent)] text-[var(--tenant-brass)]",
+  contato: "bg-[color-mix(in_srgb,var(--tenant-sidebar)_12%,transparent)] text-[var(--tenant-sidebar)]",
+  reuniao_agendada: "bg-[color-mix(in_srgb,var(--tenant-brass)_16%,transparent)] text-[var(--tenant-brass)]",
+  proposta: "bg-[color-mix(in_srgb,var(--tenant-sidebar)_14%,transparent)] text-[var(--tenant-sidebar)]",
+  fechado: "bg-[color-mix(in_srgb,var(--tenant-moss)_14%,transparent)] text-[var(--tenant-moss)]",
+  perdido: "bg-[color-mix(in_srgb,var(--tenant-wine)_14%,transparent)] text-[var(--tenant-wine)]",
 };
 
 const statusLabels: Record<string, string> = {
@@ -159,7 +159,7 @@ export function ClienteDetail({ cliente }: Props) {
             </h1>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {cliente.status && (
-                <Badge className={cn("rounded-full", statusColors[cliente.status] ?? "bg-gray-100 text-gray-700")}>
+                <Badge className={cn("rounded-full", statusColors[cliente.status] ?? "bg-[var(--tenant-surface-muted)] text-[var(--color-muted-foreground)]")}>
                   {statusLabels[cliente.status] ?? cliente.status}
                 </Badge>
               )}

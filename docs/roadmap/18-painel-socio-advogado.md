@@ -37,10 +37,10 @@ Vamos usar o demo HTML como base do MeuJudi:
 
 Baseada no HTML demo:
 
-- `/monitoramento`: primeira tela do app. Lista/Kanban de processos monitorados, movimentacoes e comunicacoes relevantes.
+- `/monitoramento`: primeira tela do app. Lista/Quadro de processos monitorados, movimentacoes e comunicacoes relevantes.
 - `/monitoramento/[cnj]`: detalhe do processo.
 - `/agenda`: calendario mensal e lista de prazos/audiencias.
-- `/tarefas`: kanban operacional da equipe.
+- `/tarefas`: quadro operacional da equipe.
 - `/clientes`: clientes, CRM simples e historico de contato.
 - `/relatorios`: visoes consolidadas do escritorio, abaixo de Clientes na navegacao.
 - `/financeiro`: modulo em breve, visivel na navegacao com explicacao do que tera.
@@ -92,7 +92,7 @@ Lista:
 - Busca por CNJ, parte, cliente, tag ou tribunal.
 - Filtros por status, responsavel, prazo, audiencia, favorito e sigilo.
 - Acoes: favoritar, atribuir responsavel, adicionar tag e abrir detalhe.
-- Abas: `Lista`, `Kanban`, `Mural/descobertas`.
+- Abas: `Lista`, `Quadro`, `Mural/descobertas`.
 - Indicadores no topo: processos ativos, novos hoje, prazos proximos, comunicacoes pendentes e status do CS/PJe.
 
 Detalhe:
@@ -110,7 +110,7 @@ Detalhe:
 Objetivo: organizar o trabalho interno do escritorio sem virar um sistema juridico complexo.
 
 Visao inicial:
-- Kanban com colunas simples: `A fazer`, `Em andamento`, `Aguardando`, `Concluido`.
+- Quadro com colunas simples: `A fazer`, `Em andamento`, `Aguardando`, `Concluido`.
 - Cards ligados a processo, cliente ou tarefa avulsa.
 - Prioridade: alta, media, baixa.
 - Responsavel.
@@ -327,7 +327,7 @@ Comportamento:
 2. Monitoramento: lista de processos + resumo superior.
 3. Detalhe do processo.
 4. Agenda mensal.
-5. Tarefas em kanban.
+5. Tarefas em quadro.
 6. Clientes + CRM simples.
 7. Configuracoes com secoes internas.
 
