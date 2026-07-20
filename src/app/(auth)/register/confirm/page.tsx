@@ -11,7 +11,7 @@ export default async function ConfirmSignupPage({ searchParams }: { searchParams
       <CardHeader className="text-center">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary"><MailCheck className="h-6 w-6" /></div>
         <CardTitle>Confirme seu email</CardTitle>
-        <CardDescription>Enviamos um codigo de 6 digitos para <strong>{email}</strong>.</CardDescription>
+        <CardDescription>Enviamos um codigo de confirmacao para <strong>{email}</strong>.</CardDescription>
       </CardHeader>
       <CardContent>
         {params.error ? <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">Codigo invalido ou expirado. Tente novamente.</div> : null}
