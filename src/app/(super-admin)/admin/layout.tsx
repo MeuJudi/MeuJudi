@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { BarChart3, Building2, ClipboardList, MonitorCog, Shield } from "lucide-react";
 import { requireSuperAdmin } from "@/lib/auth/guards";
 import { adminSignOut } from "@/app/(auth)/actions";
@@ -10,6 +11,13 @@ const adminLinks = [
   { href: "/admin/cs-diagnostics", label: "CS Diagnosticos", icon: MonitorCog },
   { href: "/admin/audit", label: "Auditoria", icon: ClipboardList },
 ];
+
+export const metadata: Metadata = {
+  title: "Super Admin",
+  icons: {
+    icon: [{ url: "/admin-favicon.svg", type: "image/svg+xml" }],
+  },
+};
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   await requireSuperAdmin();
