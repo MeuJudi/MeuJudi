@@ -95,7 +95,7 @@ export default async function OnboardingPage({
 
   return (
     <main className="min-h-screen bg-[var(--tenant-paper)] px-4 py-8 sm:px-6">
-      <div className="mx-auto w-full max-w-3xl space-y-6">
+      <div className="mx-auto w-full max-w-5xl space-y-8">
         <header className="text-center">
           <p className="text-sm font-medium text-primary">Configuração inicial</p>
           <h1 className="mt-2 font-display text-3xl font-semibold text-[var(--color-card-foreground)]">

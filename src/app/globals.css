@@ -36,6 +36,24 @@
    MeuJudi palette available there so a new account never lands on a blank
    dark page while its tenant is being created. */
 :root {
+  --color-background: #f6f3ea;
+  --color-foreground: #1a1a1a;
+  --color-card: #ffffff;
+  --color-card-foreground: #16233a;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #16233a;
+  --color-primary: #8c6425;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #ede9dd;
+  --color-secondary-foreground: #1f3350;
+  --color-muted: #ede9dd;
+  --color-muted-foreground: #5b5548;
+  --color-accent: #ede9dd;
+  --color-accent-foreground: #16233a;
+  --color-destructive: #7a2e2e;
+  --color-border: #d9d2bf;
+  --color-input: #d9d2bf;
+  --color-ring: #8c6425;
   --tenant-paper: #f6f3ea;
   --tenant-surface: #ffffff;
   --tenant-surface-muted: #ede9dd;

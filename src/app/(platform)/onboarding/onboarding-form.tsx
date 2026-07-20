@@ -251,7 +251,7 @@ export function OnboardingForm({ initialData }: Props) {
 
   return (
     <Card className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
-      <CardContent className="p-6">
+      <CardContent className="p-8 sm:p-10">
         <Stepper step={step} />
 
         {error ? (
