@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { AuthScope } from "@/lib/supabase/auth-scope";
+import { getRelevantMaintenance } from "@/lib/maintenance";
+import { isSupportMode } from "@/lib/auth/access";
 
 type AppUser = {
   id: string;
@@ -40,6 +42,9 @@ export async function requireAppUser(scope?: AuthScope) {
   if (scope !== "admin" && profile.tenant_id && profile.role !== "super_admin") {
     const { data: tenantIsActive } = await supabase.rpc("current_user_tenant_is_active");
     if (tenantIsActive === false) redirect("/tenant-suspended");
+
+    const activeMaintenance = await getRelevantMaintenance(supabase, profile.tenant_id, "active");
+    if (activeMaintenance.length > 0) redirect("/maintenance");
   }
 
   return { supabase, authUser, profile };
@@ -62,5 +67,11 @@ export async function requireSuperAdmin() {
     redirect("/admin/login?error=admin_required");
   }
 
+  return context;
+}
+
+export async function requireWritableAppUser() {
+  const context = await requireAppUser();
+  if (await isSupportMode()) throw new Error("O Acesso de suporte é somente visualização.");
   return context;
 }

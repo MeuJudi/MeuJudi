@@ -59,7 +59,7 @@ export default async function AdminTenantDetailPage({
         <div className="flex flex-wrap gap-2">
           <form action={enterTenantMaintenance}>
             <input type="hidden" name="tenant_id" value={tenant.id} />
-            <Button type="submit" variant="outline">Abrir manutenção</Button>
+            <Button type="submit" variant="outline">Abrir acesso de suporte</Button>
           </form>
           <TenantStatusButton tenantId={tenant.id} active={tenant.is_active} />
         </div>

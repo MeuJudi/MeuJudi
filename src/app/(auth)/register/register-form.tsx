@@ -29,7 +29,7 @@ export function RegisterForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="auth-register-form space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2 sm:col-span-2"><Label htmlFor="office">Nome do escritorio</Label><Input id="office" name="office" placeholder="Ex: Silva Advocacia" /></div>
         <div className="space-y-2 sm:col-span-2"><Label htmlFor="name">Seu nome</Label><Input id="name" name="name" placeholder="Nome completo" required /></div>
@@ -50,7 +50,7 @@ export function RegisterForm() {
         <span>Aceito os <Link href="/termos" target="_blank" className="font-medium text-primary underline">termos de uso</Link> e a <Link href="/privacidade" target="_blank" className="font-medium text-primary underline">politica de privacidade</Link> do MeuJudi.</span>
       </label>
 
-      <Button className="w-full" type="submit" disabled={!canSubmit || isPending}>
+      <Button className="auth-primary-button w-full" type="submit" disabled={!canSubmit || isPending}>
         {isPending ? "Enviando codigo..." : "Continuar configuracao"}
         <ArrowRight className="h-4 w-4" />
       </Button>

@@ -4,8 +4,10 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { stripMask } from "@/lib/masks";
+import { assertTenantWritable } from "@/lib/auth/access";
 
 export async function updateProfile(formData: FormData) {
+  await assertTenantWritable();
   const supabase = await createClient();
   const {
     data: { user },
@@ -31,6 +33,7 @@ export async function updateProfile(formData: FormData) {
 }
 
 export async function uploadAvatar(formData: FormData) {
+  await assertTenantWritable();
   const supabase = await createClient();
   const {
     data: { user },
@@ -73,6 +76,7 @@ export async function uploadAvatar(formData: FormData) {
 }
 
 export async function updateTenant(formData: FormData) {
+  await assertTenantWritable();
   const supabase = await createClient();
   const {
     data: { user },
@@ -109,6 +113,7 @@ export async function updateTenant(formData: FormData) {
 }
 
 export async function uploadLogo(formData: FormData) {
+  await assertTenantWritable();
   const supabase = await createClient();
   const {
     data: { user },
@@ -160,6 +165,7 @@ export async function uploadLogo(formData: FormData) {
 }
 
 export async function addOab(formData: FormData) {
+  await assertTenantWritable();
   const supabase = await createClient();
   const {
     data: { user },
@@ -212,6 +218,7 @@ export async function addOab(formData: FormData) {
 }
 
 export async function removeOab(oabId: string) {
+  await assertTenantWritable();
   const supabase = await createClient();
   const {
     data: { user },
@@ -242,6 +249,7 @@ export async function removeOab(oabId: string) {
 }
 
 export async function setPrimaryOab(oabId: string) {
+  await assertTenantWritable();
   const supabase = await createClient();
   const {
     data: { user },
@@ -277,6 +285,7 @@ export async function setPrimaryOab(oabId: string) {
 }
 
 export async function updateMemberRole(userId: string, newRole: string) {
+  await assertTenantWritable();
   const supabase = await createClient();
   const {
     data: { user },
@@ -316,6 +325,7 @@ export async function updateMemberRole(userId: string, newRole: string) {
 }
 
 export async function deactivateMember(userId: string) {
+  await assertTenantWritable();
   const supabase = await createClient();
   const {
     data: { user },
@@ -350,6 +360,7 @@ export async function deactivateMember(userId: string) {
 }
 
 export async function removeMember(userId: string) {
+  await assertTenantWritable();
   const supabase = await createClient();
   const {
     data: { user },
@@ -384,6 +395,7 @@ export async function removeMember(userId: string) {
 }
 
 export async function revokeInvite(inviteId: string) {
+  await assertTenantWritable();
   const supabase = await createClient();
   const {
     data: { user },
@@ -414,6 +426,7 @@ export async function revokeInvite(inviteId: string) {
 }
 
 export async function createInviteMember(formData: FormData) {
+  await assertTenantWritable();
   const supabase = await createClient();
   const {
     data: { user },
@@ -455,6 +468,7 @@ export async function createInviteMember(formData: FormData) {
 }
 
 export async function changePassword(formData: FormData) {
+  await assertTenantWritable();
   const supabase = await createClient();
 
   const currentPassword = String(formData.get("current_password") ?? "");
@@ -495,6 +509,7 @@ export async function changePassword(formData: FormData) {
 }
 
 export async function deleteAccount() {
+  await assertTenantWritable();
   const supabase = await createClient();
   const {
     data: { user },

@@ -25,6 +25,7 @@ import { exitTenantMaintenance } from "@/app/(super-admin)/admin/actions";
 import { cn } from "@/lib/utils";
 import { palettes, getPaletteStyles, type PaletteId } from "@/lib/themes/palettes";
 import { roleLabel } from "@/lib/auth/labels";
+import type { MaintenanceWindow } from "@/lib/maintenance";
 
 type TenantShellProps = {
   children: React.ReactNode;
@@ -33,6 +34,7 @@ type TenantShellProps = {
   gender?: string;
   avatarUrl: string | null;
   initialPaletteId: PaletteId;
+  upcomingMaintenance?: MaintenanceWindow[];
 };
 
 const navItems = [
@@ -53,7 +55,7 @@ function initials(name: string) {
     .join("") || "MJ";
 }
 
-export function TenantShell({ children, userName, role, gender, avatarUrl, initialPaletteId }: TenantShellProps) {
+export function TenantShell({ children, userName, role, gender, avatarUrl, initialPaletteId, upcomingMaintenance = [] }: TenantShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -182,7 +184,7 @@ export function TenantShell({ children, userName, role, gender, avatarUrl, initi
         <main className="min-w-0 bg-[var(--tenant-paper)] px-4 py-5 text-[var(--tenant-surface-foreground)] sm:px-6 lg:px-8">
           {role === "super_admin" && tenantParam ? (
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-              <span><strong>Modo manutenção:</strong> você está visualizando este escritório como Super Admin.</span>
+              <span><strong>Acesso de suporte:</strong> visualização somente leitura deste escritório como Super Admin.</span>
               <form action={exitTenantMaintenance}>
                 <button type="submit" className="font-medium underline underline-offset-2">Voltar ao Super Admin</button>
               </form>
@@ -371,6 +373,14 @@ export function TenantShell({ children, userName, role, gender, avatarUrl, initi
               </div>
             </div>
           </div>
+
+          {role !== "super_admin" && upcomingMaintenance.length > 0 ? (
+            <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              <p className="font-semibold">Manutenção programada</p>
+              <p className="mt-1">{upcomingMaintenance[0].message}</p>
+              <p className="mt-1 text-xs">Início: {new Date(upcomingMaintenance[0].starts_at).toLocaleString("pt-BR")}</p>
+            </div>
+          ) : null}
 
           {children}
         </main>

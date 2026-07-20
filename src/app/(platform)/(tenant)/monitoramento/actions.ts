@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireAppUser } from "@/lib/auth/guards";
+import { requireWritableAppUser as requireAppUser } from "@/lib/auth/guards";
 
 const allowedStatuses = ["ativo", "suspenso", "arquivado", "concluido"] as const;
 const columnColors = ["#9a6a22", "#4b6b4e", "#7a2e2e", "#2563eb", "#7c3aed", "#0e7490"];

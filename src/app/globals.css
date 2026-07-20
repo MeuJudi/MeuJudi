@@ -71,6 +71,914 @@ body {
   color: var(--color-foreground);
 }
 
+/* Public authentication surfaces use a wider, calmer composition than the
+   dense tenant application. The same form vocabulary remains shared. */
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(280px, 0.82fr) minmax(420px, 1.18fr);
+}
+
+.auth-page-meujudi {
+  --tenant-logo-meu: #16233a;
+  --tenant-logo-judi: #e85a1b;
+  --tenant-logo-scales: #8c6425;
+  background: #f6f3ea;
+  color: #16233a;
+}
+
+.auth-page-admin {
+  background: #0f172a;
+  color: #f8fafc;
+}
+
+.auth-aside {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(2rem, 6vw, 5.5rem);
+}
+
+.auth-page-meujudi .auth-aside {
+  background: #16233a;
+  color: #f8fafc;
+  padding-top: clamp(4rem, 9vw, 7.5rem);
+  padding-bottom: clamp(3rem, 7vw, 6rem);
+}
+
+.auth-page-admin .auth-aside {
+  background: #111827;
+  color: #e2e8f0;
+}
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.auth-logo-plate {
+  display: flex;
+  width: min(18rem, 100%);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+}
+
+.auth-logo-plate svg {
+  filter: brightness(0) invert(1);
+}
+
+.auth-logo-caption {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.65rem;
+  color: #d9b372;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  white-space: nowrap;
+}
+
+.auth-logo-caption::before,
+.auth-logo-caption::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: #d9b372;
+}
+
+.auth-page-admin .auth-brand {
+  color: #7dd3fc;
+}
+
+.auth-admin-brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #f8fafc;
+  font-size: clamp(1.65rem, 2.4vw, 2.35rem);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.auth-admin-brand-lockup strong {
+  color: #18b9ee;
+  font-weight: 600;
+}
+
+.auth-admin-brand-icon {
+  width: clamp(2.6rem, 4vw, 4.2rem);
+  height: clamp(2.6rem, 4vw, 4.2rem);
+  color: #18b9ee;
+  stroke-width: 1.65;
+}
+
+.auth-page-admin .auth-aside {
+  padding-top: clamp(4rem, 9vw, 7.5rem);
+  padding-bottom: clamp(3rem, 7vw, 6rem);
+}
+
+.auth-page-admin .auth-aside-copy {
+  padding-top: 3rem;
+  padding-bottom: 3rem;
+}
+
+.auth-page-admin .auth-aside-copy > p:last-of-type {
+  max-width: 34ch;
+  margin-top: 1.55rem;
+  color: #cbd5e1;
+  font-size: 1rem;
+  line-height: 1.62;
+}
+
+.auth-admin-feature-list {
+  margin-top: 2.25rem;
+  max-width: 30rem;
+}
+
+.auth-admin-feature {
+  display: flex;
+  align-items: center;
+  gap: 1.15rem;
+  padding: 0.95rem 0;
+  border-bottom: 1px solid #24324a;
+}
+
+.auth-admin-feature:last-child {
+  border-bottom: 0;
+}
+
+.auth-admin-feature > svg {
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  color: #18b9ee;
+  stroke-width: 1.65;
+}
+
+.auth-admin-feature div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.auth-admin-feature strong {
+  color: #f8fafc;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.auth-admin-feature span {
+  color: #94a3b8;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.auth-aside-copy {
+  max-width: 28rem;
+  margin: auto 0;
+  padding: 4rem 0;
+}
+
+.auth-kicker {
+  margin-bottom: 1rem;
+  color: #d9b372;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.auth-aside h1 {
+  max-width: 12ch;
+  font-family: "Fraunces", Georgia, serif;
+  font-size: clamp(2.5rem, 4vw, 4.6rem);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 0.98;
+  text-wrap: balance;
+}
+
+.auth-accent-word {
+  color: #d9a24b;
+}
+
+.auth-aside-copy > p:last-child {
+  max-width: 34ch;
+  margin-top: 1.5rem;
+  color: #cbd5e1;
+  font-size: 1rem;
+  line-height: 1.65;
+}
+
+.auth-aside-footer {
+  max-width: 28ch;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.auth-brand-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  color: #d9dfe7;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.auth-brand-footer svg {
+  width: 2.9rem;
+  height: 2.9rem;
+  flex: 0 0 auto;
+  color: #d9a24b;
+  stroke-width: 1.45;
+}
+
+.auth-page-meujudi .auth-aside-copy {
+  padding-top: 4.5rem;
+  padding-bottom: 4.5rem;
+}
+
+.auth-page-meujudi .auth-kicker {
+  display: none;
+}
+
+.auth-page-meujudi .auth-aside h1 {
+  max-width: 15ch;
+  font-size: clamp(3rem, 5vw, 4.8rem);
+}
+
+.auth-page-meujudi .auth-aside-copy > p:last-of-type {
+  max-width: 34ch;
+  margin-top: 1.7rem;
+  color: #d0d7e1;
+  font-size: 1rem;
+  line-height: 1.62;
+}
+
+.auth-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem clamp(1.25rem, 6vw, 6rem);
+}
+
+.auth-page-meujudi .auth-content {
+  background: #fbfaf7;
+}
+
+.auth-page-admin .auth-content {
+  background: #0f172a;
+}
+
+.auth-content-inner {
+  width: 100%;
+}
+
+.auth-card {
+  border: 1px solid #d9d2bf;
+  border-radius: 0.75rem;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgb(22 35 58 / 0.08);
+}
+
+.auth-page-admin .auth-card {
+  border-color: #334155;
+  background: #1e293b;
+  color: #f8fafc;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.24);
+}
+
+.auth-card-header {
+  gap: 0.55rem;
+  padding: 2rem 2rem 1.25rem;
+}
+
+.auth-card-header h2,
+.auth-card-header h3 {
+  color: #16233a;
+  font-size: 1.55rem;
+  letter-spacing: -0.02em;
+}
+
+.auth-card-header p {
+  color: #5b5548;
+  line-height: 1.5;
+}
+
+.auth-page-admin .auth-card-header h2,
+.auth-page-admin .auth-card-header h3,
+.auth-page-admin .auth-card-header p {
+  color: #f8fafc;
+}
+
+.auth-page-admin .auth-card-header p {
+  color: #cbd5e1;
+}
+
+.auth-card-content {
+  padding: 1.25rem 2rem 2rem;
+}
+
+.auth-page-meujudi .auth-login-card .auth-card-header {
+  align-items: center;
+  padding-top: 2.5rem;
+  text-align: center;
+}
+
+.auth-page-meujudi .auth-login-card .auth-card-header h3 {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 2.15rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.08;
+}
+
+.auth-page-meujudi .auth-login-card .auth-card-header p {
+  font-size: 0.96rem;
+}
+
+.auth-login-card {
+  margin: 0 auto;
+}
+
+.auth-register-card {
+  margin: 0 auto;
+}
+
+.auth-forgot-card {
+  margin: 0 auto;
+}
+
+.auth-reset-card {
+  margin: 0 auto;
+}
+
+.auth-page-meujudi .auth-reset-card .auth-card-header {
+  align-items: center;
+  padding: 3rem 3rem 1.35rem;
+  text-align: center;
+}
+
+.auth-page-meujudi .auth-reset-card .auth-card-header h3 {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 2.35rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.auth-page-meujudi .auth-reset-card .auth-card-header p {
+  max-width: 38ch;
+  font-size: 0.98rem;
+}
+
+.auth-page-meujudi .auth-reset-card .auth-card-content {
+  padding: 1.4rem 3rem 3rem;
+}
+
+.auth-reset-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.35rem;
+}
+
+.auth-reset-input-wrap {
+  position: relative;
+}
+
+.auth-reset-input-wrap > div > input {
+  min-height: 3.55rem;
+  padding-left: 3.25rem;
+  font-size: 1rem;
+}
+
+.auth-reset-input-icon {
+  position: absolute;
+  top: 50%;
+  left: 1rem;
+  z-index: 1;
+  width: 1.35rem;
+  height: 1.35rem;
+  color: #5b6570;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.auth-reset-hint {
+  margin-top: -0.45rem;
+  color: #6d7377;
+  font-size: 0.76rem;
+}
+
+.auth-page-meujudi .auth-reset-card .auth-primary-button {
+  min-height: 3.55rem;
+  margin-top: 0.15rem;
+  font-size: 1.02rem;
+}
+
+.auth-page-meujudi .auth-forgot-card .auth-card-header {
+  align-items: center;
+  padding: 3rem 3rem 1.35rem;
+  text-align: center;
+}
+
+.auth-page-meujudi .auth-forgot-card .auth-card-header h3 {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 2.35rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.auth-page-meujudi .auth-forgot-card .auth-card-header p {
+  font-size: 0.98rem;
+}
+
+.auth-page-meujudi .auth-forgot-card .auth-card-content {
+  padding: 1.4rem 3rem 3rem;
+}
+
+.auth-forgot-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.45rem;
+}
+
+.auth-forgot-input-wrap {
+  position: relative;
+}
+
+.auth-forgot-input-wrap input {
+  min-height: 3.55rem;
+  padding-left: 3.25rem;
+  font-size: 1rem;
+}
+
+.auth-forgot-input-icon {
+  position: absolute;
+  top: 50%;
+  left: 1rem;
+  z-index: 1;
+  width: 1.35rem;
+  height: 1.35rem;
+  color: #5b6570;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.auth-page-meujudi .auth-forgot-card .auth-primary-button {
+  min-height: 3.55rem;
+  font-size: 1.02rem;
+}
+
+.auth-forgot-footer {
+  margin-top: 1.5rem;
+  text-align: center;
+  color: #5b6570;
+  font-size: 0.88rem;
+}
+
+.auth-forgot-footer a {
+  color: #0e6671;
+  font-weight: 600;
+}
+
+.auth-forgot-secondary {
+  min-height: 3.35rem;
+  border-color: #b8c3c6;
+  color: #0e6671;
+}
+
+.auth-page-meujudi .auth-forgot-card .border-border.bg-muted\/50 {
+  border-color: #b9ddcf;
+  background: #f0faf5;
+  color: #285b4a;
+}
+
+.auth-page-meujudi .auth-register-card .auth-card-header {
+  align-items: center;
+  padding: 2.6rem 3rem 1.35rem;
+  text-align: center;
+}
+
+.auth-page-meujudi .auth-register-card .auth-card-header h3 {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 2.15rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.auth-page-meujudi .auth-register-card .auth-card-header p {
+  max-width: 40ch;
+  font-size: 0.96rem;
+}
+
+.auth-register-steps {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  margin-top: 1.2rem;
+  color: #7a8185;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.auth-register-steps span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.auth-register-steps b {
+  display: inline-flex;
+  width: 1.45rem;
+  height: 1.45rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #cbd2d4;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.auth-register-steps .is-active {
+  color: #0e7490;
+  font-weight: 600;
+}
+
+.auth-register-steps .is-active b {
+  border-color: #0e9ca6;
+  background: #0e9ca6;
+  color: white;
+}
+
+.auth-register-steps i {
+  width: 2.2rem;
+  height: 1px;
+  background: #d9dfe0;
+}
+
+.auth-page-meujudi .auth-register-card .auth-card-content {
+  padding: 1rem 3rem 2.5rem;
+}
+
+.auth-register-form input {
+  min-height: 3.15rem;
+}
+
+.auth-register-form label {
+  font-size: 0.82rem;
+}
+
+.auth-register-form > .grid {
+  gap: 1rem;
+}
+
+.auth-register-form > label {
+  border-color: #d9dfe0;
+  background: #fbfcfc;
+  color: #5b6570;
+  line-height: 1.45;
+}
+
+.auth-register-note {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 1.35rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #d9dfe0;
+  border-radius: 0.45rem;
+  background: #fbfcfc;
+  color: #5b6570;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.auth-register-note strong {
+  color: #16233a;
+  font-weight: 600;
+}
+
+.auth-register-footer {
+  margin-top: 1.35rem;
+  text-align: center;
+  color: #5b6570;
+  font-size: 0.88rem;
+}
+
+.auth-register-footer a {
+  color: #0e6671;
+  font-weight: 600;
+}
+
+.auth-page-meujudi .auth-login-card .auth-card-content {
+  padding: 1.25rem 3rem 3.1rem;
+}
+
+.auth-login-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.45rem;
+}
+
+.auth-login-input-wrap {
+  position: relative;
+}
+
+.auth-login-input-wrap > input,
+.auth-login-input-wrap > div > input {
+  min-height: 3.55rem;
+  padding-left: 3.25rem;
+  font-size: 1rem;
+}
+
+.auth-login-input-icon {
+  position: absolute;
+  top: 50%;
+  left: 1rem;
+  z-index: 1;
+  width: 1.35rem;
+  height: 1.35rem;
+  color: #5b6570;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.auth-page-meujudi .auth-login-card .auth-card-content .flex.items-center.justify-between {
+  margin-bottom: 0.55rem;
+}
+
+.auth-page-meujudi .auth-login-card .auth-card-content a {
+  color: #0e6671;
+}
+
+.auth-page-meujudi .auth-login-card .auth-card-content a:hover {
+  color: #0a4d56;
+}
+
+.auth-page-meujudi .auth-login-card .auth-primary-button {
+  min-height: 3.55rem;
+  margin-top: 0.1rem;
+  font-size: 1.05rem;
+}
+
+.auth-login-divider {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.8rem 0 1.35rem;
+  color: #6d7377;
+  font-size: 0.8rem;
+}
+
+.auth-login-divider::before,
+.auth-login-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: #d9dfe0;
+}
+
+.auth-card label {
+  color: #16233a;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.auth-page-admin .auth-card label {
+  color: #e2e8f0;
+}
+
+.auth-card input,
+.auth-card textarea,
+.auth-card select {
+  min-height: 2.75rem;
+  border-color: #cfc7b5;
+  background: #ffffff;
+  color: #16233a;
+}
+
+.auth-page-admin .auth-card input,
+.auth-page-admin .auth-card textarea,
+.auth-page-admin .auth-card select {
+  border-color: #475569;
+  background: #0f172a;
+  color: #f8fafc;
+}
+
+.auth-card input::placeholder {
+  color: #756e61;
+  opacity: 1;
+}
+
+.auth-page-admin .auth-card input::placeholder {
+  color: #94a3b8;
+}
+
+.auth-primary-button {
+  min-height: 2.85rem;
+  background: #0e7490;
+  color: #ffffff;
+}
+
+.auth-primary-button:hover {
+  background: #0c6178;
+}
+
+.auth-login-footer {
+  display: flex;
+  justify-content: center;
+  gap: 0.25rem;
+  margin-top: 1.5rem;
+  color: #5b5548;
+  font-size: 0.88rem;
+}
+
+.auth-login-footer a {
+  color: #0e7490;
+}
+
+.auth-login-footer a:hover {
+  color: #0c6178;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.auth-page-admin .auth-primary-button {
+  background: #0284c7;
+}
+
+.auth-page-admin .auth-primary-button:hover {
+  background: #0369a1;
+}
+
+.auth-admin-card .auth-card-header {
+  align-items: center;
+  padding: 3.4rem 3.5rem 2.25rem;
+  text-align: center;
+}
+
+.auth-admin-card .auth-card-header h3 {
+  font-size: 2rem;
+  letter-spacing: -0.03em;
+}
+
+.auth-admin-card .auth-card-header p {
+  max-width: 29ch;
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.auth-admin-card .auth-card-content {
+  padding: 0 3.5rem 3.2rem;
+}
+
+.auth-admin-input-wrap {
+  position: relative;
+}
+
+.auth-admin-input-wrap input {
+  padding-left: 3.25rem;
+}
+
+.auth-admin-input-icon {
+  position: absolute;
+  top: 50%;
+  left: 1rem;
+  z-index: 1;
+  width: 1.35rem;
+  height: 1.35rem;
+  color: #94a3b8;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.auth-admin-card input,
+.auth-admin-card [data-slot="input"] {
+  min-height: 3.55rem;
+  font-size: 1rem;
+}
+
+.auth-admin-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.65rem;
+}
+
+.auth-admin-product-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  margin-top: 1.7rem;
+  color: #cbd5e1;
+  font-size: 1rem;
+}
+
+.auth-admin-product-link a {
+  color: #38bdf8;
+}
+
+.auth-admin-product-link a:hover {
+  color: #7dd3fc;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 800px) {
+  .auth-page {
+    display: block;
+  }
+
+  .auth-aside {
+    min-height: auto;
+    padding: 1.5rem 1.25rem 1.75rem;
+  }
+
+  .auth-aside-copy {
+    padding: 2rem 0 0;
+  }
+
+  .auth-aside h1 {
+    max-width: 18ch;
+    font-size: 2.25rem;
+  }
+
+  .auth-aside-copy > p:last-child,
+  .auth-aside-footer {
+    display: none;
+  }
+
+  .auth-page-admin .auth-aside {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+  }
+
+  .auth-page-meujudi .auth-aside {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+  }
+
+  .auth-page-meujudi .auth-aside-copy {
+    padding-top: 2.25rem;
+    padding-bottom: 0;
+  }
+
+  .auth-page-admin .auth-aside-copy {
+    padding-top: 2rem;
+    padding-bottom: 0;
+  }
+
+  .auth-page-admin .auth-aside-copy > p:last-of-type,
+  .auth-admin-feature-list,
+  .auth-brand-footer {
+    display: none;
+  }
+
+  .auth-content {
+    min-height: calc(100vh - 190px);
+    padding: 1.5rem 1rem 2rem;
+  }
+
+  .auth-card-header,
+  .auth-card-content {
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+
+  .auth-page-meujudi .auth-login-card .auth-card-content {
+    padding-bottom: 2rem;
+  }
+
+  .auth-register-steps {
+    gap: 0.3rem;
+    font-size: 0.62rem;
+  }
+
+  .auth-register-steps i {
+    width: 0.8rem;
+  }
+
+  .auth-admin-card .auth-card-header {
+    padding-top: 2rem;
+    padding-bottom: 1.5rem;
+  }
+
+  .auth-admin-card .auth-card-content {
+    padding-bottom: 2rem;
+  }
+}
+
 a {
   text-decoration: none;
 }

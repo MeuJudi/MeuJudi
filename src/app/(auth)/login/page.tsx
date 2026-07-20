@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LogIn } from "lucide-react";
+import { Lock, LogIn, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,12 +23,12 @@ export default async function LoginPage({
   const errorMessage = errorKey ? (errorMessages[errorKey] ?? "Erro ao entrar. Tente novamente.") : null;
 
   return (
-    <Card>
-      <CardHeader>
+    <Card className="auth-card auth-login-card">
+      <CardHeader className="auth-card-header">
         <CardTitle>Entrar no MeuJudi</CardTitle>
-        <CardDescription>Acesse o painel do seu escritorio.</CardDescription>
+          <CardDescription>Acesse o painel do seu escritório.</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="auth-card-content">
         {errorMessage ? (
           <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             {errorMessage}
@@ -37,7 +37,10 @@ export default async function LoginPage({
         <form action={signIn} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" name="email" type="email" placeholder="voce@escritorio.com.br" />
+            <div className="auth-login-input-wrap">
+              <Mail className="auth-login-input-icon" />
+              <Input id="email" name="email" type="email" autoComplete="email" placeholder="seu@email.com.br" required />
+            </div>
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -46,19 +49,23 @@ export default async function LoginPage({
                 Esqueci minha senha
               </Link>
             </div>
-            <PasswordInput id="password" name="password" />
+            <div className="auth-login-input-wrap">
+              <Lock className="auth-login-input-icon" />
+              <PasswordInput id="password" name="password" />
+            </div>
           </div>
-          <Button className="w-full" type="submit">
+          <Button className="auth-primary-button w-full" type="submit">
             <LogIn className="h-4 w-4" />
             Entrar
           </Button>
         </form>
-        <p className="mt-6 text-center text-sm text-muted-foreground">
-          Ainda nao tem conta?{" "}
+        <div className="auth-login-divider"><span>ou</span></div>
+        <div className="auth-login-footer">
+          <span>Ainda não tem uma conta?</span>{" "}
           <Link className="font-medium text-primary" href="/register">
             Criar conta
           </Link>
-        </p>
+        </div>
       </CardContent>
     </Card>
   );
