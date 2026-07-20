@@ -31,3 +31,9 @@ $$;
 
 revoke all on function public.current_user_tenant_is_active() from public;
 grant execute on function public.current_user_tenant_is_active() to authenticated;
+
+drop policy if exists "tenants_super_admin_update" on public.tenants;
+create policy "tenants_super_admin_update" on public.tenants
+for update to authenticated
+using (public.is_super_admin())
+with check (public.is_super_admin());
