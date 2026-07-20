@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireSuperAdmin } from "@/lib/auth/guards";
-import { setTenantStatus } from "../../actions";
+import { enterTenantMaintenance, setTenantStatus } from "../../actions";
 import { roleLabel } from "@/lib/auth/labels";
 
 export default async function AdminTenantDetailPage({
@@ -55,13 +55,19 @@ export default async function AdminTenantDetailPage({
             {tenant.slug} · {[tenant.city, tenant.state].filter(Boolean).join(" / ") || "Sem local"}
           </p>
         </div>
-        <form action={setTenantStatus}>
-          <input type="hidden" name="tenant_id" value={tenant.id} />
-          <input type="hidden" name="is_active" value={String(!tenant.is_active)} />
-          <Button type="submit" variant={tenant.is_active ? "destructive" : "default"}>
-            {tenant.is_active ? "Suspender cliente" : "Reativar cliente"}
-          </Button>
-        </form>
+        <div className="flex flex-wrap gap-2">
+          <form action={enterTenantMaintenance}>
+            <input type="hidden" name="tenant_id" value={tenant.id} />
+            <Button type="submit" variant="outline">Abrir manutenção</Button>
+          </form>
+          <form action={setTenantStatus}>
+            <input type="hidden" name="tenant_id" value={tenant.id} />
+            <input type="hidden" name="is_active" value={String(!tenant.is_active)} />
+            <Button type="submit" variant={tenant.is_active ? "destructive" : "default"}>
+              {tenant.is_active ? "Suspender cliente" : "Reativar cliente"}
+            </Button>
+          </form>
+        </div>
       </header>
 
       <section className="grid gap-4 md:grid-cols-3">

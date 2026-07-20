@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { ADMIN_AUTH_COOKIE } from "@/lib/supabase/auth-scope";
+import { ADMIN_AUTH_COOKIE, SUPPORT_TENANT_COOKIE } from "@/lib/supabase/auth-scope";
 
 const protectedPrefixes = [
   "/dashboard",
@@ -21,7 +21,8 @@ const publicPrefixes = ["/admin/login", "/forgot-password", "/reset-password"];
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const isAdminPath = path === "/admin" || path.startsWith("/admin/");
-  const cookieOptions = isAdminPath ? { name: ADMIN_AUTH_COOKIE } : undefined;
+  const isSupportMode = !isAdminPath && Boolean(request.cookies.get(SUPPORT_TENANT_COOKIE)?.value);
+  const cookieOptions = isAdminPath || isSupportMode ? { name: ADMIN_AUTH_COOKIE } : undefined;
   let response = NextResponse.next({ request });
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -59,6 +60,10 @@ export async function proxy(request: NextRequest) {
   }
 
   if (isAdminPath && path !== "/admin/login" && !hasSession) {
+    return redirectWithSession("/admin/login");
+  }
+
+  if (isSupportMode && !hasSession) {
     return redirectWithSession("/admin/login");
   }
 

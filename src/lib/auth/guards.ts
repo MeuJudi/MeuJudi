@@ -16,7 +16,7 @@ type AppUser = {
   created_at: string;
 };
 
-export async function requireSession(scope: AuthScope = "tenant") {
+export async function requireSession(scope?: AuthScope) {
   const supabase = await createClient(scope);
   const {
     data: { user },
@@ -27,7 +27,7 @@ export async function requireSession(scope: AuthScope = "tenant") {
   return { supabase, authUser: user };
 }
 
-export async function requireAppUser(scope: AuthScope = "tenant") {
+export async function requireAppUser(scope?: AuthScope) {
   const { supabase, authUser } = await requireSession(scope);
   const { data: profile } = await supabase
     .from("users")

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { signOut } from "@/app/(auth)/actions";
+import { exitTenantMaintenance } from "@/app/(super-admin)/admin/actions";
 import { cn } from "@/lib/utils";
 import { palettes, getPaletteStyles, type PaletteId } from "@/lib/themes/palettes";
 import { roleLabel } from "@/lib/auth/labels";
@@ -179,6 +180,14 @@ export function TenantShell({ children, userName, role, gender, avatarUrl, initi
         </aside>
 
         <main className="min-w-0 bg-[var(--tenant-paper)] px-4 py-5 text-[var(--tenant-surface-foreground)] sm:px-6 lg:px-8">
+          {role === "super_admin" && tenantParam ? (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              <span><strong>Modo manutenção:</strong> você está visualizando este escritório como Super Admin.</span>
+              <form action={exitTenantMaintenance}>
+                <button type="submit" className="font-medium underline underline-offset-2">Voltar ao Super Admin</button>
+              </form>
+            </div>
+          ) : null}
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
             <div className="flex min-w-[240px] flex-1 items-center gap-2 rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-2 text-sm text-[var(--color-muted-foreground)]">
               <Search className="h-4 w-4" />

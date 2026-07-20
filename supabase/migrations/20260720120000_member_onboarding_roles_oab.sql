@@ -229,3 +229,9 @@ $$;
 
 revoke all on function public.write_audit_log(text, text, uuid, uuid, text, jsonb) from public;
 grant execute on function public.write_audit_log(text, text, uuid, uuid, text, jsonb) to authenticated;
+
+drop policy if exists "tenants_super_admin_update" on public.tenants;
+create policy "tenants_super_admin_update" on public.tenants
+for update to authenticated
+using (public.is_super_admin())
+with check (public.is_super_admin());
