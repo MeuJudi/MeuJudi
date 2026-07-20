@@ -49,9 +49,8 @@ export async function proxy(request: NextRequest) {
   }
 
   if (publicPrefixes.some((prefix) => path.startsWith(prefix))) {
-    if (hasSession && path === "/admin/login") {
-      return redirectWithSession("/admin");
-    }
+    // O Super Admin tem uma entrada propria. A sessao do MeuJudi nao deve
+    // impedir que a tela de login administrativo seja exibida.
     return response;
   }
 
