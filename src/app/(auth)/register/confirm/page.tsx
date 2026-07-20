@@ -14,7 +14,9 @@ export default async function ConfirmSignupPage({ searchParams }: { searchParams
         <CardDescription>Enviamos um codigo de confirmacao para <strong>{email}</strong>.</CardDescription>
       </CardHeader>
       <CardContent>
-        {params.error ? <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">Codigo invalido ou expirado. Tente novamente.</div> : null}
+        {params.error ? <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {params.error === "email_not_confirmed" ? "Seu email ainda não foi confirmado. Informe o código recebido ou solicite um novo." : "Código inválido ou expirado. Tente novamente."}
+        </div> : null}
         {params.resent ? <div className="mb-4 rounded-md border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-700">Um novo codigo foi enviado.</div> : null}
         <ConfirmSignupForm email={email} />
         <p className="mt-6 text-center text-sm text-muted-foreground"><Link href="/login" className="font-medium text-primary">Voltar para entrar</Link></p>
