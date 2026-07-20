@@ -17,13 +17,13 @@ export default async function PerfilPage() {
           id: profile.id,
           name: profile.name,
           email: profile.email,
-          phone: (profile as Record<string, unknown>).phone as string | null,
-          oab_number: (profile as Record<string, unknown>).oab_number as string | null,
-          oab_uf: (profile as Record<string, unknown>).oab_uf as string | null,
+          phone: profile.phone,
+          oab_number: profile.oab_number,
+          oab_uf: profile.oab_uf,
           role: profile.role,
           gender: profile.gender,
-          avatar_url: (profile as Record<string, unknown>).avatar_url as string | null,
-          created_at: (profile as Record<string, unknown>).created_at as string,
+          avatar_url: profile.avatar_url,
+          created_at: profile.created_at,
         }}
       />
       <AparenciaSection />
