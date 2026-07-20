@@ -15,6 +15,7 @@ import { TarefaModal, normalizeTask, type TaskItem } from "./tarefa-modal";
 export type { TaskItem };
 
 export type TaskColumn = { id: string; name: string; position: number; color: string; is_default: boolean };
+export type TaskUser = { id: string; name: string; email: string; avatar_url: string | null };
 
 const priorityClass = {
   alta: "bg-[color-mix(in_srgb,var(--tenant-wine)_10%,transparent)] text-[var(--tenant-wine)]",
@@ -31,7 +32,16 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "NÃ£o foi possÃ­vel salvar esta alteraÃ§Ã£o.";
 }
 
-function TaskCard({ task, completed, handle, onClick }: { task: TaskItem; completed?: boolean; handle?: React.ReactNode; onClick?: () => void }) {
+function initials(user: TaskUser) {
+  return (user.name || user.email).split(/[ @.]+/).map((part) => part[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+}
+
+function TaskAvatar({ user }: { user: TaskUser }) {
+  return user.avatar_url ? <img src={user.avatar_url} alt={user.name || user.email} className="h-7 w-7 rounded-full border-2 border-[var(--tenant-surface)] object-cover" /> : <span className="grid h-7 w-7 place-items-center rounded-full border-2 border-[var(--tenant-surface)] bg-[var(--tenant-surface-muted)] font-mono text-[10px] font-semibold text-[var(--tenant-surface-foreground)]">{initials(user)}</span>;
+}
+
+function TaskCard({ task, users, completed, handle, onClick }: { task: TaskItem; users: TaskUser[]; completed?: boolean; handle?: React.ReactNode; onClick?: () => void }) {
+  const assignedUsers = users.filter((user) => task.assigned_to.includes(user.id));
   return (
     <Card
       onClick={onClick}
@@ -46,7 +56,7 @@ function TaskCard({ task, completed, handle, onClick }: { task: TaskItem; comple
           {handle}
           <p className={cn("min-w-0 flex-1 font-semibold text-[var(--tenant-surface-foreground)]", completed && "text-green-800 line-through decoration-green-700/50")}>{task.title}</p>
           {completed ? (
-            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-green-200 bg-green-100 text-green-700" title="Concluida">
+            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-[color-mix(in_srgb,var(--tenant-moss)_35%,var(--tenant-line))] bg-[color-mix(in_srgb,var(--tenant-moss)_12%,transparent)] text-[var(--tenant-moss)]" title="Concluída">
               <CheckCircle2 className="h-4 w-4" />
             </span>
           ) : null}
@@ -57,21 +67,22 @@ function TaskCard({ task, completed, handle, onClick }: { task: TaskItem; comple
           {task.due_date && <Badge className="rounded-full bg-[var(--tenant-surface-muted)] text-[var(--color-muted-foreground)]">{new Date(task.due_date).toLocaleDateString("pt-BR")}</Badge>}
           {(task.checklist?.length ?? 0) > 0 && <Badge className="rounded-full bg-[var(--tenant-surface-muted)] text-[var(--color-muted-foreground)]">{task.checklist.filter((i) => i.done).length}/{task.checklist.length}</Badge>}
         </div>
+        {assignedUsers.length ? <div className="mt-3 flex items-center gap-2 border-t border-[var(--tenant-line)] pt-3"><div className="flex -space-x-2">{assignedUsers.slice(0, 4).map((user) => <TaskAvatar key={user.id} user={user} />)}</div><span className="truncate text-xs text-[var(--color-muted-foreground)]">{assignedUsers.length === 1 ? assignedUsers[0].name || assignedUsers[0].email : `${assignedUsers.length} responsáveis`}</span></div> : null}
       </CardContent>
     </Card>
   );
 }
 
-function SortableTask({ task, completed, onClick }: { task: TaskItem; completed?: boolean; onClick?: () => void }) {
+function SortableTask({ task, users, completed, onClick }: { task: TaskItem; users: TaskUser[]; completed?: boolean; onClick?: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id, data: { type: "task", columnId: task.kanban_column_id } });
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={cn(isDragging && "opacity-40")} data-kanban-card>
-      <TaskCard task={task} completed={completed} onClick={onClick} handle={<button type="button" aria-label="Arrastar tarefa" className="cursor-grab text-[var(--color-muted-foreground)] active:cursor-grabbing" {...attributes} {...listeners}><GripVertical className="h-4 w-4" /></button>} />
+      <TaskCard task={task} users={users} completed={completed} onClick={onClick} handle={<button type="button" aria-label="Arrastar tarefa" className="cursor-grab text-[var(--color-muted-foreground)] active:cursor-grabbing" {...attributes} {...listeners}><GripVertical className="h-4 w-4" /></button>} />
     </div>
   );
 }
 
-function Column({ column, tasks, completed, editing, draft, onEdit, onDraft, onSave, onCancel, onDelete, onTaskClick, creating, newTaskTitle, onNewTaskTitleChange, onCreateTask, onCreateTaskCancel, onCreateTaskConfirm }: { column: TaskColumn; tasks: TaskItem[]; completed: boolean; editing: boolean; draft: string; onEdit: () => void; onDraft: (value: string) => void; onSave: () => void; onCancel: () => void; onDelete: (taskCount: number) => void; onTaskClick: (taskId: string) => void; creating: boolean; newTaskTitle: string; onNewTaskTitleChange: (value: string) => void; onCreateTask: () => void; onCreateTaskCancel: () => void; onCreateTaskConfirm: () => void }) {
+function Column({ column, tasks, users, completed, editing, draft, onEdit, onDraft, onSave, onCancel, onDelete, onTaskClick, creating, newTaskTitle, onNewTaskTitleChange, onCreateTask, onCreateTaskCancel, onCreateTaskConfirm }: { column: TaskColumn; tasks: TaskItem[]; users: TaskUser[]; completed: boolean; editing: boolean; draft: string; onEdit: () => void; onDraft: (value: string) => void; onSave: () => void; onCancel: () => void; onDelete: (taskCount: number) => void; onTaskClick: (taskId: string) => void; creating: boolean; newTaskTitle: string; onNewTaskTitleChange: (value: string) => void; onCreateTask: () => void; onCreateTaskCancel: () => void; onCreateTaskConfirm: () => void }) {
   const { setNodeRef: dropRef, isOver } = useDroppable({ id: column.id, data: { type: "column" } });
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: column.id, data: { type: "column" } });
   return (
@@ -93,7 +104,7 @@ function Column({ column, tasks, completed, editing, draft, onEdit, onDraft, onS
       </header>
       <div ref={dropRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
         <SortableContext items={tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
-          {tasks.map((task) => <SortableTask key={task.id} task={task} completed={completed} onClick={() => onTaskClick(task.id)} />)}
+          {tasks.map((task) => <SortableTask key={task.id} task={task} users={users} completed={completed} onClick={() => onTaskClick(task.id)} />)}
         </SortableContext>
         {creating && (
           <div className="rounded-lg border border-[var(--tenant-brass)] bg-[var(--tenant-surface)] p-2">
@@ -176,7 +187,7 @@ function DeleteColumnDialog({
   );
 }
 
-export function TarefasView({ tenantId, columns, tasks, users, currentUser, loadError }: { tenantId: string | null; columns: TaskColumn[]; tasks: TaskItem[]; users: { id: string; name: string; email: string }[]; currentUser: { id: string; name: string; email: string }; loadError?: string | null }) {
+export function TarefasView({ tenantId, columns, tasks, users, currentUser, loadError }: { tenantId: string | null; columns: TaskColumn[]; tasks: TaskItem[]; users: TaskUser[]; currentUser: TaskUser; loadError?: string | null }) {
   const [view, setView] = useState<"kanban" | "lista">("kanban");
   const [localColumns, setColumns] = useState(columns);
   const [localTasks, setTasks] = useState(tasks);
@@ -386,7 +397,7 @@ export function TarefasView({ tenantId, columns, tasks, users, currentUser, load
                 <SortableContext items={localColumns.map((x) => x.id)} strategy={horizontalListSortingStrategy}>
                   <div className="flex min-h-[500px] gap-4 rounded-md">
                     {grouped.map((column) => (
-                      <Column key={column.id} column={column} tasks={column.tasks} completed={isCompletedColumnName(column.name)} editing={editingId === column.id} draft={draft} onEdit={() => { setEditingId(column.id); setDraft(column.name); }} onDraft={setDraft} onSave={() => saveColumnName(column)} onCancel={() => setEditingId(null)} onDelete={(taskCount) => handleDeleteColumn(column, taskCount)} onTaskClick={(taskId) => setSelectedTaskId(taskId)} creating={creatingColumnId === column.id} newTaskTitle={newTaskTitle} onNewTaskTitleChange={setNewTaskTitle} onCreateTask={() => setCreatingColumnId(column.id)} onCreateTaskCancel={() => { setCreatingColumnId(null); setNewTaskTitle(""); }} onCreateTaskConfirm={() => addTaskToColumn(column.id)} />
+                      <Column key={column.id} column={column} tasks={column.tasks} users={users} completed={isCompletedColumnName(column.name)} editing={editingId === column.id} draft={draft} onEdit={() => { setEditingId(column.id); setDraft(column.name); }} onDraft={setDraft} onSave={() => saveColumnName(column)} onCancel={() => setEditingId(null)} onDelete={(taskCount) => handleDeleteColumn(column, taskCount)} onTaskClick={(taskId) => setSelectedTaskId(taskId)} creating={creatingColumnId === column.id} newTaskTitle={newTaskTitle} onNewTaskTitleChange={setNewTaskTitle} onCreateTask={() => setCreatingColumnId(column.id)} onCreateTaskCancel={() => { setCreatingColumnId(null); setNewTaskTitle(""); }} onCreateTaskConfirm={() => addTaskToColumn(column.id)} />
                     ))}
                     <div className="w-[320px] shrink-0">
                       {creatingNewColumn ? (
@@ -418,11 +429,11 @@ export function TarefasView({ tenantId, columns, tasks, users, currentUser, load
                   </div>
                 </SortableContext>
               </div>
-              <DragOverlay>{active ? <div className="w-[300px] rotate-1 shadow-xl"><TaskCard task={active} completed={isCompletedColumnName(localColumns.find((column) => column.id === active.kanban_column_id)?.name ?? "")} /></div> : null}</DragOverlay>
+              <DragOverlay>{active ? <div className="w-[300px] rotate-1 shadow-xl"><TaskCard task={active} users={users} completed={isCompletedColumnName(localColumns.find((column) => column.id === active.kanban_column_id)?.name ?? "")} /></div> : null}</DragOverlay>
             </DndContext>
           ) : (
             <div className="space-y-3">
-              {filtered.length === 0 ? <div className="rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-5 text-sm text-[var(--color-muted-foreground)]">Nenhuma tarefa encontrada.</div> : filtered.map((task) => <TaskCard key={task.id} task={task} completed={isCompletedColumnName(localColumns.find((column) => column.id === task.kanban_column_id)?.name ?? "")} onClick={() => setSelectedTaskId(task.id)} />)}
+              {filtered.length === 0 ? <div className="rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-5 text-sm text-[var(--color-muted-foreground)]">Nenhuma tarefa encontrada.</div> : filtered.map((task) => <TaskCard key={task.id} task={task} users={users} completed={isCompletedColumnName(localColumns.find((column) => column.id === task.kanban_column_id)?.name ?? "")} onClick={() => setSelectedTaskId(task.id)} />)}
             </div>
           )}
         </CardContent>

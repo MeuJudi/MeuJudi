@@ -58,16 +58,17 @@ export async function uploadAvatar(formData: FormData) {
   const {
     data: { publicUrl },
   } = supabase.storage.from("avatars").getPublicUrl(fileName);
+  const versionedUrl = `${publicUrl}?v=${Date.now()}`;
 
   const { error: updateError } = await supabase
     .from("users")
-    .update({ avatar_url: publicUrl })
+    .update({ avatar_url: versionedUrl })
     .eq("id", user.id);
 
   if (updateError) throw updateError;
 
   revalidatePath("/configuracoes/perfil");
-  return { url: publicUrl };
+  return { url: versionedUrl };
 }
 
 export async function updateTenant(formData: FormData) {

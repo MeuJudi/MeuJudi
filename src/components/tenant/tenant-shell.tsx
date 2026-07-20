@@ -320,7 +320,7 @@ export function TenantShell({ children, userName, role, avatarUrl, initialPalett
                       <span className="font-mono text-xs font-bold text-[var(--tenant-brass-light)]">{initials(userName)}</span>
                     )}
                   </div>
-                  <span className="hidden text-sm font-medium text-[var(--tenant-surface-foreground)] md:block">{userName}</span>
+                  <span className={cn("hidden text-sm font-medium md:block", paletteId === "escuro" ? "text-white" : "text-[var(--tenant-surface-foreground)]")}>{userName}</span>
                 </button>
                 {profileOpen && (
                   <div onClick={(e) => e.stopPropagation()} className="absolute right-0 top-full z-50 mt-1 w-56 rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] shadow-lg">

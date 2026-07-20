@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Upload, Loader2, Check } from "lucide-react";
 import { updateProfile, uploadAvatar } from "../actions";
 import { maskPhone, maskOab } from "@/lib/masks";
@@ -40,6 +41,7 @@ type Props = {
 };
 
 export function PerfilForm({ profile }: Props) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -69,7 +71,9 @@ export function PerfilForm({ profile }: Props) {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      await uploadAvatar(formData);
+      const result = await uploadAvatar(formData);
+      setAvatarPreview(result.url);
+      router.refresh();
     } catch (err) {
       setAvatarPreview(profile.avatar_url);
       setError(err instanceof Error ? err.message : "Erro ao fazer upload da imagem.");

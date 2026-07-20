@@ -41,7 +41,7 @@ export type TaskItem = {
   attachments: { id: string; name: string; type: string; url: string; source: string }[];
 };
 
-type UserProfile = { id: string; name: string; email: string };
+type UserProfile = { id: string; name: string; email: string; avatar_url: string | null };
 
 const priorityLabels: Record<TaskItem["priority"], string> = {
   alta: "Alta",
@@ -590,9 +590,7 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
 
 function AvatarInitials({ user }: { user: UserProfile }) {
   return (
-    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--tenant-surface-muted)] font-mono text-[10px] font-black text-[var(--tenant-surface-foreground)]">
-      {userInitials(user)}
-    </span>
+    user.avatar_url ? <img src={user.avatar_url} alt={user.name || user.email} className="h-6 w-6 shrink-0 rounded-full object-cover" /> : <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--tenant-surface-muted)] font-mono text-[10px] font-black text-[var(--tenant-surface-foreground)]">{userInitials(user)}</span>
   );
 }
 
