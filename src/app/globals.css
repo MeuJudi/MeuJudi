@@ -32,6 +32,21 @@
   border-color: var(--color-border);
 }
 
+/* Public onboarding screens are rendered before TenantShell exists. Keep the
+   MeuJudi palette available there so a new account never lands on a blank
+   dark page while its tenant is being created. */
+:root {
+  --tenant-paper: #f6f3ea;
+  --tenant-surface: #ffffff;
+  --tenant-surface-muted: #ede9dd;
+  --tenant-surface-foreground: #16233a;
+  --tenant-line: #d9d2bf;
+  --tenant-brass: #9a6a22;
+  --tenant-brass-light: #d9b372;
+  --tenant-moss: #4b6b4e;
+  --tenant-wine: #7a2e2e;
+}
+
 body {
   min-height: 100vh;
   background: var(--color-background);

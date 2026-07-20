@@ -7,6 +7,7 @@ type AppUser = {
   role: "owner" | "lawyer" | "staff" | "super_admin";
   name: string;
   email: string;
+  avatar_url: string | null;
 };
 
 export async function requireSession() {
@@ -24,7 +25,7 @@ export async function requireAppUser() {
   const { supabase, authUser } = await requireSession();
   const { data: profile } = await supabase
     .from("users")
-    .select("id, tenant_id, role, name, email")
+    .select("id, tenant_id, role, name, email, avatar_url")
     .eq("id", authUser.id)
     .single<AppUser>();
 
