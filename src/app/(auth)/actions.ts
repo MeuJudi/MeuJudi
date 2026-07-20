@@ -21,6 +21,7 @@ export async function signIn(formData: FormData) {
   const { data: authData, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) {
     if (error.message.toLowerCase().includes("email not confirmed")) {
+      if (isAdminLogin) redirect(`/admin/login?error=email_not_confirmed`);
       redirect(`/register/confirm?email=${encodeURIComponent(email)}&error=email_not_confirmed`);
     }
     const loginPath = redirectTo.startsWith("/admin") ? "/admin/login" : "/login";

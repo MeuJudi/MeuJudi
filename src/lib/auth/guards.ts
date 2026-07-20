@@ -22,7 +22,7 @@ export async function requireSession(scope: AuthScope = "tenant") {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) redirect("/login");
+  if (!user) redirect(scope === "admin" ? "/admin/login" : "/login");
 
   return { supabase, authUser: user };
 }
@@ -35,7 +35,7 @@ export async function requireAppUser(scope: AuthScope = "tenant") {
     .eq("id", authUser.id)
     .single<AppUser>();
 
-  if (!profile) redirect("/onboarding");
+  if (!profile) redirect(scope === "admin" ? "/admin/login?error=admin_profile_missing" : "/onboarding");
 
   return { supabase, authUser, profile };
 }
@@ -54,7 +54,7 @@ export async function requireSuperAdmin() {
   const context = await requireAppUser("admin");
 
   if (context.profile.role !== "super_admin") {
-    redirect("/monitoramento");
+    redirect("/admin/login?error=admin_required");
   }
 
   return context;

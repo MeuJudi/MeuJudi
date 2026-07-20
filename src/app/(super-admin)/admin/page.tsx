@@ -29,7 +29,7 @@ export default async function AdminPage() {
           </p>
         </div>
         <Button asChild variant="outline">
-          <Link href="/monitoramento">Abrir produto</Link>
+          <Link href="/login">Entrar no MeuJudi</Link>
         </Button>
       </header>
 

@@ -196,3 +196,36 @@ end;
 $$;
 
 grant execute on function public.complete_tenant_onboarding(text, text, text, text, text, text, text, text) to authenticated;
+
+-- Impede que um usuario comum falsifique auditoria em nome de outro tenant.
+create or replace function public.write_audit_log(
+  p_action text,
+  p_entity text,
+  p_entity_id uuid default null,
+  p_tenant_id uuid default null,
+  p_category text default 'general',
+  p_metadata jsonb default '{}'::jsonb
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_id uuid;
+  v_current_tenant uuid := public.current_user_tenant_id();
+begin
+  if auth.uid() is null then raise exception 'not_authenticated'; end if;
+  if p_tenant_id is not null and p_tenant_id <> v_current_tenant and not public.is_super_admin() then
+    raise exception 'audit_tenant_forbidden';
+  end if;
+
+  insert into public.audit_logs (tenant_id, user_id, action, entity, entity_id, category, metadata)
+  values (coalesce(p_tenant_id, v_current_tenant), auth.uid(), p_action, p_entity, p_entity_id, p_category, p_metadata)
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+
+revoke all on function public.write_audit_log(text, text, uuid, uuid, text, jsonb) from public;
+grant execute on function public.write_audit_log(text, text, uuid, uuid, text, jsonb) to authenticated;
