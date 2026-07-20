@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 
 const protectedPrefixes = [
   "/dashboard",
@@ -16,24 +17,49 @@ const protectedPrefixes = [
 ];
 const publicPrefixes = ["/admin/login", "/forgot-password", "/reset-password"];
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
-  const hasSessionCookie = request.cookies
-    .getAll()
-    .some((cookie) => cookie.name.startsWith("sb-") && cookie.name.includes("auth-token"));
+  let response = NextResponse.next({ request });
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          response = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+        },
+      },
+    },
+  );
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const hasSession = Boolean(user);
+
+  function redirectWithSession(pathname: string) {
+    const redirectResponse = NextResponse.redirect(new URL(pathname, request.url));
+    response.cookies.getAll().forEach(({ name, value }) => redirectResponse.cookies.set(name, value));
+    return redirectResponse;
+  }
 
   if (publicPrefixes.some((prefix) => path.startsWith(prefix))) {
-    if (hasSessionCookie && path === "/admin/login") {
-      return NextResponse.redirect(new URL("/admin", request.url));
+    if (hasSession && path === "/admin/login") {
+      return redirectWithSession("/admin");
     }
-    return NextResponse.next();
+    return response;
   }
 
-  if (protectedPrefixes.some((prefix) => path.startsWith(prefix)) && !hasSessionCookie) {
-    return NextResponse.redirect(new URL("/login", request.url));
+  if (protectedPrefixes.some((prefix) => path.startsWith(prefix)) && !hasSession) {
+    return redirectWithSession("/login");
   }
 
-  return NextResponse.next();
+  return response;
 }
 
 export const config = {
