@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BarChart3, Building2, ClipboardList, MonitorCog, Shield } from "lucide-react";
 import { requireSuperAdmin } from "@/lib/auth/guards";
+import { adminSignOut } from "@/app/(auth)/actions";
 import { cn } from "@/lib/utils";
 
 const adminLinks = [
@@ -34,6 +35,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             </Link>
           ))}
         </nav>
+        <form action={adminSignOut} className="absolute bottom-6 left-4 right-4">
+          <button type="submit" className="w-full rounded-md border px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+            Sair do Super Admin
+          </button>
+        </form>
       </aside>
       <main className="px-5 py-6 md:ml-64 md:px-8">{children}</main>
     </div>

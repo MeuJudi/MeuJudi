@@ -15,7 +15,8 @@ export async function signIn(formData: FormData) {
   const email = requireString(formData, "email");
   const password = requireString(formData, "password");
   const redirectTo = getSafeRedirect(formData.get("redirect_to"), "/monitoramento");
-  const supabase = await createClient();
+  const isAdminLogin = redirectTo.startsWith("/admin");
+  const supabase = await createClient(isAdminLogin ? "admin" : "tenant");
 
   const { data: authData, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) {
@@ -26,7 +27,7 @@ export async function signIn(formData: FormData) {
     redirect(`${loginPath}?error=${encodeURIComponent(error.message)}`);
   }
 
-  if (redirectTo.startsWith("/admin")) redirect(redirectTo);
+  if (isAdminLogin) redirect(redirectTo);
 
   const { data: profile } = authData.user
     ? await supabase.from("users").select("tenant_id, role").eq("id", authData.user.id).maybeSingle()
@@ -127,4 +128,10 @@ export async function signOut() {
   const supabase = await createClient();
   await supabase.auth.signOut();
   redirect("/login");
+}
+
+export async function adminSignOut() {
+  const supabase = await createClient("admin");
+  await supabase.auth.signOut();
+  redirect("/admin/login");
 }

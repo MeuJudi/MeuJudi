@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import type { AuthScope } from "@/lib/supabase/auth-scope";
 
 type AppUser = {
   id: string;
@@ -15,8 +16,8 @@ type AppUser = {
   created_at: string;
 };
 
-export async function requireSession() {
-  const supabase = await createClient();
+export async function requireSession(scope: AuthScope = "tenant") {
+  const supabase = await createClient(scope);
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -26,8 +27,8 @@ export async function requireSession() {
   return { supabase, authUser: user };
 }
 
-export async function requireAppUser() {
-  const { supabase, authUser } = await requireSession();
+export async function requireAppUser(scope: AuthScope = "tenant") {
+  const { supabase, authUser } = await requireSession(scope);
   const { data: profile } = await supabase
     .from("users")
     .select("id, tenant_id, role, name, email, phone, oab_number, oab_uf, avatar_url, gender, created_at")
@@ -50,7 +51,7 @@ export async function requireOwner() {
 }
 
 export async function requireSuperAdmin() {
-  const context = await requireAppUser();
+  const context = await requireAppUser("admin");
 
   if (context.profile.role !== "super_admin") {
     redirect("/monitoramento");
