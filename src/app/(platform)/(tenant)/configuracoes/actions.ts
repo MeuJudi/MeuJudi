@@ -94,7 +94,6 @@ export async function updateTenant(formData: FormData) {
     .from("tenants")
     .update({
       name: String(formData.get("name") ?? "").trim(),
-      slug: String(formData.get("slug") ?? "").trim().toLowerCase(),
       cnpj: stripMask(String(formData.get("cnpj") ?? "")) || null,
       city: String(formData.get("city") ?? "").trim() || null,
       state: String(formData.get("state") ?? "").trim().toUpperCase() || null,

@@ -20,7 +20,6 @@ type Props = {
   tenant: {
     id: string;
     name: string;
-    slug: string;
     cnpj: string | null;
     city: string | null;
     state: string | null;
@@ -36,7 +35,6 @@ export function EscritorioForm({ tenant }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [name, setName] = useState(tenant.name);
-  const [slug, setSlug] = useState(tenant.slug);
   const [cnpj, setCnpj] = useState(tenant.cnpj ?? "");
   const [city, setCity] = useState(tenant.city ?? "");
   const [state, setState] = useState(tenant.state ?? "");
@@ -80,7 +78,6 @@ export function EscritorioForm({ tenant }: Props) {
 
     const formData = new FormData();
     formData.set("name", name);
-    formData.set("slug", slug);
     formData.set("cnpj", cnpj);
     formData.set("city", city);
     formData.set("state", state);
@@ -161,19 +158,6 @@ export function EscritorioForm({ tenant }: Props) {
                 className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--color-card-foreground)]"
                 required
               />
-            </div>
-
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="slug" className="text-[var(--color-card-foreground)]">Slug (URL)</Label>
-              <Input
-                id="slug"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
-                className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--color-card-foreground)]"
-              />
-              <p className="text-xs text-[var(--color-muted-foreground)]">
-                Alterar o slug pode quebrar links existentes.
-              </p>
             </div>
 
             <div className="space-y-2">
