@@ -2,7 +2,7 @@ import { MailCheck } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
-import { resendConfirmation } from "./actions";
+import { resendSignupCode } from "@/app/(auth)/actions";
 import { OnboardingForm } from "./onboarding-form";
 
 function MessageCard({ title, children }: { title: string; children: React.ReactNode }) {
@@ -22,7 +22,7 @@ function MessageCard({ title, children }: { title: string; children: React.React
 export default async function OnboardingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; success?: string }>;
+  searchParams: Promise<{ error?: string; success?: string; email?: string }>;
 }) {
   const params = await searchParams;
   const supabase = await createClient();
@@ -36,19 +36,22 @@ export default async function OnboardingPage({
         <div className="mx-auto w-full max-w-lg">
           <MessageCard title="Confirme seu e-mail para continuar">
             <p>
-              Enviamos um link de confirmação para o seu e-mail. Abra a mensagem e clique no link
-              para terminar o cadastro do escritório.
+              Confirme seu email com o código enviado para sua caixa de entrada antes de continuar
+              a configuração do escritório.
             </p>
-            <p className="mt-3">Depois da confirmação, você voltará para esta etapa automaticamente.</p>
+            <p className="mt-3">Depois da confirmação, entre novamente para continuar o cadastro.</p>
             <div className="mt-5 flex flex-col gap-3">
               <Button asChild>
                 <a href="/login">Já confirmei, entrar</a>
               </Button>
-              <form action={resendConfirmation}>
-                <Button variant="outline" type="submit" className="w-full">
-                  Reenviar email de confirmação
-                </Button>
-              </form>
+              {params.email ? (
+                <form action={resendSignupCode}>
+                  <input type="hidden" name="email" value={params.email} />
+                  <Button variant="outline" type="submit" className="w-full">
+                    Reenviar código
+                  </Button>
+                </form>
+              ) : null}
             </div>
           </MessageCard>
         </div>
