@@ -14,7 +14,6 @@ const protectedPrefixes = [
   "/team",
   "/admin",
 ];
-const authPrefixes = ["/login", "/register", "/forgot-password", "/reset-password"];
 const publicPrefixes = ["/admin/login", "/forgot-password", "/reset-password"];
 
 export function proxy(request: NextRequest) {
@@ -32,10 +31,6 @@ export function proxy(request: NextRequest) {
 
   if (protectedPrefixes.some((prefix) => path.startsWith(prefix)) && !hasSessionCookie) {
     return NextResponse.redirect(new URL("/login", request.url));
-  }
-
-  if (authPrefixes.some((prefix) => path.startsWith(prefix)) && hasSessionCookie) {
-    return NextResponse.redirect(new URL("/monitoramento", request.url));
   }
 
   return NextResponse.next();
