@@ -12,7 +12,7 @@ export async function completeOnboarding(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { data: tenantId, error } = await supabase.rpc("complete_tenant_onboarding", {
+  const { error } = await supabase.rpc("complete_tenant_onboarding", {
     p_tenant_name: tenantName,
     p_user_name: userName,
     p_city: String(formData.get("city") ?? ""),

@@ -388,16 +388,16 @@ export function OnboardingForm({ initialData }: Props) {
               </div>
 
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="gender">Como deseja ser identificado?</Label>
+                <Label htmlFor="gender">Sexo</Label>
                 <select
                   id="gender"
                   value={form.gender}
                   onChange={(e) => updateField("gender", e.target.value as FormFields["gender"])}
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
-                  <option value="neutral">Forma neutra</option>
-                  <option value="masculine">Masculino</option>
                   <option value="feminine">Feminino</option>
+                  <option value="masculine">Masculino</option>
+                  <option value="neutral">Prefiro não informar</option>
                 </select>
               </div>
 

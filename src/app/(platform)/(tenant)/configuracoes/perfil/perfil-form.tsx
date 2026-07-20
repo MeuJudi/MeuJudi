@@ -199,11 +199,11 @@ export function PerfilForm({ profile }: Props) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="gender" className="text-[var(--color-card-foreground)]">Forma de tratamento</Label>
+              <Label htmlFor="gender" className="text-[var(--color-card-foreground)]">Sexo</Label>
               <select id="gender" value={gender} onChange={(e) => setGender(e.target.value as Gender)} className="flex h-9 w-full rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-1 text-sm text-[var(--color-card-foreground)]">
-                <option value="neutral">Neutra</option>
-                <option value="masculine">Masculino</option>
                 <option value="feminine">Feminino</option>
+                <option value="masculine">Masculino</option>
+                <option value="neutral">Prefiro não informar</option>
               </select>
             </div>
 
