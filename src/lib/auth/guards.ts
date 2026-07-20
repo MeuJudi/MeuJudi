@@ -37,6 +37,11 @@ export async function requireAppUser(scope?: AuthScope) {
 
   if (!profile) redirect(scope === "admin" ? "/admin/login?error=admin_profile_missing" : "/onboarding");
 
+  if (scope !== "admin" && profile.tenant_id && profile.role !== "super_admin") {
+    const { data: tenantIsActive } = await supabase.rpc("current_user_tenant_is_active");
+    if (tenantIsActive === false) redirect("/tenant-suspended");
+  }
+
   return { supabase, authUser, profile };
 }
 

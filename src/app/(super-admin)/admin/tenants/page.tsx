@@ -1,10 +1,9 @@
 import Link from "next/link";
 import { Building2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireSuperAdmin } from "@/lib/auth/guards";
-import { setTenantStatus } from "../actions";
+import { TenantStatusButton } from "./tenant-status-button";
 
 export default async function AdminTenantsPage() {
   const { supabase } = await requireSuperAdmin();
@@ -65,13 +64,7 @@ export default async function AdminTenantsPage() {
                     <Badge variant="outline">{tenant.is_free_mvp ? "MVP gratuito" : "Pago"}</Badge>
                   </td>
                   <td className="py-3 pr-4">
-                    <form action={setTenantStatus}>
-                      <input type="hidden" name="tenant_id" value={tenant.id} />
-                      <input type="hidden" name="is_active" value={String(!tenant.is_active)} />
-                      <Button type="submit" size="sm" variant="outline">
-                        {tenant.is_active ? "Suspender" : "Reativar"}
-                      </Button>
-                    </form>
+                    <TenantStatusButton tenantId={tenant.id} active={tenant.is_active} compact />
                   </td>
                 </tr>
               ))}

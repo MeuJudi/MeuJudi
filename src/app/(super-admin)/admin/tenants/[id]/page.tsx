@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireSuperAdmin } from "@/lib/auth/guards";
-import { enterTenantMaintenance, setTenantStatus } from "../../actions";
+import { enterTenantMaintenance } from "../../actions";
+import { TenantStatusButton } from "../tenant-status-button";
 import { roleLabel } from "@/lib/auth/labels";
 
 export default async function AdminTenantDetailPage({
@@ -60,13 +61,7 @@ export default async function AdminTenantDetailPage({
             <input type="hidden" name="tenant_id" value={tenant.id} />
             <Button type="submit" variant="outline">Abrir manutenção</Button>
           </form>
-          <form action={setTenantStatus}>
-            <input type="hidden" name="tenant_id" value={tenant.id} />
-            <input type="hidden" name="is_active" value={String(!tenant.is_active)} />
-            <Button type="submit" variant={tenant.is_active ? "destructive" : "default"}>
-              {tenant.is_active ? "Suspender cliente" : "Reativar cliente"}
-            </Button>
-          </form>
+          <TenantStatusButton tenantId={tenant.id} active={tenant.is_active} />
         </div>
       </header>
 
