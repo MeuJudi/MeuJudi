@@ -19,7 +19,7 @@ export default async function TenantLayout({
     rawPalette && VALID_PALETTE_IDS.has(rawPalette) ? (rawPalette as PaletteId) : "padrao";
 
   return (
-    <TenantShell userName={profile.name} role={profile.role} avatarUrl={(profile as Record<string, unknown>).avatar_url as string | null} initialPaletteId={paletteId}>
+    <TenantShell userName={profile.name} role={profile.role} gender={profile.gender} avatarUrl={(profile as Record<string, unknown>).avatar_url as string | null} initialPaletteId={paletteId}>
       {children}
     </TenantShell>
   );

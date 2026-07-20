@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   description: "Gestao simples de processos para escritorios de advocacia.",
   icons: {
     icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
       { url: "/meujudi-icon.png", sizes: "32x32", type: "image/png" },
       { url: "/meujudi-icon.png", sizes: "16x16", type: "image/png" },
     ],

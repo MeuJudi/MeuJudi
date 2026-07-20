@@ -21,6 +21,7 @@ export default async function PerfilPage() {
           oab_number: (profile as Record<string, unknown>).oab_number as string | null,
           oab_uf: (profile as Record<string, unknown>).oab_uf as string | null,
           role: profile.role,
+          gender: profile.gender,
           avatar_url: (profile as Record<string, unknown>).avatar_url as string | null,
           created_at: (profile as Record<string, unknown>).created_at as string,
         }}

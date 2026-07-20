@@ -17,13 +17,23 @@ export async function signIn(formData: FormData) {
   const redirectTo = getSafeRedirect(formData.get("redirect_to"), "/monitoramento");
   const supabase = await createClient();
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data: authData, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) {
     if (error.message.toLowerCase().includes("email not confirmed")) {
       redirect(`/register/confirm?email=${encodeURIComponent(email)}&error=email_not_confirmed`);
     }
     const loginPath = redirectTo.startsWith("/admin") ? "/admin/login" : "/login";
     redirect(`${loginPath}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  if (redirectTo.startsWith("/admin")) redirect(redirectTo);
+
+  const { data: profile } = authData.user
+    ? await supabase.from("users").select("tenant_id, role").eq("id", authData.user.id).maybeSingle()
+    : { data: null };
+
+  if (!profile?.tenant_id && profile?.role !== "super_admin") {
+    redirect("/onboarding");
   }
 
   redirect(redirectTo);

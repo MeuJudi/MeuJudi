@@ -20,6 +20,7 @@ export async function updateProfile(formData: FormData) {
       phone: stripMask(String(formData.get("phone") ?? "")) || null,
       oab_number: stripMask(String(formData.get("oab_number") ?? "")) || null,
       oab_uf: String(formData.get("oab_uf") ?? "").trim().toUpperCase() || null,
+      gender: String(formData.get("gender") ?? "neutral"),
     })
     .eq("id", user.id);
 
@@ -198,7 +199,8 @@ export async function addOab(formData: FormData) {
 
   const { error } = await supabase.from("escritorio_oabs").insert({
     tenant_id: profile.tenant_id,
-    user_id: user.id,
+    // OAB institucional pertence ao escritório; a OAB pessoal fica no perfil do membro.
+    user_id: null,
     oab_number: oabNumber,
     oab_uf: oabUf,
     is_primary: false,
@@ -297,7 +299,7 @@ export async function updateMemberRole(userId: string, newRole: string) {
     throw new Error("Não é possível alterar seu próprio papel");
   }
 
-  const validRoles = ["lawyer", "staff", "owner"];
+  const validRoles = ["lawyer", "intern", "staff", "owner"];
   if (!validRoles.includes(newRole)) {
     throw new Error("Papel inválido");
   }
@@ -435,7 +437,7 @@ export async function createInviteMember(formData: FormData) {
 
   if (!email) throw new Error("Email é obrigatório");
 
-  const validRoles = ["lawyer", "staff", "owner"];
+  const validRoles = ["lawyer", "intern", "staff", "owner"];
   if (!validRoles.includes(role)) {
     throw new Error("Papel inválido");
   }

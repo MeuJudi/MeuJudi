@@ -4,10 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 type AppUser = {
   id: string;
   tenant_id: string | null;
-  role: "owner" | "lawyer" | "staff" | "super_admin";
+  role: "owner" | "lawyer" | "intern" | "staff" | "super_admin";
   name: string;
   email: string;
   avatar_url: string | null;
+  gender: "masculine" | "feminine" | "neutral";
 };
 
 export async function requireSession() {
@@ -25,7 +26,7 @@ export async function requireAppUser() {
   const { supabase, authUser } = await requireSession();
   const { data: profile } = await supabase
     .from("users")
-    .select("id, tenant_id, role, name, email, avatar_url")
+    .select("id, tenant_id, role, name, email, avatar_url, gender")
     .eq("id", authUser.id)
     .single<AppUser>();
 

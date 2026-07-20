@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { completeOnboarding, uploadAvatar, createInvites } from "./actions";
 import { maskCnpj, maskPhone, maskOab, stripMask } from "@/lib/masks";
+import { roleLabel } from "@/lib/auth/labels";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -26,9 +27,10 @@ const ufs = [
 ];
 
 const roleLabels: Record<string, string> = {
-  lawyer: "Advogado(a)",
-  staff: "Equipe administrativa",
-  owner: "Sócio(a) / Responsável",
+  lawyer: roleLabel("lawyer"),
+  intern: roleLabel("intern"),
+  staff: roleLabel("staff"),
+  owner: roleLabel("owner"),
 };
 
 type Step = 1 | 2 | 3 | "success";
@@ -42,6 +44,7 @@ type FormFields = {
   user_name: string;
   oab_number: string;
   oab_uf: string;
+  gender: "masculine" | "feminine" | "neutral";
   avatar_url: string;
 };
 
@@ -198,6 +201,7 @@ export function OnboardingForm({ initialData }: Props) {
     formData.set("state", form.state);
     formData.set("oab_number", stripMask(form.oab_number));
     formData.set("oab_uf", form.oab_uf);
+    formData.set("gender", form.gender);
     formData.set("phone", stripMask(form.phone));
     formData.set("cnpj", stripMask(form.cnpj));
 
@@ -384,6 +388,20 @@ export function OnboardingForm({ initialData }: Props) {
               </div>
 
               <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="gender">Como deseja ser identificado?</Label>
+                <select
+                  id="gender"
+                  value={form.gender}
+                  onChange={(e) => updateField("gender", e.target.value as FormFields["gender"])}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="neutral">Forma neutra</option>
+                  <option value="masculine">Masculino</option>
+                  <option value="feminine">Feminino</option>
+                </select>
+              </div>
+
+              <div className="space-y-2 sm:col-span-2">
                 <Label>Foto do perfil</Label>
                 <div className="flex items-center gap-4">
                   <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border border-input bg-muted/50">
@@ -476,6 +494,7 @@ export function OnboardingForm({ initialData }: Props) {
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
                   <option value="lawyer">Advogado(a)</option>
+                  <option value="intern">Estagiário(a)</option>
                   <option value="staff">Equipe administrativa</option>
                   <option value="owner">Sócio(a) / Responsável</option>
                 </select>

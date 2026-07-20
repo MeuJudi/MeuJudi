@@ -88,7 +88,7 @@ export function OabsForm({ oabs }: Props) {
           OABs do escritório
         </h2>
         <p className="text-sm text-[var(--color-muted-foreground)]">
-          Gerencie as inscrições OAB vinculadas ao escritório.
+          Cadastre aqui apenas a inscrição institucional do escritório. A OAB pessoal de cada pessoa fica no perfil dela.
         </p>
       </div>
 

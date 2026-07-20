@@ -12,7 +12,7 @@ export async function completeOnboarding(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.rpc("complete_tenant_onboarding", {
+  const { data: tenantId, error } = await supabase.rpc("complete_tenant_onboarding", {
     p_tenant_name: tenantName,
     p_user_name: userName,
     p_city: String(formData.get("city") ?? ""),
@@ -27,7 +27,33 @@ export async function completeOnboarding(formData: FormData) {
     return { success: false, error: error.message };
   }
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) {
+    await supabase.from("users").update({
+      oab_number: String(formData.get("oab_number") ?? "").trim() || null,
+      oab_uf: String(formData.get("oab_uf") ?? "").trim().toUpperCase() || null,
+      gender: String(formData.get("gender") ?? "neutral"),
+      phone: String(formData.get("phone") ?? "").trim() || null,
+    }).eq("id", user.id);
+  }
+
   return { success: true };
+}
+
+export async function completeMemberOnboarding(formData: FormData) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("complete_invited_member_onboarding", {
+    p_user_name: String(formData.get("name") ?? "").trim(),
+    p_phone: String(formData.get("phone") ?? ""),
+    p_oab_number: String(formData.get("oab_number") ?? ""),
+    p_oab_uf: String(formData.get("oab_uf") ?? ""),
+    p_gender: String(formData.get("gender") ?? "neutral"),
+  });
+
+  if (error) return { success: false, error: error.message === "invite_not_found" ? "Este email ainda não recebeu um convite válido do escritório." : error.message };
+  return { success: true, tenantId: data as string };
 }
 
 export async function uploadAvatar(formData: FormData) {

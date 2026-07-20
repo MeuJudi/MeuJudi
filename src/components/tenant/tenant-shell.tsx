@@ -23,11 +23,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { signOut } from "@/app/(auth)/actions";
 import { cn } from "@/lib/utils";
 import { palettes, getPaletteStyles, type PaletteId } from "@/lib/themes/palettes";
+import { roleLabel } from "@/lib/auth/labels";
 
 type TenantShellProps = {
   children: React.ReactNode;
   userName: string;
   role: string;
+  gender?: string;
   avatarUrl: string | null;
   initialPaletteId: PaletteId;
 };
@@ -50,7 +52,7 @@ function initials(name: string) {
     .join("") || "MJ";
 }
 
-export function TenantShell({ children, userName, role, avatarUrl, initialPaletteId }: TenantShellProps) {
+export function TenantShell({ children, userName, role, gender, avatarUrl, initialPaletteId }: TenantShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -326,7 +328,7 @@ export function TenantShell({ children, userName, role, avatarUrl, initialPalett
                   <div onClick={(e) => e.stopPropagation()} className="absolute right-0 top-full z-50 mt-1 w-56 rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)] shadow-lg">
                     <div className="border-b border-[var(--tenant-line)] px-4 py-3">
                       <p className="text-sm font-medium text-[var(--tenant-surface-foreground)]">{userName}</p>
-                      <p className="text-xs text-[var(--color-muted-foreground)]">{role}</p>
+                      <p className="text-xs text-[var(--color-muted-foreground)]">{roleLabel(role, gender)}</p>
                     </div>
                     <div className="py-1">
                       <Link

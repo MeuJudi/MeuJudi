@@ -14,11 +14,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { roleLabel } from "@/lib/auth/labels";
 
 const roleLabels: Record<string, string> = {
-  owner: "Responsável",
-  lawyer: "Advogado(a)",
-  staff: "Equipe",
+  owner: roleLabel("owner"),
+  lawyer: roleLabel("lawyer"),
+  intern: roleLabel("intern"),
+  staff: roleLabel("staff"),
 };
 
 type Member = {
@@ -173,7 +175,8 @@ export function EquipeForm({ members, invites, currentUserId }: Props) {
                   >
                     <option value="owner">Responsável</option>
                     <option value="lawyer">Advogado(a)</option>
-                    <option value="staff">Equipe</option>
+                    <option value="intern">Estagiário(a)</option>
+                    <option value="staff">Equipe administrativa</option>
                   </select>
                   {member.id !== currentUserId && (
                     <>
@@ -229,6 +232,7 @@ export function EquipeForm({ members, invites, currentUserId }: Props) {
                 className="flex h-9 w-full rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-1 text-sm text-[var(--color-card-foreground)] shadow-sm transition-colors placeholder:text-[var(--color-muted-foreground)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--tenant-brass)]"
               >
                 <option value="lawyer">Advogado(a)</option>
+                <option value="intern">Estagiário(a)</option>
                 <option value="staff">Equipe administrativa</option>
                 <option value="owner">Sócio(a) / Responsável</option>
               </select>

@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { resendSignupCode } from "@/app/(auth)/actions";
 import { OnboardingForm } from "./onboarding-form";
+import { WorkspaceChoice } from "./workspace-choice";
+import { MemberOnboardingForm } from "./member-onboarding-form";
 
 function MessageCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -22,7 +24,7 @@ function MessageCard({ title, children }: { title: string; children: React.React
 export default async function OnboardingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; success?: string; email?: string }>;
+  searchParams: Promise<{ error?: string; success?: string; email?: string; flow?: string }>;
 }) {
   const params = await searchParams;
   const supabase = await createClient();
@@ -80,6 +82,46 @@ export default async function OnboardingPage({
     );
   }
 
+  if (!params.flow) {
+    return (
+      <main className="min-h-screen bg-[var(--tenant-paper)] px-4 py-8 sm:px-6">
+        <div className="mx-auto w-full max-w-5xl space-y-8">
+          <header className="text-center">
+            <p className="text-sm font-medium text-primary">Primeiro passo</p>
+            <h1 className="mt-2 font-display text-3xl font-semibold text-[var(--color-card-foreground)]">Como você quer começar?</h1>
+            <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-[var(--color-muted-foreground)]">Escolha se você vai criar um escritório ou entrar em um escritório que já existe.</p>
+          </header>
+          <WorkspaceChoice />
+        </div>
+      </main>
+    );
+  }
+
+  if (params.flow === "join") {
+    const { data: inviteData } = await supabase.rpc("get_pending_tenant_invite").maybeSingle();
+    const invite = inviteData as { tenant_name: string; role: string } | null;
+    if (!invite) {
+      return (
+        <main className="min-h-screen bg-[var(--tenant-paper)] px-4 py-8 sm:px-6">
+          <div className="mx-auto w-full max-w-3xl space-y-6">
+            <MessageCard title="Convite não encontrado">
+              <p>Este email ainda não foi cadastrado por nenhum escritório. Peça ao sócio ou administrador para enviar um convite para este mesmo email.</p>
+              <Button asChild className="mt-5"><a href="/onboarding">Voltar</a></Button>
+            </MessageCard>
+          </div>
+        </main>
+      );
+    }
+    return (
+      <main className="min-h-screen bg-[var(--tenant-paper)] px-4 py-8 sm:px-6">
+        <div className="mx-auto w-full max-w-3xl space-y-6">
+          <header className="text-center"><p className="text-sm font-medium text-primary">Entrada na equipe</p><h1 className="mt-2 font-display text-3xl font-semibold text-[var(--color-card-foreground)]">Complete seus dados</h1><p className="mt-3 text-sm text-[var(--color-muted-foreground)]">Este cadastro é pessoal e não cria um novo escritório.</p></header>
+          <MemberOnboardingForm tenantName={invite.tenant_name} role={invite.role} />
+        </div>
+      </main>
+    );
+  }
+
   const metadata = user.user_metadata ?? {};
   const initialData = {
     tenant_name: String(metadata.office ?? ""),
@@ -90,6 +132,7 @@ export default async function OnboardingPage({
     user_name: String(metadata.name ?? ""),
     oab_number: String(metadata.oab ?? ""),
     oab_uf: String(metadata.uf ?? ""),
+    gender: "neutral" as const,
     avatar_url: "",
   };
 

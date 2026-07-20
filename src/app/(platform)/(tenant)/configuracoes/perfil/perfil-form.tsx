@@ -12,19 +12,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { palettes, type PaletteId } from "@/lib/themes/palettes";
+import { roleLabel, type Gender } from "@/lib/auth/labels";
 
 const ufs = [
   "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS",
   "MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC",
   "SP","SE","TO",
 ];
-
-const roleLabel: Record<string, string> = {
-  owner: "Responsável pelo escritório",
-  lawyer: "Advogado(a)",
-  staff: "Equipe administrativa",
-  super_admin: "Administrador da plataforma",
-};
 
 type Props = {
   profile: {
@@ -35,6 +29,7 @@ type Props = {
     oab_number: string | null;
     oab_uf: string | null;
     role: string;
+    gender: Gender;
     avatar_url: string | null;
     created_at: string;
   };
@@ -49,6 +44,7 @@ export function PerfilForm({ profile }: Props) {
   const [phone, setPhone] = useState(profile.phone ?? "");
   const [oabNumber, setOabNumber] = useState(profile.oab_number ?? "");
   const [oabUf, setOabUf] = useState(profile.oab_uf ?? "");
+  const [gender, setGender] = useState<Gender>(profile.gender ?? "neutral");
   const [avatarPreview, setAvatarPreview] = useState<string | null>(profile.avatar_url);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -92,6 +88,7 @@ export function PerfilForm({ profile }: Props) {
     formData.set("phone", phone);
     formData.set("oab_number", oabNumber);
     formData.set("oab_uf", oabUf);
+    formData.set("gender", gender);
 
     startTransition(async () => {
       try {
@@ -196,9 +193,18 @@ export function PerfilForm({ profile }: Props) {
                   variant="outline"
                   className="border-[var(--tenant-line)] bg-[color-mix(in_srgb,var(--tenant-brass)_10%,transparent)] text-[var(--tenant-brass)]"
                 >
-                  {roleLabel[profile.role] ?? profile.role}
+                  {roleLabel(profile.role, gender)}
                 </Badge>
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="gender" className="text-[var(--color-card-foreground)]">Forma de tratamento</Label>
+              <select id="gender" value={gender} onChange={(e) => setGender(e.target.value as Gender)} className="flex h-9 w-full rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-1 text-sm text-[var(--color-card-foreground)]">
+                <option value="neutral">Neutra</option>
+                <option value="masculine">Masculino</option>
+                <option value="feminine">Feminino</option>
+              </select>
             </div>
 
             <div className="space-y-2">

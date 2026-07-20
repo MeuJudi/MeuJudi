@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireSuperAdmin } from "@/lib/auth/guards";
 import { setTenantStatus } from "../../actions";
+import { roleLabel } from "@/lib/auth/labels";
 
 export default async function AdminTenantDetailPage({
   params,
@@ -22,7 +23,7 @@ export default async function AdminTenantDetailPage({
         .single(),
       supabase
         .from("users")
-        .select("id, name, email, role, is_active, created_at")
+        .select("id, name, email, role, gender, is_active, created_at")
         .eq("tenant_id", id)
         .order("created_at", { ascending: false }),
       supabase
@@ -103,7 +104,7 @@ export default async function AdminTenantDetailPage({
                   <p className="font-medium">{user.name}</p>
                   <p className="text-sm text-muted-foreground">{user.email}</p>
                 </div>
-                <Badge variant="outline">{user.role}</Badge>
+                <Badge variant="outline">{roleLabel(user.role, user.gender)}</Badge>
               </div>
             ))}
           </CardContent>
