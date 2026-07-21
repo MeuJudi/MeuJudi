@@ -12,6 +12,7 @@ export default async function OabsPage() {
 
   const oabsWithNames = await Promise.all(
     (oabs ?? []).map(async (oab) => {
+      if (!oab.user_id) return { ...oab, user_name: null };
       const { data: user } = await supabase
         .from("users")
         .select("name")
@@ -25,8 +26,8 @@ export default async function OabsPage() {
     <OabsForm
       oabs={oabsWithNames}
       currentUserName={profile.name ?? ""}
-      currentUserOabNumber={profile.oab_number ?? undefined}
-      currentUserOabUf={profile.oab_uf ?? undefined}
+      currentUserOabNumber={profile.oab_number ?? ""}
+      currentUserOabUf={profile.oab_uf ?? ""}
     />
   );
 }
