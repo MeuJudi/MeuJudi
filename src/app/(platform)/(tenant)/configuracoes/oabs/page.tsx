@@ -3,16 +3,49 @@ import { OabsForm } from "./oabs-form";
 import { OabRow } from "./oab-row";
 import { cn } from "@/lib/utils";
 
+type OabRow = {
+  id: string;
+  oab_number: string;
+  oab_uf: string;
+  is_primary: boolean;
+  user_id: string | null;
+  validado_em?: string | null;
+  validado_nome?: string | null;
+  validado_situacao?: string | null;
+  validado_tipo?: string | null;
+  validado_match?: boolean | null;
+};
+
 export default async function OabsPage() {
   const { supabase, profile } = await requireOwner();
 
-  const { data: oabs } = await supabase
+  // Primeiro tenta com as colunas de validação (migration nova aplicada)
+  // Se der erro (coluna não existe), faz fallback sem elas.
+  const withValidacao = await supabase
     .from("escritorio_oabs")
     .select(
       "id, oab_number, oab_uf, is_primary, user_id, validado_em, validado_nome, validado_situacao, validado_tipo, validado_match"
     )
     .eq("tenant_id", profile.tenant_id)
     .order("is_primary", { ascending: false });
+
+  let oabs: OabRow[] = (withValidacao.data ?? []) as OabRow[];
+
+  if (withValidacao.error && /validado_/i.test(withValidacao.error.message)) {
+    // Colunas ainda não existem — fallback sem elas
+    const fallback = await supabase
+      .from("escritorio_oabs")
+      .select("id, oab_number, oab_uf, is_primary, user_id")
+      .eq("tenant_id", profile.tenant_id)
+      .order("is_primary", { ascending: false });
+    if (fallback.error) {
+      // erro real — não é falta de coluna
+      throw new Error(`Erro ao listar OABs: ${fallback.error.message}`);
+    }
+    oabs = (fallback.data ?? []) as OabRow[];
+  } else if (withValidacao.error) {
+    throw new Error(`Erro ao listar OABs: ${withValidacao.error.message}`);
+  }
 
   // Nome do escritório
   const { data: tenant } = await supabase
@@ -24,7 +57,7 @@ export default async function OabsPage() {
 
   // Nomes dos advogados vinculados (OAB pessoal)
   const userIds = Array.from(
-    new Set((oabs ?? []).map((o) => o.user_id).filter(Boolean) as string[])
+    new Set(oabs.map((o) => o.user_id).filter(Boolean) as string[])
   );
   const usersById = new Map<string, { name: string; email: string }>();
   if (userIds.length > 0) {
@@ -36,6 +69,11 @@ export default async function OabsPage() {
       usersById.set(u.id, { name: u.name, email: u.email });
     }
   }
+
+  const migrationMissing =
+    !withValidacao.error &&
+    oabs.length > 0 &&
+    oabs[0].validado_em === undefined;
 
   return (
     <div className="space-y-4">
@@ -50,7 +88,20 @@ export default async function OabsPage() {
         </p>
       </div>
 
-      {(oabs ?? []).length === 0 ? (
+      {migrationMissing && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="font-semibold">Migration pendente</p>
+          <p className="mt-1 text-xs">
+            Aplique no Supabase (SQL Editor) a migration{" "}
+            <code className="rounded bg-amber-100 px-1 py-0.5 font-mono text-[11px]">
+              20260721000002_oab_validation_columns.sql
+            </code>{" "}
+            para habilitar a validação contra a base oficial da OAB.
+          </p>
+        </div>
+      )}
+
+      {oabs.length === 0 ? (
         <p className="rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-6 text-center text-sm text-[var(--color-muted-foreground)]">
           Nenhuma OAB vinculada ao escritório. Cadastre abaixo.
         </p>
@@ -66,9 +117,11 @@ export default async function OabsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--tenant-line)]">
-              {(oabs ?? []).map((oab) => {
+              {oabs.map((oab) => {
                 const isPessoal = !!oab.user_id;
-                const user = isPessoal ? usersById.get(oab.user_id!) : null;
+                const user = isPessoal
+                  ? usersById.get(oab.user_id!)
+                  : null;
                 const vinculado = isPessoal
                   ? user?.name ?? `Usuário ${oab.user_id!.slice(0, 6)}`
                   : tenantName || "Escritório";
@@ -114,10 +167,10 @@ export default async function OabsPage() {
                         oabNumber={oab.oab_number}
                         oabUf={oab.oab_uf}
                         expectedName={vinculado}
-                        initialStatus={oab.validado_situacao}
-                        initialValidadoEm={oab.validado_em}
-                        initialValidadoNome={oab.validado_nome}
-                        initialValidadoMatch={oab.validado_match}
+                        initialStatus={oab.validado_situacao ?? null}
+                        initialValidadoEm={oab.validado_em ?? null}
+                        initialValidadoNome={oab.validado_nome ?? null}
+                        initialValidadoMatch={oab.validado_match ?? null}
                       />
                     </td>
                   </tr>
