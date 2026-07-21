@@ -16,7 +16,7 @@ next-env.d.ts
 !.env.example
 
 # Local-only project folders
-meujudi-cs/
+/meujudi-cs/
 local/
 instaladores/
 arquivos-antigos/

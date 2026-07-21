@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const tabs = [
+  { href: "/configuracoes/meujudi-cs", label: "MeuJudi CS" },
   { href: "/configuracoes/perfil", label: "Meu perfil" },
   { href: "/configuracoes/escritorio", label: "Escritório" },
   { href: "/configuracoes/oabs", label: "OABs" },
