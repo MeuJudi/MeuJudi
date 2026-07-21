@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Loader2, Star, Trash2 } from "lucide-react";
+import { Loader2, Star, Trash2, ShieldCheck } from "lucide-react";
 import { addOab, removeOab, setPrimaryOab } from "../actions";
 import { maskOab } from "@/lib/masks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { OabValidationCard } from "./oab-validation-card";
 
 const ufs = [
   "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS",
@@ -25,9 +26,12 @@ type Oab = {
 
 type Props = {
   oabs: Oab[];
+  currentUserName: string;
+  currentUserOabNumber?: string;
+  currentUserOabUf?: string;
 };
 
-export function OabsForm({ oabs }: Props) {
+export function OabsForm({ oabs, currentUserName, currentUserOabNumber, currentUserOabUf }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -91,6 +95,23 @@ export function OabsForm({ oabs }: Props) {
           Cadastre aqui apenas a inscrição institucional do escritório. A OAB pessoal de cada pessoa fica no perfil dela.
         </p>
       </div>
+
+      <Card className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
+        <CardContent className="p-6">
+          <div className="mb-4 flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-[var(--tenant-brass)]" />
+            <h3 className="font-semibold">Validação oficial OAB</h3>
+          </div>
+          <p className="mb-4 text-sm text-[var(--color-muted-foreground)]">
+            Consulte a base da OAB para confirmar que os dados do advogado estão corretos.
+          </p>
+          <OabValidationCard
+            initialNumber={currentUserOabNumber}
+            initialUf={currentUserOabUf}
+            userName={currentUserName}
+          />
+        </CardContent>
+      </Card>
 
       <Card className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
         <CardContent className="p-6">

@@ -4,7 +4,9 @@ import { useMemo, useState, useTransition } from "react";
 import { closestCorners, DndContext, DragOverlay, PointerSensor, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, horizontalListSortingStrategy, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { AlertTriangle, Check, CheckCircle2, CircleDotDashed, GripVertical, KanbanSquare, ListFilter, Plus, Search, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, CircleDotDashed, GripVertical, KanbanSquare, ListFilter, Plus, Trash2, X } from "lucide-react";
+import { SearchInput } from "@/components/ui/search-input";
+import { globalSearch } from "@/components/ui/search-actions";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -385,10 +387,13 @@ export function TarefasView({ tenantId, columns, tasks, users, currentUser, load
                 </button>
               ))}
             </div>
-            <label className="flex min-w-[260px] flex-1 items-center gap-2 rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-2 text-sm text-[var(--color-muted-foreground)] md:max-w-md">
-              <Search className="h-4 w-4" />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filtrar por titulo ou prioridade" className="w-full bg-transparent text-[var(--tenant-surface-foreground)] outline-none placeholder:text-[var(--color-muted-foreground)]" />
-            </label>
+            <SearchInput
+              value={query}
+              onChange={setQuery}
+              placeholder="Filtrar por titulo ou prioridade"
+              onServerSearch={(q) => globalSearch(q, { perType: 3 })}
+              className="flex-1 md:max-w-md"
+            />
           </div>
 
           {view === "kanban" ? (

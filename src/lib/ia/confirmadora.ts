@@ -59,6 +59,8 @@ export interface ResultadoCamada3 {
   resolvido: boolean;
   valor: string | null;
   precisaCamada4: boolean;
+  /** Custo real da chamada (0 se `incerto` — a chamada falhou antes de gastar). */
+  custoUsd: number;
 }
 
 /**
@@ -83,7 +85,7 @@ export async function executarCamada3(
   if (validacao.incerto) {
     // Não registra acerto/erro do regex — foi a IA que falhou, não o regex.
     // Escala pra Camada 4 sem penalizar a métrica.
-    return { resolvido: false, valor: null, precisaCamada4: true };
+    return { resolvido: false, valor: null, precisaCamada4: true, custoUsd: validacao.custoUsd };
   }
 
   await registrarValidacao(supabase, {
@@ -100,9 +102,14 @@ export async function executarCamada3(
   });
 
   if (validacao.correto) {
-    return { resolvido: true, valor: validacao.valorCorreto ?? params.match, precisaCamada4: false };
+    return {
+      resolvido: true,
+      valor: validacao.valorCorreto ?? params.match,
+      precisaCamada4: false,
+      custoUsd: validacao.custoUsd,
+    };
   }
 
   // IA discordou do regex com confiança: precisa de extração completa (Camada 4)
-  return { resolvido: false, valor: null, precisaCamada4: true };
+  return { resolvido: false, valor: null, precisaCamada4: true, custoUsd: validacao.custoUsd };
 }

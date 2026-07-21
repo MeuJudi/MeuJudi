@@ -35,7 +35,6 @@ import {
   ListFilter,
   Megaphone,
   Plus,
-  Search,
   Trash2,
   X,
 } from "lucide-react";
@@ -43,6 +42,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { SearchInput } from "@/components/ui/search-input";
+import { globalSearch } from "@/components/ui/search-actions";
 import { ProcessDetailsModal } from "@/components/tenant/process-details-modal";
 import {
   createKanbanColumn,
@@ -673,15 +674,13 @@ export function MonitoramentoView({
             </div>
 
             <div className="flex min-w-[260px] flex-1 flex-wrap items-center justify-end gap-2">
-              <label className="flex min-w-[260px] flex-1 items-center gap-2 rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-2 text-sm text-[var(--color-muted-foreground)] md:max-w-md">
-                <Search className="h-4 w-4" />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Filtrar por CNJ, parte, tribunal ou tag"
-                  className="w-full bg-transparent text-[var(--tenant-surface-foreground)] outline-none placeholder:text-[var(--color-muted-foreground)]"
-                />
-              </label>
+              <SearchInput
+                value={query}
+                onChange={setQuery}
+                placeholder="Filtrar por CNJ, parte, tribunal ou tag"
+                onServerSearch={(q) => globalSearch(q, { perType: 3 })}
+                className="flex-1 md:max-w-md"
+              />
             </div>
           </div>
 

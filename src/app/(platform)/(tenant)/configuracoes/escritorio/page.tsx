@@ -1,5 +1,6 @@
 import { requireOwner } from "@/lib/auth/guards";
 import { EscritorioForm } from "./escritorio-form";
+import { EscritorioOabStatus } from "./escritorio-oab-status";
 
 export default async function EscritorioPage() {
   const { supabase, profile } = await requireOwner();
@@ -23,6 +24,7 @@ export default async function EscritorioPage() {
         </p>
       </div>
       <EscritorioForm tenant={tenant} />
+      <EscritorioOabStatus />
     </div>
   );
 }

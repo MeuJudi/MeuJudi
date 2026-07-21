@@ -28,6 +28,7 @@ export interface ResultadoAprenderRegex {
   motivo?: MotivoFalhaAprendizado;
   detalhes?: unknown;
   regexId?: string;
+  custoUsd: number;
 }
 
 export async function aprenderRegex(
@@ -52,7 +53,7 @@ export async function aprenderRegex(
   const seguranca = await validarSegurancaRegex(regexSugerida);
   if (!seguranca.seguro) {
     await logarErro(supabase, params, "regex_reprovada_seguranca", { regex: regexSugerida, detalhe: seguranca.detalhe });
-    return { sucesso: false, motivo: "regex_reprovada_seguranca", detalhes: seguranca };
+    return { sucesso: false, motivo: "regex_reprovada_seguranca", detalhes: seguranca, custoUsd };
   }
 
   // TRAVA 2: regex precisa pelo menos casar com o texto que a originou
@@ -61,11 +62,11 @@ export async function aprenderRegex(
     re = new RegExp(regexSugerida, "i");
   } catch (err) {
     await logarErro(supabase, params, "regex_invalida", { regex: regexSugerida, erro: (err as Error).message });
-    return { sucesso: false, motivo: "regex_invalida" };
+    return { sucesso: false, motivo: "regex_invalida", custoUsd };
   }
   if (!re.test(params.texto)) {
     await logarErro(supabase, params, "regex_nao_casa", { regex: regexSugerida });
-    return { sucesso: false, motivo: "regex_nao_casa" };
+    return { sucesso: false, motivo: "regex_nao_casa", custoUsd };
   }
 
   // TRAVA 3: golden dataset — mesmo entrando como 'novo' (auto-aprovado), a
@@ -73,7 +74,7 @@ export async function aprenderRegex(
   const resultadoGolden = await rodarGoldenDataset(supabase, regexSugerida, "i", params.campo);
   if (!resultadoGolden.passou) {
     await logarErro(supabase, params, "falhou_golden_dataset", { regex: regexSugerida, casos_falhos: resultadoGolden.casosFalhos });
-    return { sucesso: false, motivo: "falhou_golden_dataset", detalhes: resultadoGolden };
+    return { sucesso: false, motivo: "falhou_golden_dataset", detalhes: resultadoGolden, custoUsd };
   }
 
   // Passou nas 3 travas: AUTO-APROVA (entra ativa em 'novo', com rollback
@@ -96,7 +97,7 @@ export async function aprenderRegex(
 
   if (error || !data) {
     await logarErro(supabase, params, "regex_invalida", { regex: regexSugerida, erro_insert: error?.message });
-    return { sucesso: false, motivo: "regex_invalida" };
+    return { sucesso: false, motivo: "regex_invalida", custoUsd };
   }
 
   await supabase.from("motor_extracao_log").insert({
@@ -107,7 +108,7 @@ export async function aprenderRegex(
     detalhes: { regex: regexSugerida, texto_origem: params.texto, custo_geracao_usd: custoUsd },
   });
 
-  return { sucesso: true, regexId: data.id };
+  return { sucesso: true, regexId: data.id, custoUsd };
 }
 
 /**

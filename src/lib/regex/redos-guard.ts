@@ -21,20 +21,42 @@
 // disparar o timeout nesse tipo de padrão — o mesmo trade-off do v1, só que
 // mais bem escondido.
 //
-// v3 (atual): a única forma de ter timeout REAL em cima de execução síncrona
-// em JS é rodar fora da thread principal. Usa `worker_threads` com
-// `terminate()` de verdade se o teste não responder a tempo — preempção
-// genuína, não é mais uma corrida contra o relógio. A validação continua
-// rara (só quando uma regex é criada/editada — Camada 5, painel Super
-// Admin), então o custo de subir uma worker thread por validação é aceitável.
+// v3: a única forma de ter timeout REAL em cima de execução síncrona em JS é
+// rodar fora da thread principal. Usa `worker_threads` com `terminate()` de
+// verdade se o teste não responder a tempo — preempção genuína, não é mais
+// uma corrida contra o relógio. A validação continua rara (só quando uma
+// regex é criada/editada — Camada 5, painel Super Admin), então o custo de
+// subir uma worker thread por validação é aceitável.
+//
+// v4 (atual): rodando a Camada 5 com o Opus de verdade, o `safe-regex`
+// rejeitou um padrão perfeitamente seguro (`(?:grupo com +)?` seguido de
+// outros grupos opcionais/alternância) — mesmo subindo o limite até 100, a
+// biblioteca continuava marcando como inseguro. Só que a execução REAL desse
+// mesmo padrão contra strings adversariais de até 500 caracteres rodou em
+// 0ms — prova de que era falso positivo. Revendo o histórico dos testes,
+// `safe-regex` nunca foi a camada que realmente pegou um caso verdadeiro
+// (a|a)+ foi pego pela execução em worker thread, não por ele. Rebaixado
+// pra sinal consultivo (aparece no log, não bloqueia mais sozinho) — a
+// autoridade final é sempre a execução real em worker thread, que é o único
+// teste que mede o que realmente importa (tempo de execução de verdade) em
+// vez de estimar.
 
 import { Worker } from "node:worker_threads";
 import safeRegex from "safe-regex";
 
 // Pré-filtro estrutural rápido: cobre os casos mais óbvios sem gastar nem a
 // análise estática nem a worker thread.
+//
+// CORREÇÃO (achada testando com o Opus de verdade, Parte 6): a primeira
+// versão marcava `[+*?]` como quantificador de risco depois de um grupo já
+// quantificado — mas `?` (0-ou-1) NÃO cria repetição nenhuma, então não tem
+// como causar backtracking catastrófico, não importa o que tenha dentro do
+// grupo. `(?:designad[oa]s?\s+)?` (grupo com `+` interno, quantificado com
+// `?` por fora) é uma construção comum e segura, e estava sendo rejeitada
+// por engano. O padrão de risco de verdade exige que o grupo seja repetido
+// 2+ vezes por fora (`+`, `*` ou `{n,}`), não 0-ou-1 vez.
 const PADROES_ESTRUTURAIS_ARRISCADOS: RegExp[] = [
-  /\([^()]*[+*]\)[+*?]/,
+  /\([^()]*[+*]\)[+*]/,
   /\([^()]*\+[^()]*\)\{/,
 ];
 
@@ -50,7 +72,6 @@ const STRINGS_ADVERSARIAIS: string[] = [
 
 export type MotivoReprovacao =
   | "padrao_estrutural_arriscado"
-  | "reprovado_analise_estatica"
   | "timeout_em_teste_adversarial"
   | "regex_invalida";
 
@@ -58,6 +79,8 @@ export interface ResultadoValidacaoSeguranca {
   seguro: boolean;
   motivo?: MotivoReprovacao;
   detalhe?: string;
+  /** Sinal consultivo do safe-regex — não bloqueia sozinho (ver histórico v4 acima), só informativo. */
+  avisoAnaliseEstatica?: boolean;
 }
 
 const WORKER_SOURCE = `
@@ -130,20 +153,16 @@ export async function validarSegurancaRegex(
     return { seguro: false, motivo: "regex_invalida", detalhe: (err as Error).message };
   }
 
-  // Camada 2: análise estática (nunca executa, então nunca trava sozinha) —
-  // pega grande parte dos casos, mas tem falso negativo conhecido pra
-  // alternância redundante simples (ver histórico acima), por isso não é a
-  // única linha de defesa.
-  if (!safeRegex(padrao, { limit: 25 })) {
-    return {
-      seguro: false,
-      motivo: "reprovado_analise_estatica",
-      detalhe: "safe-regex estimou complexidade de pior caso acima do limite seguro",
-    };
-  }
+  // Camada 2: análise estática do safe-regex — CONSULTIVA, não bloqueia
+  // sozinha (ver histórico v4). Tem falsos positivos comprovados (padrões
+  // com vários grupos opcionais/alternância, comuns em sugestões do Opus) e
+  // nunca foi, nos nossos testes, a camada que realmente pegou um caso
+  // catastrófico de verdade — isso sempre foi a Camada 3 (execução real).
+  const avisoAnaliseEstatica = !safeRegex(padrao, { limit: 25 });
 
-  // Camada 3 (autoritativa contra os falsos negativos da Camada 2): execução
-  // real numa worker thread com terminate() de verdade se travar.
+  // Camada 3 (AUTORITATIVA): execução real numa worker thread com
+  // terminate() de verdade se travar — mede o que realmente importa (tempo
+  // de execução real), não uma estimativa.
   for (const adversarial of STRINGS_ADVERSARIAIS) {
     const resultado = await testarRegexComTimeoutReal(padrao, flags, adversarial, timeoutMs);
     if (resultado.estourouTimeout) {
@@ -151,12 +170,13 @@ export async function validarSegurancaRegex(
         seguro: false,
         motivo: "timeout_em_teste_adversarial",
         detalhe: `Não respondeu em ${timeoutMs}ms contra string adversarial — terminada via worker.terminate()`,
+        avisoAnaliseEstatica,
       };
     }
     if (resultado.erro) {
-      return { seguro: false, motivo: "regex_invalida", detalhe: resultado.erro };
+      return { seguro: false, motivo: "regex_invalida", detalhe: resultado.erro, avisoAnaliseEstatica };
     }
   }
 
-  return { seguro: true };
+  return { seguro: true, avisoAnaliseEstatica };
 }

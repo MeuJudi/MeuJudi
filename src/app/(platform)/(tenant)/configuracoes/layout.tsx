@@ -8,6 +8,7 @@ const tabs = [
   { href: "/configuracoes/perfil", label: "Meu perfil" },
   { href: "/configuracoes/escritorio", label: "Escritório" },
   { href: "/configuracoes/oabs", label: "OABs" },
+  { href: "/configuracoes/honorarios", label: "Honorários" },
   { href: "/configuracoes/equipe", label: "Equipe" },
   { href: "/configuracoes/seguranca", label: "Segurança" },
   { href: "/configuracoes/notificacoes", label: "Notificações" },

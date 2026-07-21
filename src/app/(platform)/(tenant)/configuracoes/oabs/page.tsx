@@ -21,5 +21,12 @@ export default async function OabsPage() {
     })
   );
 
-  return <OabsForm oabs={oabsWithNames} />;
+  return (
+    <OabsForm
+      oabs={oabsWithNames}
+      currentUserName={profile.name ?? ""}
+      currentUserOabNumber={profile.oab_number ?? undefined}
+      currentUserOabUf={profile.oab_uf ?? undefined}
+    />
+  );
 }

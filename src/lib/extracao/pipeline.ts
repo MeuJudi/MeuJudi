@@ -11,6 +11,8 @@ import { executarCamada3 } from "@/lib/ia/confirmadora";
 import { extrairComIAGeneralista } from "@/lib/ia/generalista";
 import { deveGerarRegexNovo } from "@/lib/ia/detector-padroes-repetidos";
 import { aprenderRegex } from "@/lib/ia/aprender-regex";
+import { verificarTetoCusto, registrarConsumoIA } from "@/lib/ia/guard-custo";
+import { criarItemRevisao } from "./central-revisao";
 import type { ContextoProcesso } from "@/lib/ia/prompts";
 import type { CampoExtraido, MatchResult, NivelConfianca } from "@/lib/ia/types";
 
@@ -19,6 +21,7 @@ export type OrigemResultado =
   | "regex_direto"
   | "ia_confirmadora"
   | "ia_generalista"
+  | "bloqueado_por_custo"
   | "nao_resolvido";
 
 export interface ResultadoExtracao {
@@ -63,6 +66,31 @@ export async function extrairCampo(
 
   const nenhumRegexBateu = !resultadoRegex.match;
 
+  // Controle de custo (Parte 8): verifica os 2 tetos ANTES de qualquer
+  // chamada de IA (Camadas 3, 4 e 5) — nunca depois, senão o gasto já saiu.
+  const guardCusto = await verificarTetoCusto(supabase, params.tenantId);
+  if (!guardCusto.podeChamarIA) {
+    // Sem IA disponível hoje: usa o melhor palpite do regex (se houver,
+    // mesmo sem confirmação) e manda pra Central de Revisão — nunca perde o
+    // dado silenciosamente, só não confirma automaticamente.
+    const resultadoBloqueado: ResultadoExtracao = {
+      origem: "bloqueado_por_custo",
+      valor: resultadoRegex.match ?? null,
+      confianca: resultadoRegex.match ? "media" : null,
+      precisaRevisaoHumana: true,
+      matchResult: resultadoRegex,
+    };
+    await criarItemRevisao(supabase, {
+      tenantId: params.tenantId,
+      processoId: params.processoId,
+      campo: params.campo,
+      tribunalOrigem: params.tribunal,
+      textoOriginal: params.texto,
+      resultado: resultadoBloqueado,
+    });
+    return resultadoBloqueado;
+  }
+
   if (resultadoRegex.match && resultadoRegex.confianca === "media" && resultadoRegex.regexId) {
     // CAMADA 3: regex bateu mas essa amostra precisa de validação por IA.
     const resultadoCamada3 = await executarCamada3(supabase, {
@@ -74,6 +102,7 @@ export async function extrairCampo(
       tribunalOrigem: params.tribunal,
       campo: params.campo,
     });
+    await registrarConsumoIA(supabase, params.tenantId, resultadoCamada3.custoUsd);
 
     if (resultadoCamada3.resolvido) {
       return {
@@ -90,6 +119,7 @@ export async function extrairCampo(
 
   // CAMADA 4: nenhum regex bateu, ou a Camada 3 não confirmou — extração completa do zero.
   const resultadoCamada4 = await extrairComIAGeneralista(params.texto, params.contextoProcesso);
+  await registrarConsumoIA(supabase, params.tenantId, resultadoCamada4.custoUsd);
 
   const precisaRevisao = resultadoCamada4.incerto || resultadoCamada4.confianca !== "alta";
 
@@ -110,21 +140,39 @@ export async function extrairCampo(
       if (deveGerar) {
         // Fire-and-forget seria arriscado aqui (Camada 5 é rara, mas ainda
         // assim vale aguardar o resultado pra não perder erro silenciosamente).
-        await aprenderRegex(supabase, {
+        const resultadoAprendizado = await aprenderRegex(supabase, {
           texto: params.texto,
           campo: params.campo,
           camposExtraidos: resultadoCamada4 as unknown as Record<string, unknown>,
           tenantId: params.tenantId,
           tribunalOrigem: params.tribunal,
         });
+        await registrarConsumoIA(supabase, params.tenantId, resultadoAprendizado.custoUsd);
       }
     }
   }
 
-  return {
+  const resultadoFinal: ResultadoExtracao = {
     origem: "ia_generalista",
     valor: resultadoCamada4,
     confianca: resultadoCamada4.confianca,
     precisaRevisaoHumana: precisaRevisao, // vai pra Central de Revisão (Parte 7) se true
+    // Propaga o regex que tentou (e a Camada 3 discordou/falhou), se houver —
+    // sem isso, `criarItemRevisao` perde o vínculo com a regex de origem e a
+    // correção humana (Parte 7) nunca alimenta o aprendizado dela de volta.
+    matchResult: resultadoRegex.match ? resultadoRegex : undefined,
   };
+
+  // CAMADA 6: baixa confiança vira item pendente na Central de Revisão do
+  // escritório, em vez de só ser descartado ou silenciosamente aceito.
+  await criarItemRevisao(supabase, {
+    tenantId: params.tenantId,
+    processoId: params.processoId,
+    campo: params.campo,
+    tribunalOrigem: params.tribunal,
+    textoOriginal: params.texto,
+    resultado: resultadoFinal,
+  });
+
+  return resultadoFinal;
 }
