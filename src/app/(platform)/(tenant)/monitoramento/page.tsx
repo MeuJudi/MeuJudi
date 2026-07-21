@@ -53,6 +53,15 @@ type MuralRow = {
   processo_id: string | null;
 };
 
+type AgendaRow = {
+  id: string;
+  tipo: "audiencia" | "prazo" | "reuniao" | "outro";
+  titulo: string;
+  data_inicio: string;
+  processo_id: string | null;
+  status: "pendente" | "concluido" | "cancelado";
+};
+
 const statusLabel: Record<MonitorProcess["status"], string> = {
   ativo: "Em acompanhamento",
   suspenso: "Aguardando",
@@ -149,6 +158,7 @@ export default async function MonitoramentoPage({
         processes={[]}
         metrics={{ active: 0, newMovements: 0, upcomingDeadlines: 0, muralPending: 0 }}
         muralItems={[]}
+        agendaItems={[]}
         error={params.error ? decodeURIComponent(params.error) : undefined}
       />
     );
@@ -186,6 +196,18 @@ export default async function MonitoramentoPage({
       .limit(20),
   ]);
 
+  const today = new Date();
+  const agendaStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const agendaEnd = new Date(today.getFullYear(), today.getMonth() + 2, 0, 23, 59, 59);
+  const { data: agendaRows } = await supabase
+    .from("agenda_eventos")
+    .select("id, tipo, titulo, data_inicio, processo_id, status")
+    .eq("tenant_id", tenantId)
+    .gte("data_inicio", agendaStart.toISOString())
+    .lte("data_inicio", agendaEnd.toISOString())
+    .neq("status", "cancelado")
+    .order("data_inicio", { ascending: true });
+
   const movements = (movementRows ?? []) as MovementRow[];
   const latestMovementByProcess = new Map<string, MovementRow>();
   const unreadCountByProcess = new Map<string, number>();
@@ -222,6 +244,15 @@ export default async function MonitoramentoPage({
   });
 
   const processTitleById = new Map(processes.map((process) => [process.id, process.title]));
+  const agendaItems = ((agendaRows ?? []) as AgendaRow[]).map((event) => ({
+    id: event.id,
+    type: event.tipo,
+    title: event.titulo,
+    start: event.data_inicio,
+    processId: event.processo_id,
+    processTitle: event.processo_id ? processTitleById.get(event.processo_id) ?? null : null,
+    status: event.status,
+  }));
   const muralItems = ((muralRows ?? []) as MuralRow[]).map((item) => ({
     id: item.id,
     title: item.tipo_comunicacao,
@@ -230,7 +261,6 @@ export default async function MonitoramentoPage({
     processTitle: item.processo_id ? processTitleById.get(item.processo_id) ?? null : null,
   }));
 
-  const today = new Date();
   const nextThirtyDays = new Date();
   nextThirtyDays.setDate(today.getDate() + 30);
 
@@ -258,6 +288,7 @@ export default async function MonitoramentoPage({
       processes={processes}
       metrics={metrics}
       muralItems={muralItems}
+      agendaItems={agendaItems}
       error={params.error ? decodeURIComponent(params.error) : undefined}
       scope={scope}
       userId={profile.id}

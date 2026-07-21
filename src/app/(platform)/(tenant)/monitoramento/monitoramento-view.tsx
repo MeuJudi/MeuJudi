@@ -29,6 +29,8 @@ import {
   Check,
   CheckCircle2,
   Clock3,
+  ChevronLeft,
+  ChevronRight,
   FileText,
   GripVertical,
   KanbanSquare,
@@ -99,6 +101,15 @@ type MonitoramentoViewProps = {
     date: string;
     processTitle: string | null;
   }[];
+  agendaItems: {
+    id: string;
+    type: "audiencia" | "prazo" | "reuniao" | "outro";
+    title: string;
+    start: string;
+    processId: string | null;
+    processTitle: string | null;
+    status: "pendente" | "concluido" | "cancelado";
+  }[];
   error?: string;
   scope?: string;
   userId?: string;
@@ -114,6 +125,121 @@ const statusClass: Record<MonitorProcess["status"], string> = {
 function shortDate(value: string | null) {
   if (!value) return "-";
   return new Date(value).toLocaleDateString("pt-BR");
+}
+
+const agendaTypeLabels = {
+  audiencia: "Audiencia",
+  prazo: "Prazo",
+  reuniao: "Reuniao",
+  outro: "Evento",
+} as const;
+
+const agendaTypeClasses = {
+  audiencia: "bg-[var(--tenant-brass)]",
+  prazo: "bg-[var(--tenant-wine)]",
+  reuniao: "bg-[var(--tenant-moss)]",
+  outro: "bg-[var(--tenant-brass)]",
+} as const;
+
+function dateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function formatTime(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
+
+function TodayAgendaPanel({
+  items,
+  onOpenProcess,
+}: {
+  items: MonitoramentoViewProps["agendaItems"];
+  onOpenProcess: (processId: string) => void;
+}) {
+  const today = new Date();
+  const [selectedDate, setSelectedDate] = useState(dateKey(today));
+  const [month, setMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+  const selectedItems = items.filter((item) => dateKey(new Date(item.start)) === selectedDate);
+  const monthLabel = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(month);
+  const firstDay = new Date(month.getFullYear(), month.getMonth(), 1);
+  const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  const leadingDays = (firstDay.getDay() + 6) % 7;
+  const calendarDays = Array.from({ length: leadingDays + daysInMonth }, (_, index) => {
+    if (index < leadingDays) return null;
+    return new Date(month.getFullYear(), month.getMonth(), index - leadingDays + 1);
+  });
+  const eventDays = new Set(items.map((item) => dateKey(new Date(item.start))));
+
+  function moveMonth(amount: number) {
+    const next = new Date(month.getFullYear(), month.getMonth() + amount, 1);
+    setMonth(next);
+    setSelectedDate(dateKey(next));
+  }
+
+  return (
+    <aside className="rounded-lg border border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-4 text-[var(--tenant-surface-foreground)] shadow-sm xl:sticky xl:top-6">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-[var(--color-card-foreground)]">Hoje</h2>
+          <p className="text-xs capitalize text-[var(--color-muted-foreground)]">
+            {new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long" }).format(new Date(`${selectedDate}T12:00:00`))}
+          </p>
+        </div>
+        <CalendarDays className="h-5 w-5 text-[var(--tenant-brass)]" />
+      </div>
+
+      <div className="mt-5 space-y-4">
+        {selectedItems.length === 0 ? (
+          <p className="rounded-md border border-dashed border-[var(--tenant-line)] px-3 py-4 text-sm text-[var(--color-muted-foreground)]">
+            Nenhum evento neste dia.
+          </p>
+        ) : (
+          selectedItems.map((item) => (
+            <div key={item.id} className="relative flex gap-3 pl-1">
+              <div className="w-10 shrink-0 pt-0.5 font-mono text-[11px] text-[var(--color-muted-foreground)]">{formatTime(item.start)}</div>
+              <div className="relative min-w-0 flex-1 border-l border-[var(--tenant-line)] pl-4 pb-1">
+                <span className={cn("absolute -left-[5px] top-1 h-2.5 w-2.5 rounded-full ring-2 ring-[var(--tenant-surface)]", agendaTypeClasses[item.type])} />
+                <p className={cn("text-sm font-semibold", item.type === "prazo" ? "text-[var(--tenant-wine)]" : "text-[var(--color-card-foreground)]")}>
+                  {agendaTypeLabels[item.type]}
+                </p>
+                {item.processId ? (
+                  <button type="button" onClick={() => onOpenProcess(item.processId!)} className="mt-1 block text-left font-mono text-[11px] text-[var(--color-card-foreground)] hover:text-[var(--tenant-brass)]">
+                    {item.processTitle ?? "Processo vinculado"}
+                  </button>
+                ) : null}
+                <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">{item.title}</p>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="mt-5 border-t border-[var(--tenant-line)] pt-4">
+        <div className="flex items-center justify-between">
+          <button type="button" onClick={() => moveMonth(-1)} className="rounded p-1 text-[var(--color-muted-foreground)] hover:bg-[var(--tenant-surface-muted)] hover:text-[var(--tenant-brass)]" aria-label="Mes anterior"><ChevronLeft className="h-4 w-4" /></button>
+          <p className="text-sm font-semibold capitalize">{monthLabel}</p>
+          <button type="button" onClick={() => moveMonth(1)} className="rounded p-1 text-[var(--color-muted-foreground)] hover:bg-[var(--tenant-surface-muted)] hover:text-[var(--tenant-brass)]" aria-label="Proximo mes"><ChevronRight className="h-4 w-4" /></button>
+        </div>
+        <div className="mt-3 grid grid-cols-7 gap-y-2 text-center text-[10px] text-[var(--color-muted-foreground)]">
+          {['S', 'T', 'Q', 'Q', 'S', 'S', 'D'].map((day, index) => <span key={`${day}-${index}`} className="font-semibold">{day}</span>)}
+          {calendarDays.map((day, index) => {
+            if (!day) return <span key={`empty-${index}`} />;
+            const key = dateKey(day);
+            const isSelected = key === selectedDate;
+            const isToday = key === dateKey(today);
+            return (
+              <button key={key} type="button" onClick={() => setSelectedDate(key)} className={cn("relative mx-auto flex h-6 w-6 items-center justify-center rounded-full text-xs transition-colors hover:bg-[var(--tenant-surface-muted)]", isSelected && "bg-[var(--tenant-brass)] text-white", !isSelected && isToday && "ring-1 ring-[var(--tenant-brass)] text-[var(--tenant-brass)]")}>
+                {day.getDate()}
+                {eventDays.has(key) && !isSelected ? <span className="absolute bottom-0 h-1 w-1 rounded-full bg-[var(--tenant-wine)]" /> : null}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <a href="/agenda" className="mt-5 block text-sm font-medium text-[var(--tenant-brass)] hover:underline">Ver agenda completa</a>
+    </aside>
+  );
 }
 
 function ProcessCard({
@@ -417,6 +543,7 @@ export function MonitoramentoView({
   processes,
   metrics,
   muralItems,
+  agendaItems,
   error,
   scope,
   userId,
@@ -609,7 +736,8 @@ export function MonitoramentoView({
   }
 
   return (
-    <div className="w-full space-y-6">
+    <div className="grid w-full items-start gap-6 xl:grid-cols-[minmax(0,1fr)_290px]">
+      <main className="min-w-0 space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="font-display text-3xl font-bold text-[var(--color-card-foreground)]">
@@ -796,6 +924,9 @@ export function MonitoramentoView({
           ) : null}
         </CardContent>
       </Card>
+
+      </main>
+      <TodayAgendaPanel items={agendaItems} onOpenProcess={setSelectedProcessId} />
 
       {deleteColumn ? (
         <DeleteColumnDialog
