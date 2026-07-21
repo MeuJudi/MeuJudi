@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { BarChart3, Building2, CalendarClock, ClipboardList, MonitorCog, Shield } from "lucide-react";
+import { BarChart3, Building2, CalendarClock, ClipboardList, FileDown, MonitorCog, Shield } from "lucide-react";
 import { requireSuperAdmin } from "@/lib/auth/guards";
 import { adminSignOut } from "@/app/(auth)/actions";
 import { cn } from "@/lib/utils";
@@ -8,7 +8,8 @@ import { cn } from "@/lib/utils";
 const adminLinks = [
   { href: "/admin", label: "Resumo", icon: BarChart3 },
   { href: "/admin/tenants", label: "Clientes", icon: Building2 },
-  { href: "/admin/cs-diagnostics", label: "CS Diagnosticos", icon: MonitorCog },
+  { href: "/admin/cs-releases", label: "CS Versões", icon: FileDown },
+  { href: "/admin/cs-diagnostics", label: "CS Diagnósticos", icon: MonitorCog },
   { href: "/admin/audit", label: "Auditoria", icon: ClipboardList },
   { href: "/admin/maintenance", label: "Manutenção", icon: CalendarClock },
 ];
