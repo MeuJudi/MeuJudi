@@ -28,6 +28,7 @@ import { roleLabel } from "@/lib/auth/labels";
 import type { MaintenanceWindow } from "@/lib/maintenance";
 import { SearchInput } from "@/components/ui/search-input";
 import { globalSearch } from "@/components/ui/search-actions";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 
 type TenantShellProps = {
   children: React.ReactNode;
@@ -387,7 +388,7 @@ export function TenantShell({ children, userName, role, gender, avatarUrl, initi
             </div>
           ) : null}
 
-          {children}
+          <ErrorBoundary>{children}</ErrorBoundary>
         </main>
       </div>
     </div>
