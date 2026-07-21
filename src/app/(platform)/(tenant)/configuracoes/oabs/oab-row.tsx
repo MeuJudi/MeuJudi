@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Loader2, ShieldCheck, ShieldX, ShieldAlert, RefreshCw } from "lucide-react";
+import {
+  Loader2,
+  ShieldCheck,
+  ShieldX,
+  ShieldAlert,
+  RefreshCw,
+  Database,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { validarOabEscritorio } from "./validar-oab";
@@ -188,10 +195,59 @@ export function OabRow({
       </div>
 
       {error && (
-        <p className="text-xs text-destructive">{error}</p>
+        <div className="space-y-2">
+          <p className="text-xs text-destructive">{error}</p>
+
+          {/* Mostra último cache conhecido quando API falha */}
+          {(initialValidadoNome || initialStatus) && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs">
+              <div className="mb-1.5 flex items-center gap-1.5 font-semibold text-amber-800">
+                <Database className="h-3.5 w-3.5" />
+                API indisponível — último resultado conhecido
+              </div>
+              <div className="space-y-1 text-amber-900">
+                {initialValidadoNome && (
+                  <p>
+                    <span className="font-medium">Nome:</span>{" "}
+                    {initialValidadoNome}
+                  </p>
+                )}
+                {initialStatus && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-medium">Situação:</span>
+                    {statusTone(initialStatus) === "ok" && (
+                      <ShieldCheck className="h-3.5 w-3.5 text-green-700" />
+                    )}
+                    {statusTone(initialStatus) === "bad" && (
+                      <ShieldX className="h-3.5 w-3.5 text-red-700" />
+                    )}
+                    {statusTone(initialStatus) === "warn" && (
+                      <ShieldAlert className="h-3.5 w-3.5 text-amber-700" />
+                    )}
+                    <span
+                      className={cn(
+                        "font-semibold",
+                        statusTone(initialStatus) === "ok" && "text-green-700",
+                        statusTone(initialStatus) === "bad" && "text-red-700",
+                        statusTone(initialStatus) === "warn" && "text-amber-700"
+                      )}
+                    >
+                      {initialStatus}
+                    </span>
+                  </div>
+                )}
+                {validadoEm && (
+                  <p className="text-[10px] text-amber-700">
+                    Consultado {relTempo(validadoEm)}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
-      {showResult && validadoNome && (
+      {showResult && validadoNome && !error && (
         <div className="space-y-1 rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-3 py-2 text-xs">
           <p className="font-semibold text-[var(--color-card-foreground)]">
             Nome na OAB: {validadoNome}

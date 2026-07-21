@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAppUser } from "@/lib/auth/guards";
 import { OabsForm } from "./oabs-form";
 import { OabRow } from "./oab-row";
+import { OabHealthBadge } from "./oab-health-badge";
 import { cn } from "@/lib/utils";
 
 type OabRowData = {
@@ -119,9 +120,12 @@ export default async function OabsPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="font-display text-xl font-semibold text-[var(--color-card-foreground)]">
-          OABs do escritório
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="font-display text-xl font-semibold text-[var(--color-card-foreground)]">
+            OABs do escritório
+          </h2>
+          <OabHealthBadge />
+        </div>
         <p className="text-sm text-[var(--color-muted-foreground)]">
           Lista de inscrições (OAB) vinculadas a este escritório. Clique em{" "}
           <strong>Validar</strong> para consultar a base oficial da OAB e

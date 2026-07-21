@@ -123,9 +123,84 @@ export async function consultarOab(inscricao: string, uf: string): Promise<OabAd
     };
   }
 
-  // Consulta o Web Service oficial
+  // Consulta o Web Service oficial com retry (backoff exponencial)
   const envelope = buildSoapEnvelope(numero, estado, "");
+  const MAX_RETRIES = 3;
+  const BASE_DELAY_MS = 1500;
 
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(OABS_WS_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/xml; charset=utf-8",
+          SOAPAction: "http://tempuri.org/ConsultaAdvogado",
+        },
+        body: envelope,
+        signal: AbortSignal.timeout(15_000),
+      });
+
+      if (!response.ok) {
+        throw new Error(`OAB retornou status ${response.status}`);
+      }
+
+      const xml = await response.text();
+      const parsed = parseSoapResponse(xml);
+
+      // Salva no cache (inclusive quando não encontra)
+      await supabase
+        .from("oab_validations_cache")
+        .upsert(
+          {
+            oab_number: numero,
+            oab_uf: estado,
+            nome: parsed?.nome ?? null,
+            situacao: parsed?.situacao ?? "NAO_ENCONTRADO",
+            tipo_inscricao: parsed?.tipo ?? null,
+            endereco: parsed?.endereco ?? null,
+            cidade: parsed?.cidade ?? null,
+            estado: parsed?.estado ?? null,
+            cep: parsed?.cep ?? null,
+            telefone: parsed?.telefone ?? null,
+            email: parsed?.email ?? null,
+            fetched_at: new Date().toISOString(),
+            expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          },
+          { onConflict: "oab_number,oab_uf" }
+        );
+
+      return parsed;
+    } catch (err) {
+      lastError = err;
+      const delay = BASE_DELAY_MS * 2 ** (attempt - 1); // 1.5s, 3s, 6s
+      console.warn(
+        `[OAB] Tentativa ${attempt}/${MAX_RETRIES} falhou. Retry em ${delay}ms...`,
+        err instanceof Error ? err.message : err
+      );
+      if (attempt < MAX_RETRIES) {
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+
+  console.error("[OAB] Todas as tentativas falharam:", lastError);
+  throw new Error(
+    "Não foi possível validar a OAB agora. Tente novamente em alguns instantes."
+  );
+}
+
+/**
+ * Verifica se a API da OAB está respondendo.
+ * Faz uma consulta leve (OAB 1/PR = teste genérico) e retorna status.
+ */
+export async function checkOabApiHealth(): Promise<{
+  healthy: boolean;
+  latencyMs: number;
+  checkedAt: string;
+}> {
+  const start = Date.now();
   try {
     const response = await fetch(OABS_WS_URL, {
       method: "POST",
@@ -133,45 +208,21 @@ export async function consultarOab(inscricao: string, uf: string): Promise<OabAd
         "Content-Type": "text/xml; charset=utf-8",
         SOAPAction: "http://tempuri.org/ConsultaAdvogado",
       },
-      body: envelope,
-      signal: AbortSignal.timeout(15_000),
+      body: buildSoapEnvelope("1", "PR", ""),
+      signal: AbortSignal.timeout(10_000),
     });
-
-    if (!response.ok) {
-      throw new Error(`OAB retornou status ${response.status}`);
-    }
-
-    const xml = await response.text();
-    const parsed = parseSoapResponse(xml);
-
-    // Salva no cache (inclusive quando não encontra)
-    await supabase
-      .from("oab_validations_cache")
-      .upsert(
-        {
-          oab_number: numero,
-          oab_uf: estado,
-          nome: parsed?.nome ?? null,
-          situacao: parsed?.situacao ?? "NAO_ENCONTRADO",
-          tipo_inscricao: parsed?.tipo ?? null,
-          endereco: parsed?.endereco ?? null,
-          cidade: parsed?.cidade ?? null,
-          estado: parsed?.estado ?? null,
-          cep: parsed?.cep ?? null,
-          telefone: parsed?.telefone ?? null,
-          email: parsed?.email ?? null,
-          fetched_at: new Date().toISOString(),
-          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        },
-        { onConflict: "oab_number,oab_uf" }
-      );
-
-    return parsed;
-  } catch (err) {
-    console.error("[OAB] Falha ao consultar Web Service oficial:", err);
-    throw new Error(
-      "Não foi possível validar a OAB agora. Tente novamente em alguns instantes."
-    );
+    const latencyMs = Date.now() - start;
+    return {
+      healthy: response.ok,
+      latencyMs,
+      checkedAt: new Date().toISOString(),
+    };
+  } catch {
+    return {
+      healthy: false,
+      latencyMs: Date.now() - start,
+      checkedAt: new Date().toISOString(),
+    };
   }
 }
 
