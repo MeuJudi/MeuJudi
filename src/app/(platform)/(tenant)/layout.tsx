@@ -23,7 +23,14 @@ export default async function TenantLayout({
     : [];
 
   return (
-    <TenantShell userName={profile.name} role={profile.role} gender={profile.gender} avatarUrl={(profile as Record<string, unknown>).avatar_url as string | null} initialPaletteId={paletteId} upcomingMaintenance={upcomingMaintenance}>
+    <TenantShell
+      userName={profile.name}
+      role={profile.role}
+      gender={profile.gender}
+      avatarUrl={profile.avatar_url}
+      initialPaletteId={paletteId}
+      upcomingMaintenance={upcomingMaintenance}
+    >
       {children}
     </TenantShell>
   );

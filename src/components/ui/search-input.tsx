@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, Loader2, X, FileText, Users, Briefcase, Calendar, ArrowRight, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { globalSearch } from "./search-actions";
 
 export type SearchHitType = "processo" | "cliente" | "tarefa" | "agenda" | "honorario";
 

@@ -3,7 +3,7 @@ import { OabsForm } from "./oabs-form";
 import { OabRow } from "./oab-row";
 import { cn } from "@/lib/utils";
 
-type OabRow = {
+type OabRowData = {
   id: string;
   oab_number: string;
   oab_uf: string;
@@ -17,7 +17,7 @@ type OabRow = {
 };
 
 export default async function OabsPage() {
-  let oabs: OabRow[] = [];
+  let oabs: OabRowData[] = [];
   let dbError: string | null = null;
 
   try {
@@ -33,28 +33,31 @@ export default async function OabsPage() {
 
     if (result.error) {
       // Se for coluna não existe, faz fallback sem as colunas de validação
-      if (/validado_/i.test(result.error.message) || /column.*does not exist/i.test(result.error.message)) {
-        const fallback = await supabase
+      if (
+        /validado_/i.test(result.error.message) ||
+        /column.*does not exist/i.test(result.error.message)
+      ) {
+        const { supabase: sb2, profile: p2 } = await requireOwner();
+        const fallback = await sb2
           .from("escritorio_oabs")
           .select("id, oab_number, oab_uf, is_primary, user_id")
-          .eq("tenant_id", profile.tenant_id)
+          .eq("tenant_id", p2.tenant_id)
           .order("is_primary", { ascending: false });
         if (fallback.error) {
           dbError = fallback.error.message;
         } else {
-          oabs = (fallback.data ?? []) as OabRow[];
+          oabs = (fallback.data ?? []) as OabRowData[];
         }
       } else {
         dbError = result.error.message;
       }
     } else {
-      oabs = (result.data ?? []) as OabRow[];
+      oabs = (result.data ?? []) as OabRowData[];
     }
   } catch (err) {
     dbError = err instanceof Error ? err.message : "Erro inesperado";
   }
 
-  // Nome do escritório
   let tenantName = "";
   try {
     const { supabase, profile } = await requireOwner();
@@ -68,7 +71,6 @@ export default async function OabsPage() {
     // ignora
   }
 
-  // Nomes dos advogados vinculados (OAB pessoal)
   const userIds = Array.from(
     new Set(oabs.map((o) => o.user_id).filter(Boolean) as string[])
   );
@@ -128,7 +130,11 @@ export default async function OabsPage() {
             <code className="rounded bg-amber-100 px-1 py-0.5 font-mono text-[11px]">
               20260721000002_oab_validation_columns.sql
             </code>{" "}
-            para habilitar a validação contra a base oficial da OAB.
+            (ou a versão simplificada{" "}
+            <code className="rounded bg-amber-100 px-1 py-0.5 font-mono text-[11px]">
+              20260721000003_oab_validation_columns_simple.sql
+            </code>
+            ) para habilitar a validação contra a base oficial da OAB.
           </p>
         </div>
       )}
@@ -217,3 +223,4 @@ export default async function OabsPage() {
     </div>
   );
 }
+
