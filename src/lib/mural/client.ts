@@ -77,7 +77,11 @@ export class MuralClient {
     });
 
     if (!response.ok) {
-      throw new Error(`Mural HTTP ${response.status}`);
+      // Loga um trecho do corpo (não só o status) — é a diferença entre
+      // "challenge de WAF" (HTML), "bloqueio por IP" (mensagem custom) e
+      // "rate limit" (formato JSON próprio), cada um com correção diferente.
+      const corpo = await response.text().catch(() => "");
+      throw new Error(`Mural HTTP ${response.status}: ${corpo.slice(0, 300)}`);
     }
 
     return (await response.json()) as MuralResponse;
