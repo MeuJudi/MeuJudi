@@ -1,4 +1,5 @@
-import { requireOwner } from "@/lib/auth/guards";
+import { createClient } from "@/lib/supabase/server";
+import { requireAppUser } from "@/lib/auth/guards";
 import { OabsForm } from "./oabs-form";
 import { OabRow } from "./oab-row";
 import { cn } from "@/lib/utils";
@@ -18,12 +19,15 @@ type OabRowData = {
 
 export default async function OabsPage() {
   let oabs: OabRowData[] = [];
-  let dbError: string | null = null;
+  let tenantName = "";
+  let usersById = new Map<string, { name: string; email: string }>();
 
+  // Faz tudo em um try/catch para mostrar erro se algo falhar
   try {
-    const { supabase, profile } = await requireOwner();
+    const { supabase, profile } = await requireAppUser();
 
-    const result = await supabase
+    // Carrega OABs com cache de validação
+    const { data: oabsData, error: oabsErr } = await supabase
       .from("escritorio_oabs")
       .select(
         "id, oab_number, oab_uf, is_primary, user_id, validado_em, validado_nome, validado_situacao, validado_tipo, validado_match"
@@ -31,76 +35,79 @@ export default async function OabsPage() {
       .eq("tenant_id", profile.tenant_id)
       .order("is_primary", { ascending: false });
 
-    if (result.error) {
-      // Se for coluna não existe, faz fallback sem as colunas de validação
+    if (oabsErr) {
+      // Fallback sem colunas de validação
       if (
-        /validado_/i.test(result.error.message) ||
-        /column.*does not exist/i.test(result.error.message)
+        /validado_/i.test(oabsErr.message) ||
+        /column.*does not exist/i.test(oabsErr.message)
       ) {
-        const { supabase: sb2, profile: p2 } = await requireOwner();
-        const fallback = await sb2
+        const { data: fallback } = await supabase
           .from("escritorio_oabs")
           .select("id, oab_number, oab_uf, is_primary, user_id")
-          .eq("tenant_id", p2.tenant_id)
+          .eq("tenant_id", profile.tenant_id)
           .order("is_primary", { ascending: false });
-        if (fallback.error) {
-          dbError = fallback.error.message;
-        } else {
-          oabs = (fallback.data ?? []) as OabRowData[];
-        }
+        oabs = (fallback ?? []) as OabRowData[];
       } else {
-        dbError = result.error.message;
+        // erro real — mostra mensagem
+        return (
+          <div className="space-y-4">
+            <h2 className="font-display text-xl font-semibold text-[var(--color-card-foreground)]">
+              OABs do escritório
+            </h2>
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              <p className="font-semibold">Erro ao listar OABs</p>
+              <p className="mt-1 font-mono text-xs">{oabsErr.message}</p>
+            </div>
+          </div>
+        );
       }
     } else {
-      oabs = (result.data ?? []) as OabRowData[];
+      oabs = (oabsData ?? []) as OabRowData[];
     }
-  } catch (err) {
-    dbError = err instanceof Error ? err.message : "Erro inesperado";
-  }
 
-  let tenantName = "";
-  try {
-    const { supabase, profile } = await requireOwner();
+    // Nome do escritório
     const { data: tenant } = await supabase
       .from("tenants")
       .select("name")
       .eq("id", profile.tenant_id)
       .maybeSingle();
     tenantName = tenant?.name ?? "";
-  } catch {
-    // ignora
-  }
 
-  const userIds = Array.from(
-    new Set(oabs.map((o) => o.user_id).filter(Boolean) as string[])
-  );
-  const usersById = new Map<string, { name: string; email: string }>();
-  if (userIds.length > 0) {
-    try {
-      const { supabase } = await requireOwner();
+    // Nomes dos advogados
+    const userIds = Array.from(
+      new Set(oabs.map((o) => o.user_id).filter(Boolean) as string[])
+    );
+    if (userIds.length > 0) {
       const { data: users } = await supabase
         .from("users")
         .select("id, name, email")
         .in("id", userIds);
+      const map = new Map<string, { name: string; email: string }>();
       for (const u of users ?? []) {
-        usersById.set(u.id, { name: u.name, email: u.email });
+        map.set(u.id, { name: u.name, email: u.email });
       }
-    } catch {
-      // ignora
+      usersById = map;
     }
-  }
 
-  if (dbError) {
+    // Valida role owner (lança se não for)
+    if (profile.role !== "owner" && profile.role !== "super_admin") {
+      return (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Apenas o owner pode gerenciar as OABs do escritório.
+        </div>
+      );
+    }
+  } catch (err) {
     return (
       <div className="space-y-4">
-        <div>
-          <h2 className="font-display text-xl font-semibold text-[var(--color-card-foreground)]">
-            OABs do escritório
-          </h2>
-        </div>
+        <h2 className="font-display text-xl font-semibold text-[var(--color-card-foreground)]">
+          OABs do escritório
+        </h2>
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          <p className="font-semibold">Erro ao carregar OABs</p>
-          <p className="mt-1 font-mono text-xs">{dbError}</p>
+          <p className="font-semibold">Erro inesperado</p>
+          <p className="mt-1 font-mono text-xs">
+            {err instanceof Error ? err.message : String(err)}
+          </p>
         </div>
       </div>
     );
@@ -126,15 +133,11 @@ export default async function OabsPage() {
         <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <p className="font-semibold">Migration pendente</p>
           <p className="mt-1 text-xs">
-            Aplique no Supabase (SQL Editor) a migration{" "}
+            Aplique no Supabase a migration{" "}
             <code className="rounded bg-amber-100 px-1 py-0.5 font-mono text-[11px]">
               20260721000002_oab_validation_columns.sql
             </code>{" "}
-            (ou a versão simplificada{" "}
-            <code className="rounded bg-amber-100 px-1 py-0.5 font-mono text-[11px]">
-              20260721000003_oab_validation_columns_simple.sql
-            </code>
-            ) para habilitar a validação contra a base oficial da OAB.
+            para habilitar a validação contra a base oficial da OAB.
           </p>
         </div>
       )}
@@ -223,4 +226,3 @@ export default async function OabsPage() {
     </div>
   );
 }
-
