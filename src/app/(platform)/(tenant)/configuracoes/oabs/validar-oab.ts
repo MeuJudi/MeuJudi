@@ -6,49 +6,89 @@ import { requireAppUser } from "@/lib/auth/guards";
 import { assertTenantWritable } from "@/lib/auth/access";
 import { consultarOab, type OabAdvogado } from "@/lib/oab-service";
 
+export type ValidarOabResultado =
+  | { ok: true; dados: OabAdvogado | null; fonte: "oab" | "cache" }
+  | { ok: false; erro: string };
+
 /**
- * Valida uma OAB já cadastrada (escritorio_oabs.id).
- * Persiste o resultado nas colunas validado_* (requer migration 20260721000002).
+ * Valida uma OAB já cadastrada.
+ * Nunca propaga exception para não quebrar o RSC quando a API da OAB
+ * estiver fora do ar — devolve { ok: false, erro } para o client.
  */
 export async function validarOabEscritorio(
   oabId: string
-): Promise<OabAdvogado | null> {
-  await assertTenantWritable();
-  const { supabase, profile } = await requireAppUser();
-
-  const { data: oab, error: oabErr } = await supabase
-    .from("escritorio_oabs")
-    .select("id, oab_number, oab_uf, tenant_id")
-    .eq("id", oabId)
-    .single();
-
-  if (oabErr || !oab) throw new Error("OAB não encontrada no escritório.");
-  if (oab.tenant_id !== profile.tenant_id && profile.role !== "super_admin") {
-    throw new Error("Sem acesso a esta OAB.");
+): Promise<ValidarOabResultado> {
+  try {
+    await assertTenantWritable();
+  } catch (err) {
+    return { ok: false, erro: err instanceof Error ? err.message : String(err) };
   }
 
-  const dados = await consultarOab(oab.oab_number, oab.oab_uf);
+  let profile: Awaited<ReturnType<typeof requireAppUser>>["profile"];
+  let supabase: Awaited<ReturnType<typeof requireAppUser>>["supabase"];
+  try {
+    const ctx = await requireAppUser();
+    profile = ctx.profile;
+    supabase = ctx.supabase;
+  } catch (err) {
+    return { ok: false, erro: err instanceof Error ? err.message : String(err) };
+  }
 
-  // Persiste o cache
-  const { error: updErr } = await supabase
-    .from("escritorio_oabs")
-    .update({
-      validado_em: new Date().toISOString(),
-      validado_nome: dados?.nome ?? null,
-      validado_situacao: dados?.situacao ?? "NAO_ENCONTRADO",
-      validado_tipo: dados?.tipo ?? null,
-      validado_match: dados?.situacao
-        ? /ATIV|REGULAR|REGULARMENTE|INSCRITO/i.test(dados.situacao)
-        : false,
-    })
-    .eq("id", oabId);
+  let oab: { id: string; oab_number: string; oab_uf: string; tenant_id: string } | null = null;
+  try {
+    const { data, error } = await supabase
+      .from("escritorio_oabs")
+      .select("id, oab_number, oab_uf, tenant_id")
+      .eq("id", oabId)
+      .single();
+    if (error || !data) {
+      return { ok: false, erro: "OAB não encontrada no escritório." };
+    }
+    oab = data;
+  } catch (err) {
+    return { ok: false, erro: err instanceof Error ? err.message : String(err) };
+  }
 
-  if (updErr) {
-    // Não bloqueia a UX: devolve o resultado da API mesmo se o cache falhou
-    console.error("[OAB] Falha ao persistir cache de validação:", updErr);
+  if (
+    oab.tenant_id !== profile.tenant_id &&
+    profile.role !== "super_admin"
+  ) {
+    return { ok: false, erro: "Sem acesso a esta OAB." };
+  }
+
+  let dados: OabAdvogado | null = null;
+  try {
+    dados = await consultarOab(oab.oab_number, oab.oab_uf);
+  } catch (err) {
+    // API da OAB fora do ar / timeout / 500 — devolve erro inline
+    return {
+      ok: false,
+      erro:
+        err instanceof Error
+          ? err.message
+          : "Não foi possível consultar a OAB agora.",
+    };
+  }
+
+  // Persiste o cache (best-effort; falha aqui não bloqueia a UX)
+  try {
+    await supabase
+      .from("escritorio_oabs")
+      .update({
+        validado_em: new Date().toISOString(),
+        validado_nome: dados?.nome ?? null,
+        validado_situacao: dados?.situacao ?? "NAO_ENCONTRADO",
+        validado_tipo: dados?.tipo ?? null,
+        validado_match: dados?.situacao
+          ? /ATIV|REGULAR|REGULARMENTE|INSCRITO/i.test(dados.situacao)
+          : false,
+      })
+      .eq("id", oabId);
+  } catch {
+    // ignora — cache é best-effort
   }
 
   revalidatePath("/configuracoes/oabs");
   revalidatePath("/configuracoes/escritorio");
-  return dados;
+  return { ok: true, dados, fonte: "oab" };
 }

@@ -95,7 +95,12 @@ export function OabRow({
     startTransition(async () => {
       try {
         const result = await validarOabEscritorio(oabId);
-        if (!result) {
+        if (!result.ok) {
+          setError(result.erro);
+          return;
+        }
+        const resultData = result.dados;
+        if (!resultData) {
           setResultado(null);
           setStatus("NAO_ENCONTRADO");
           setValidadoEm(new Date().toISOString());
@@ -103,12 +108,12 @@ export function OabRow({
           setMatch(false);
           return;
         }
-        setResultado(result);
-        setStatus(result.situacao);
+        setResultado(resultData);
+        setStatus(resultData.situacao);
         setValidadoEm(new Date().toISOString());
-        setValidadoNome(result.nome);
+        setValidadoNome(resultData.nome);
         if (expectedName) {
-          setMatch(normalizar(result.nome) === normalizar(expectedName));
+          setMatch(normalizar(resultData.nome) === normalizar(expectedName));
         } else {
           setMatch(null);
         }
