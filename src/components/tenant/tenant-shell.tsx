@@ -26,6 +26,8 @@ import { cn } from "@/lib/utils";
 import { palettes, getPaletteStyles, type PaletteId } from "@/lib/themes/palettes";
 import { roleLabel } from "@/lib/auth/labels";
 import type { MaintenanceWindow } from "@/lib/maintenance";
+import { SearchInput } from "@/components/ui/search-input";
+import { globalSearch } from "@/components/ui/search-actions";
 
 type TenantShellProps = {
   children: React.ReactNode;
@@ -191,9 +193,12 @@ export function TenantShell({ children, userName, role, gender, avatarUrl, initi
             </div>
           ) : null}
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex min-w-[240px] flex-1 items-center gap-2 rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-3 py-2 text-sm text-[var(--color-muted-foreground)]">
-              <Search className="h-4 w-4" />
-              <span>Buscar processo, cliente ou tarefa...</span>
+            <div className="flex min-w-[240px] flex-1 items-center gap-2 text-sm text-[var(--color-muted-foreground)]">
+              <SearchInput
+                placeholder="Buscar processo, cliente ou tarefa..."
+                onServerSearch={(q) => globalSearch(q, { perType: 4 })}
+                className="w-full"
+              />
             </div>
             <div className="flex items-center gap-3">
               {!isStaff && (
