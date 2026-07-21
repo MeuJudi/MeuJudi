@@ -8,11 +8,11 @@ import { consultarOab, type OabAdvogado } from "@/lib/oab-service";
 
 /**
  * Valida uma OAB já cadastrada (escritorio_oabs.id).
- * Se a migration de cache (20260721000002) estiver aplicada, persiste
- * o resultado na própria linha. Caso contrário, apenas consulta e
- * devolve o resultado.
+ * Persiste o resultado nas colunas validado_* (requer migration 20260721000002).
  */
-export async function validarOabEscritorio(oabId: string): Promise<OabAdvogado | null> {
+export async function validarOabEscritorio(
+  oabId: string
+): Promise<OabAdvogado | null> {
   await assertTenantWritable();
   const { supabase, profile } = await requireAppUser();
 
@@ -29,23 +29,23 @@ export async function validarOabEscritorio(oabId: string): Promise<OabAdvogado |
 
   const dados = await consultarOab(oab.oab_number, oab.oab_uf);
 
-  // Tenta persistir o cache. Se as colunas não existirem (migration pendente),
-  // ignora o erro e segue — o resultado ainda é devolvido.
-  try {
-    await supabase
-      .from("escritorio_oabs")
-      .update({
-        validado_em: new Date().toISOString(),
-        validado_nome: dados?.nome ?? null,
-        validado_situacao: dados?.situacao ?? "NAO_ENCONTRADO",
-        validado_tipo: dados?.tipo ?? null,
-        validado_match: dados?.situacao
-          ? /ATIV|REGULAR|REGULARMENTE|INSCRITO/i.test(dados.situacao)
-          : false,
-      })
-      .eq("id", oabId);
-  } catch {
-    // colunas de cache ainda não existem; ignorar
+  // Persiste o cache
+  const { error: updErr } = await supabase
+    .from("escritorio_oabs")
+    .update({
+      validado_em: new Date().toISOString(),
+      validado_nome: dados?.nome ?? null,
+      validado_situacao: dados?.situacao ?? "NAO_ENCONTRADO",
+      validado_tipo: dados?.tipo ?? null,
+      validado_match: dados?.situacao
+        ? /ATIV|REGULAR|REGULARMENTE|INSCRITO/i.test(dados.situacao)
+        : false,
+    })
+    .eq("id", oabId);
+
+  if (updErr) {
+    // Não bloqueia a UX: devolve o resultado da API mesmo se o cache falhou
+    console.error("[OAB] Falha ao persistir cache de validação:", updErr);
   }
 
   revalidatePath("/configuracoes/oabs");

@@ -17,43 +17,56 @@ type OabRow = {
 };
 
 export default async function OabsPage() {
-  const { supabase, profile } = await requireOwner();
+  let oabs: OabRow[] = [];
+  let dbError: string | null = null;
 
-  // Primeiro tenta com as colunas de validação (migration nova aplicada)
-  // Se der erro (coluna não existe), faz fallback sem elas.
-  const withValidacao = await supabase
-    .from("escritorio_oabs")
-    .select(
-      "id, oab_number, oab_uf, is_primary, user_id, validado_em, validado_nome, validado_situacao, validado_tipo, validado_match"
-    )
-    .eq("tenant_id", profile.tenant_id)
-    .order("is_primary", { ascending: false });
+  try {
+    const { supabase, profile } = await requireOwner();
 
-  let oabs: OabRow[] = (withValidacao.data ?? []) as OabRow[];
-
-  if (withValidacao.error && /validado_/i.test(withValidacao.error.message)) {
-    // Colunas ainda não existem — fallback sem elas
-    const fallback = await supabase
+    const result = await supabase
       .from("escritorio_oabs")
-      .select("id, oab_number, oab_uf, is_primary, user_id")
+      .select(
+        "id, oab_number, oab_uf, is_primary, user_id, validado_em, validado_nome, validado_situacao, validado_tipo, validado_match"
+      )
       .eq("tenant_id", profile.tenant_id)
       .order("is_primary", { ascending: false });
-    if (fallback.error) {
-      // erro real — não é falta de coluna
-      throw new Error(`Erro ao listar OABs: ${fallback.error.message}`);
+
+    if (result.error) {
+      // Se for coluna não existe, faz fallback sem as colunas de validação
+      if (/validado_/i.test(result.error.message) || /column.*does not exist/i.test(result.error.message)) {
+        const fallback = await supabase
+          .from("escritorio_oabs")
+          .select("id, oab_number, oab_uf, is_primary, user_id")
+          .eq("tenant_id", profile.tenant_id)
+          .order("is_primary", { ascending: false });
+        if (fallback.error) {
+          dbError = fallback.error.message;
+        } else {
+          oabs = (fallback.data ?? []) as OabRow[];
+        }
+      } else {
+        dbError = result.error.message;
+      }
+    } else {
+      oabs = (result.data ?? []) as OabRow[];
     }
-    oabs = (fallback.data ?? []) as OabRow[];
-  } else if (withValidacao.error) {
-    throw new Error(`Erro ao listar OABs: ${withValidacao.error.message}`);
+  } catch (err) {
+    dbError = err instanceof Error ? err.message : "Erro inesperado";
   }
 
   // Nome do escritório
-  const { data: tenant } = await supabase
-    .from("tenants")
-    .select("name")
-    .eq("id", profile.tenant_id)
-    .maybeSingle();
-  const tenantName = tenant?.name ?? "";
+  let tenantName = "";
+  try {
+    const { supabase, profile } = await requireOwner();
+    const { data: tenant } = await supabase
+      .from("tenants")
+      .select("name")
+      .eq("id", profile.tenant_id)
+      .maybeSingle();
+    tenantName = tenant?.name ?? "";
+  } catch {
+    // ignora
+  }
 
   // Nomes dos advogados vinculados (OAB pessoal)
   const userIds = Array.from(
@@ -61,19 +74,38 @@ export default async function OabsPage() {
   );
   const usersById = new Map<string, { name: string; email: string }>();
   if (userIds.length > 0) {
-    const { data: users } = await supabase
-      .from("users")
-      .select("id, name, email")
-      .in("id", userIds);
-    for (const u of users ?? []) {
-      usersById.set(u.id, { name: u.name, email: u.email });
+    try {
+      const { supabase } = await requireOwner();
+      const { data: users } = await supabase
+        .from("users")
+        .select("id, name, email")
+        .in("id", userIds);
+      for (const u of users ?? []) {
+        usersById.set(u.id, { name: u.name, email: u.email });
+      }
+    } catch {
+      // ignora
     }
   }
 
+  if (dbError) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h2 className="font-display text-xl font-semibold text-[var(--color-card-foreground)]">
+            OABs do escritório
+          </h2>
+        </div>
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <p className="font-semibold">Erro ao carregar OABs</p>
+          <p className="mt-1 font-mono text-xs">{dbError}</p>
+        </div>
+      </div>
+    );
+  }
+
   const migrationMissing =
-    !withValidacao.error &&
-    oabs.length > 0 &&
-    oabs[0].validado_em === undefined;
+    oabs.length > 0 && oabs[0].validado_em === undefined;
 
   return (
     <div className="space-y-4">
