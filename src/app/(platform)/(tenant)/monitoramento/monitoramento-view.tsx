@@ -49,7 +49,6 @@ import { globalSearch } from "@/components/ui/search-actions";
 import { ProcessDetailsModal } from "@/components/tenant/process-details-modal";
 import {
   createKanbanColumn,
-  createSampleProcesses,
   deleteKanbanColumn,
   moveProcessToColumn,
   renameKanbanColumn,
@@ -528,11 +527,6 @@ function EmptyState() {
       <p className="mx-auto mt-2 max-w-lg text-sm text-[var(--color-muted-foreground)]">
         Quando processos forem cadastrados, capturados pelo CS/PJe ou vinculados pelo DataJud/Mural, eles aparecerao aqui com status, prazos e movimentacoes.
       </p>
-      <form action={createSampleProcesses} className="mt-5">
-        <Button type="submit">
-          Criar 15 processos de exemplo
-        </Button>
-      </form>
     </div>
   );
 }

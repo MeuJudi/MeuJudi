@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
         console.error("[cs/sync/mural] item rejeitado:", error);
       }
     }
-    return NextResponse.json({ novas, puladas, erros });
+    return NextResponse.json({ recebidas: body.comunicacoes.length, novas, puladas, erros });
   } catch (error) {
     console.error("[cs/sync/mural] erro:", error);
     return NextResponse.json({ error: "payload_invalido" }, { status: 400 });

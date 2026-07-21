@@ -524,11 +524,11 @@ $$ LANGUAGE plpgsql;
 
 ## ✅ Checklist
 
-- [ ] Cliente Claude configurado (`@anthropic-ai/sdk`)
-- [ ] Prompts organizados em `prompts.ts`
-- [ ] Engine de regex com 3 estados funcionando
+- [x] Cliente Claude configurado (`@anthropic-ai/sdk`)
+- [x] Prompts organizados em `prompts.ts`
+- [x] Engine de regex com estados `novo`, `quente` e `confiavel`
 - [ ] Edge function `learn-regex` deployada
-- [ ] Função SQL de transição de estado criada
+- [x] Função SQL de transição de estado criada
 - [ ] Custo mensal monitorado
 - [ ] Teste: regex resolve sozinho
 - [ ] Teste: IA valida e corrige

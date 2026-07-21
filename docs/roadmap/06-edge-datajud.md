@@ -647,14 +647,14 @@ SELECT cron.schedule(
 
 ## âœ… Checklist de validaÃ§Ã£o
 
-- [ ] Edge function v2 deployada
+- [x] Poller DataJud implementado como rota protegida `/api/cron/poll-datajud` (deploy ainda precisa ser validado)
 - [ ] Migration de schema aplicada (prazo_dias/horas)
 - [ ] Teste multi-tribunal: todos CNJs acham
 - [ ] Cron jobs configurados
-- [ ] Logs estruturados funcionando
-- [ ] Rate limit nunca trava (backoff funcionando)
-- [ ] Casos de 100h viram prazo_horas=100, prazo_dias=NULL
-- [ ] Casos de "5 dias" viram prazo_dias=5, prazo_horas=NULL
+- [x] Logs estruturados implementados
+- [x] Rate limit tratado com retry/backoff
+- [x] Casos de 100h sao separados em `prazo_horas`
+- [x] Casos de "5 dias" sao separados em `prazo_dias`
 - [ ] Processos de TRT9, TRF4, TJSC sÃ£o encontrados
 
 ---

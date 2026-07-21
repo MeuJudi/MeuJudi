@@ -7,7 +7,11 @@ import { requireWritableAppUser as requireAppUser } from "@/lib/auth/guards";
 const allowedStatuses = ["ativo", "suspenso", "arquivado", "concluido"] as const;
 const columnColors = ["#9a6a22", "#4b6b4e", "#7a2e2e", "#2563eb", "#7c3aed", "#0e7490"];
 
-const demoProcesses = [
+/*
+ * The monitoramento screen intentionally has no demo-data action. Real process
+ * data must come from the tenant workflow, CS/PJe, DataJud or Mural.
+ */
+/* const demoProcesses = [
   ["10000012320268260001", "TJSP", "1º grau", "PJe", 436, "Procedimento Comum Civel", "Solaris Comercio Ltda.", "Banco Aurora S.A.", "ativo", ["civel", "contrato"], 125000],
   ["10000024520264030000", "TRF3", "2º grau", "eproc", 198, "Apelacao Civel", "Marina Lopes", "Uniao Federal", "ativo", ["federal", "recurso"], 48000],
   ["10000036720255020001", "TRT2", "1º grau", "PJe", 985, "Reclamacao Trabalhista", "Rafael Antunes", "Metalurgica Vale Norte", "ativo", ["trabalhista", "audiencia"], 76000],
@@ -91,7 +95,7 @@ async function resolveSeedTenantId() {
   }
 
   redirect("/monitoramento?error=usuario_sem_escritorio");
-}
+} */
 
 export async function updateProcessStatus(formData: FormData) {
   const id = String(formData.get("id") ?? "");
@@ -258,6 +262,9 @@ export async function deleteKanbanColumn(columnId: string, targetColumnId: strin
   revalidatePath("/monitoramento");
 }
 
+/*
+ * Removed demo-data action. Keep this block commented until the old test rows
+ * are removed from the database with the dedicated cleanup SQL.
 export async function createSampleProcesses() {
   const { supabase, profile, tenantId, redirectTenant } = await resolveSeedTenantId();
 
@@ -388,3 +395,4 @@ export async function createSampleProcesses() {
     redirect(`/monitoramento?tenant=${tenantId}`);
   }
 }
+*/

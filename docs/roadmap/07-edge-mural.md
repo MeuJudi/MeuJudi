@@ -471,13 +471,13 @@ curl -X POST \
 
 ## ✅ Checklist
 
-- [ ] Edge function `poll-mural` deployada
+- [x] Poller Mural implementado como rota protegida `/api/cron/poll-mural` (deploy ainda precisa ser validado)
 - [ ] Cron job semanal configurado
-- [ ] Teste manual: 1 OAB retorna comunicações
-- [ ] Processos novos sendo criados
-- [ ] Partes e advogados sendo salvos
-- [ ] Eventos na agenda criados
-- [ ] Prazo sendo calculado corretamente
+- [ ] Teste manual: 1 OAB retorna comunicacoes sem bloqueio do WAF
+- [x] Processos novos sendo criados pelo poller
+- [x] Partes e advogados sendo salvos pelo poller
+- [x] Eventos na agenda criados pelo poller
+- [x] Prazo sendo calculado pelo poller
 
 ---
 

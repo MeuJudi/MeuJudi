@@ -1,16 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CalendarDays, Clock3, FileText, Scale } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, CalendarDays, Check, Clock3, Copy, FileText, Info, LockKeyhole, Scale, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getProcessDetails, type ProcessDetails } from "@/lib/process-details/actions";
 
-type ProcessDetailsModalProps = {
-  processId: string | null;
-  onClose: () => void;
-};
+type ProcessDetailsModalProps = { processId: string | null; onClose: () => void };
+type ProcessTab = "resumo" | "movimentacoes" | "agenda" | "mural" | "documentos";
 
 function formatDate(value: string | null) {
   if (!value) return "-";
@@ -31,227 +28,183 @@ function arrayFromJson(value: unknown) {
   return Array.isArray(value) ? value : [];
 }
 
+function initials(value: string) {
+  return value.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "-";
+}
+
+function attorneyName(value: unknown) {
+  if (typeof value === "object" && value && "nome" in value) return String(value.nome);
+  if (typeof value === "object" && value && "name" in value) return String(value.name);
+  return String(value ?? "");
+}
+
+function sourceLabel(value: string) {
+  const labels: Record<string, string> = { datajud: "DataJud", mural: "Mural", pje: "PJe/CS", manual: "Manual", tenant: "Escritório", public: "Público" };
+  return labels[value.toLowerCase()] ?? value;
+}
+
+function statusLabel(value: string) {
+  const labels: Record<string, string> = { ativo: "Ativo", suspenso: "Suspenso", arquivado: "Arquivado", concluido: "Concluído" };
+  return labels[value] ?? value;
+}
+
+function Panel({ title, icon, children, className = "" }: { title: string; icon?: React.ReactNode; children: React.ReactNode; className?: string }) {
+  return (
+    <section className={`rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-4 ${className}`}>
+      <div className="mb-3 flex items-center gap-2">
+        {icon}
+        <h3 className="text-sm font-semibold text-[var(--tenant-surface-foreground)]">{title}</h3>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Field({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs text-[var(--color-muted-foreground)]">{label}</dt>
+      <dd className="mt-1 break-words text-sm font-medium text-[var(--tenant-surface-foreground)]">{value || "-"}</dd>
+    </div>
+  );
+}
+
+function TimelineList({ title, icon, empty, items }: { title: string; icon: React.ReactNode; empty: string; items: { id: string; title: string; subtitle: string | null; meta: string; source?: string; warning?: boolean }[] }) {
+  return (
+    <Panel title={title} icon={icon}>
+      {items.length === 0 ? <p className="text-sm text-[var(--color-muted-foreground)]">{empty}</p> : (
+        <div className="relative space-y-3 before:absolute before:bottom-2 before:left-[9px] before:top-2 before:w-px before:bg-[var(--tenant-line)]">
+          {items.map((item) => (
+            <article key={item.id} className={`relative pl-7 ${item.warning ? "rounded-md bg-[color-mix(in_srgb,var(--tenant-brass)_12%,var(--tenant-surface))] py-3 pr-3" : ""}`}>
+              <span className={`absolute left-0 top-1.5 grid h-5 w-5 place-items-center rounded-full border-2 border-[var(--tenant-surface)] ${item.warning ? "bg-[var(--tenant-brass)]" : "bg-[var(--tenant-surface-muted)]"}`}>
+                {item.warning ? <AlertTriangle className="h-3 w-3 text-[var(--tenant-surface)]" /> : <span className="h-2 w-2 rounded-full bg-[var(--tenant-brass)]" />}
+              </span>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <p className="text-sm font-semibold text-[var(--tenant-surface-foreground)]">{item.title}</p>
+                <span className="font-mono text-[11px] text-[var(--color-muted-foreground)]">{item.meta}</span>
+              </div>
+              <p className="mt-1 line-clamp-3 text-xs leading-5 text-[var(--color-muted-foreground)]">{item.subtitle || "Sem descrição adicional."}</p>
+              {item.source ? <span className="mt-2 inline-flex rounded border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-2 py-0.5 text-[11px] font-medium text-[var(--tenant-surface-foreground)]">{sourceLabel(item.source)}</span> : null}
+            </article>
+          ))}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalProps) {
-  const [state, setState] = useState<{
-    processId: string | null;
-    details: ProcessDetails | null;
-    error: string | null;
-  }>({ processId: null, details: null, error: null });
+  const [activeTab, setActiveTab] = useState<ProcessTab>("resumo");
+  const [copied, setCopied] = useState(false);
+  const [state, setState] = useState<{ processId: string | null; details: ProcessDetails | null; error: string | null }>({ processId: null, details: null, error: null });
 
   useEffect(() => {
     let active = true;
+    setActiveTab("resumo");
+    setCopied(false);
     if (!processId) return;
-
     getProcessDetails(processId)
-      .then((result) => {
-        if (active) setState({ processId, details: result, error: null });
-      })
-      .catch((err: unknown) => {
-        if (active) {
-          setState({
-            processId,
-            details: null,
-            error: err instanceof Error ? err.message : "Nao foi possivel carregar o processo.",
-          });
-        }
-      });
-
-    return () => {
-      active = false;
-    };
+      .then((result) => { if (active) setState({ processId, details: result, error: null }); })
+      .catch((err: unknown) => { if (active) setState({ processId, details: null, error: err instanceof Error ? err.message : "Nao foi possivel carregar o processo." }); });
+    return () => { active = false; };
   }, [processId]);
 
   const details = state.processId === processId ? state.details : null;
   const error = state.processId === processId ? state.error : null;
   const loading = state.processId !== processId;
+  const process = details?.process;
+  const attorneys = arrayFromJson(process?.advogados);
+  const mainAttorney = attorneyName(attorneys[0]) || "Nenhum responsável cadastrado";
+  const recentItems = useMemo(() => {
+    if (!details) return [];
+    const movements = details.movements.map((item) => ({ id: `movement-${item.id}`, title: item.nome, subtitle: item.texto_completo, meta: formatDateTime(item.data_movimento), source: item.fonte, warning: Boolean(item.prazo_fatal) }));
+    const events = details.agenda.map((item) => ({ id: `agenda-${item.id}`, title: item.titulo, subtitle: item.descricao, meta: formatDateTime(item.data_inicio), source: item.fonte, warning: item.tipo === "prazo" }));
+    return [...movements, ...events].slice(0, 5);
+  }, [details]);
+
+  const tabs: { id: ProcessTab; label: string }[] = [
+    { id: "resumo", label: "Resumo" },
+    { id: "movimentacoes", label: "Movimentações" },
+    { id: "agenda", label: "Agenda" },
+    { id: "mural", label: "Mural" },
+    { id: "documentos", label: "Documentos" },
+  ];
+
+  async function copyCnj() {
+    if (!process?.cnj) return;
+    await navigator.clipboard?.writeText(process.cnj);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
+  }
 
   return (
     <Dialog open={!!processId} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-5xl border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
-        <DialogHeader>
-          <DialogTitle>
-            <p className="font-mono text-xs text-[var(--color-muted-foreground)]">
-              {details?.process.cnj ?? "Carregando processo"}
-            </p>
-            <h2 className="mt-1 font-display text-2xl font-bold">
-              {details?.process.classe_nome ?? "Detalhes do processo"}
-            </h2>
-          </DialogTitle>
-          <DialogDescription>Informações detalhadas do processo selecionado.</DialogDescription>
+      <DialogContent className="max-h-[92vh] max-w-[min(1100px,calc(100vw-24px))] gap-0 overflow-hidden border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-0 text-[var(--tenant-surface-foreground)] shadow-2xl">
+        <DialogHeader className="border-b border-[var(--tenant-line)] px-5 py-5 pr-14 sm:px-7">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="rounded border border-[var(--tenant-brass)] bg-[color-mix(in_srgb,var(--tenant-brass)_12%,var(--tenant-surface))] px-2 py-1 text-xs font-semibold text-[var(--tenant-brass)]">{process ? statusLabel(process.status) : "Carregando"}</span>
+            <DialogTitle className="font-mono text-base font-semibold tracking-normal text-[var(--tenant-surface-foreground)] sm:text-lg">{process?.cnj ?? "Detalhes do processo"}</DialogTitle>
+            {process?.nivel_sigilo ? <span className="inline-flex items-center gap-1 text-xs text-[var(--color-muted-foreground)]"><LockKeyhole className="h-3.5 w-3.5" /> Sigilo nível {process.nivel_sigilo}</span> : null}
+          </div>
+          <p className="mt-2 text-xl font-semibold text-[var(--tenant-surface-foreground)] sm:text-2xl">{process?.classe_nome ?? "Informações do processo"}</p>
+          <DialogDescription className="mt-1 text-sm text-[var(--color-muted-foreground)]">{[process?.tribunal, process?.grau, process?.sistema].filter(Boolean).join(" · ") || "Processo do escritório"}</DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[60vh] overflow-y-auto">
-          {loading ? (
-            <div className="rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-8 text-center text-sm text-[var(--color-muted-foreground)]">
-              Carregando informacoes do processo...
+        <div className="min-h-0 overflow-y-auto">
+          {loading ? <div className="m-5 rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-10 text-center text-sm text-[var(--color-muted-foreground)]">Carregando informações do processo...</div> : null}
+          {error ? <div className="m-5 rounded-md border border-[color-mix(in_srgb,var(--color-destructive)_30%,var(--tenant-line))] bg-[color-mix(in_srgb,var(--color-destructive)_10%,var(--tenant-surface))] p-4 text-sm text-[var(--color-destructive)]">{error}</div> : null}
+
+          {details && process ? <>
+            <section className="grid divide-y divide-[var(--tenant-line)] border-b border-[var(--tenant-line)] sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+              <Signal icon={<AlertTriangle className="h-5 w-5" />} label="Próximo prazo" value={formatDate(process.prazo_proxima_resposta)} detail={process.prazo_proxima_resposta ? "Acompanhar resposta" : "Nenhum prazo informado"} warning={Boolean(process.prazo_proxima_resposta)} />
+              <Signal icon={<CalendarDays className="h-5 w-5" />} label="Próxima audiência" value={formatDateTime(process.proxima_audiencia)} detail={process.proxima_audiencia ? "Ver compromisso na agenda" : "Nenhuma audiência informada"} />
+              <Signal icon={<Clock3 className="h-5 w-5" />} label="Última movimentação" value={formatDateTime(process.data_ultima_movimentacao)} detail="Atualização mais recente" />
+            </section>
+
+            <nav aria-label="Seções do processo" className="flex gap-1 overflow-x-auto border-b border-[var(--tenant-line)] px-5 sm:px-7">
+              {tabs.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} aria-selected={activeTab === tab.id} className={`whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium transition-colors ${activeTab === tab.id ? "border-[var(--tenant-brass)] text-[var(--tenant-brass)]" : "border-transparent text-[var(--color-muted-foreground)] hover:text-[var(--tenant-surface-foreground)]"}`}>{tab.label}</button>)}
+            </nav>
+
+            <div className="space-y-4 p-5 sm:p-7">
+              {activeTab === "resumo" ? <>
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(260px,0.75fr)]">
+                  <Panel title="Partes e processo" icon={<Scale className="h-4 w-4 text-[var(--tenant-brass)]" />}>
+                    <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+                      <Field label="Autor" value={process.autor} /><Field label="Réu" value={process.reu} /><Field label="Órgão julgador" value={process.orgao_julgador} /><Field label="Classe processual" value={process.classe_nome} /><Field label="Valor da causa" value={formatCurrency(process.valor_causa)} /><Field label="Origem" value={sourceLabel(process.source_context)} />
+                    </dl>
+                    <div className="mt-5 flex flex-wrap gap-2 border-t border-[var(--tenant-line)] pt-4">
+                      {(process.tags ?? []).map((tag) => <span key={tag} className="rounded border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-2 py-1 text-xs text-[var(--tenant-surface-foreground)]">{tag}</span>)}
+                      {(process.tags ?? []).length === 0 ? <span className="text-xs text-[var(--color-muted-foreground)]">Sem tags cadastradas.</span> : null}
+                    </div>
+                  </Panel>
+                  <Panel title="Responsáveis" icon={<UserRound className="h-4 w-4 text-[var(--tenant-brass)]" />}>
+                    <div className="flex items-center gap-3">
+                      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[var(--tenant-surface-muted)] font-semibold text-[var(--tenant-brass)]">{initials(mainAttorney)}</span>
+                      <div className="min-w-0"><p className="truncate text-sm font-semibold">{mainAttorney}</p><p className="text-xs text-[var(--color-muted-foreground)]">Responsável pelo processo</p></div>
+                    </div>
+                    <div className="mt-4 border-t border-[var(--tenant-line)] pt-4"><p className="text-xs font-semibold">Fontes de dados</p><div className="mt-2 flex flex-wrap gap-2">{["Mural", "DataJud", "PJe/CS"].map((source) => <span key={source} className="rounded border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-2 py-1 text-xs">{source}</span>)}</div></div>
+                    <div className="mt-4 flex items-start gap-2 text-xs text-[var(--color-muted-foreground)]"><Info className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Últimas sincronizações: Mural {formatDateTime(process.ultima_sync_mural)}.</div>
+                  </Panel>
+                </div>
+                <TimelineList title="Atividade recente" icon={<FileText className="h-4 w-4 text-[var(--tenant-brass)]" />} empty="Nenhuma atividade vinculada." items={recentItems} />
+              </> : null}
+              {activeTab === "movimentacoes" ? <TimelineList title="Movimentações do processo" icon={<FileText className="h-4 w-4 text-[var(--tenant-brass)]" />} empty="Nenhuma movimentação vinculada." items={details.movements.map((item) => ({ id: item.id, title: item.nome, subtitle: item.texto_completo, meta: formatDateTime(item.data_movimento), source: item.fonte, warning: Boolean(item.prazo_fatal) }))} /> : null}
+              {activeTab === "agenda" ? <TimelineList title="Agenda vinculada" icon={<CalendarDays className="h-4 w-4 text-[var(--tenant-brass)]" />} empty="Nenhum evento vinculado." items={details.agenda.map((item) => ({ id: item.id, title: item.titulo, subtitle: item.descricao, meta: formatDateTime(item.data_inicio), source: item.fonte, warning: item.tipo === "prazo" }))} /> : null}
+              {activeTab === "mural" ? <TimelineList title="Comunicações do Mural" icon={<FileText className="h-4 w-4 text-[var(--tenant-brass)]" />} empty="Nenhuma comunicação vinculada." items={details.mural.map((item) => ({ id: item.id, title: item.tipo_comunicacao, subtitle: item.texto, meta: `${formatDate(item.data_disponibilizacao)} · ${item.sigla_tribunal}`, source: "mural" }))} /> : null}
+              {activeTab === "documentos" ? <Panel title="Documentos" icon={<FileText className="h-4 w-4 text-[var(--tenant-brass)]" />}><div className="rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-8 text-center"><FileText className="mx-auto h-7 w-7 text-[var(--color-muted-foreground)]" /><p className="mt-2 text-sm font-medium">Nenhum documento vinculado</p><p className="mt-1 text-xs text-[var(--color-muted-foreground)]">O espaço para documentos será conectado ao processo nesta etapa.</p></div></Panel> : null}
             </div>
-          ) : null}
-
-          {error ? (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-              {error}
-            </div>
-          ) : null}
-
-          {details ? (
-            <div className="space-y-5">
-              <section className="grid gap-3 md:grid-cols-4">
-                {[
-                  ["Tribunal", details.process.tribunal ?? "-"],
-                  ["Sistema", details.process.sistema ?? "-"],
-                  ["Grau", details.process.grau ?? "-"],
-                  ["Valor", formatCurrency(details.process.valor_causa)],
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-3">
-                    <p className="text-xs text-[var(--color-muted-foreground)]">{label}</p>
-                    <p className="mt-1 font-semibold">{value}</p>
-                  </div>
-                ))}
-              </section>
-
-              <section className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-                <div className="rounded-md border border-[var(--tenant-line)] p-4">
-                  <div className="mb-3 flex items-center gap-2">
-                    <Scale className="h-4 w-4 text-primary" />
-                    <h3 className="font-semibold">Dados principais</h3>
-                  </div>
-                  <div className="grid gap-3 text-sm md:grid-cols-2">
-                    <p><strong>Autor:</strong> {details.process.autor ?? "-"}</p>
-                    <p><strong>Reu:</strong> {details.process.reu ?? "-"}</p>
-                    <p><strong>Orgao julgador:</strong> {details.process.orgao_julgador ?? "-"}</p>
-                    <p><strong>Status:</strong> {details.process.status}</p>
-                    <p><strong>Sigilo:</strong> nivel {details.process.nivel_sigilo}</p>
-                    <p><strong>Origem:</strong> {details.process.source_context}</p>
-                    <p><strong>Proxima resposta:</strong> {formatDate(details.process.prazo_proxima_resposta)}</p>
-                    <p><strong>Proxima audiencia:</strong> {formatDateTime(details.process.proxima_audiencia)}</p>
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {(details.process.tags ?? []).map((tag) => <Badge key={tag} variant="outline">{tag}</Badge>)}
-                    {details.process.is_favorito ? <Badge>Favorito</Badge> : null}
-                  </div>
-                </div>
-
-                <div className="rounded-md border border-[var(--tenant-line)] p-4">
-                  <div className="mb-3 flex items-center gap-2">
-                    <Clock3 className="h-4 w-4 text-primary" />
-                    <h3 className="font-semibold">Sincronizacoes</h3>
-                  </div>
-                  <div className="space-y-2 text-sm">
-                    <p><strong>DataJud:</strong> {formatDateTime(details.process.ultima_sync_datajud)}</p>
-                    <p><strong>Mural:</strong> {formatDateTime(details.process.ultima_sync_mural)}</p>
-                    <p><strong>PJe/CS:</strong> {formatDateTime(details.process.ultima_sync_pje)}</p>
-                    <p><strong>Ultima movimentacao:</strong> {formatDateTime(details.process.data_ultima_movimentacao)}</p>
-                    <p><strong>Criado em:</strong> {formatDateTime(details.process.created_at)}</p>
-                    <p><strong>Atualizado em:</strong> {formatDateTime(details.process.updated_at)}</p>
-                  </div>
-                </div>
-              </section>
-
-              <section className="grid gap-4 lg:grid-cols-2">
-                <div className="rounded-md border border-[var(--tenant-line)] p-4">
-                  <h3 className="mb-3 font-semibold">Assuntos</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {arrayFromJson(details.process.assuntos).length === 0 ? (
-                      <span className="text-sm text-[var(--color-muted-foreground)]">Nenhum assunto cadastrado.</span>
-                    ) : arrayFromJson(details.process.assuntos).map((item, index) => (
-                      <Badge key={index} variant="outline">
-                        {typeof item === "object" && item && "nome" in item ? String(item.nome) : String(item)}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-md border border-[var(--tenant-line)] p-4">
-                  <h3 className="mb-3 font-semibold">Advogados</h3>
-                  <div className="space-y-2">
-                    {arrayFromJson(details.process.advogados).length === 0 ? (
-                      <span className="text-sm text-[var(--color-muted-foreground)]">Nenhum advogado cadastrado.</span>
-                    ) : arrayFromJson(details.process.advogados).map((item, index) => (
-                      <div key={index} className="rounded bg-[var(--tenant-surface-muted)] px-3 py-2 text-sm">
-                        {typeof item === "object" && item ? JSON.stringify(item) : String(item)}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </section>
-
-              <section className="grid gap-4 lg:grid-cols-3">
-                <TimelineList
-                  icon={<FileText className="h-4 w-4 text-primary" />}
-                  title="Movimentacoes"
-                  empty="Nenhuma movimentacao vinculada."
-                  items={details.movements.map((movement) => ({
-                    id: movement.id,
-                    title: movement.nome,
-                    subtitle: movement.texto_completo,
-                    meta: `${formatDateTime(movement.data_movimento)} · ${movement.fonte}`,
-                  }))}
-                />
-                <TimelineList
-                  icon={<CalendarDays className="h-4 w-4 text-primary" />}
-                  title="Agenda"
-                  empty="Nenhum evento vinculado."
-                  items={details.agenda.map((event) => ({
-                    id: event.id,
-                    title: event.titulo,
-                    subtitle: event.descricao,
-                    meta: `${formatDateTime(event.data_inicio)} · ${event.tipo} · ${event.fonte}`,
-                  }))}
-                />
-                <TimelineList
-                  icon={<FileText className="h-4 w-4 text-primary" />}
-                  title="Mural"
-                  empty="Nenhuma comunicacao vinculada."
-                  items={details.mural.map((item) => ({
-                    id: item.id,
-                    title: item.tipo_comunicacao,
-                    subtitle: item.texto,
-                    meta: `${formatDate(item.data_disponibilizacao)} · ${item.sigla_tribunal}`,
-                  }))}
-                />
-              </section>
-            </div>
-          ) : null}
+          </> : null}
         </div>
 
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>Fechar</Button>
+        <DialogFooter className="border-t border-[var(--tenant-line)] px-5 py-4 sm:px-7">
+          <Button type="button" variant="outline" onClick={copyCnj} disabled={!process}>{copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? "Copiado" : "Copiar CNJ"}</Button>
+          <Button type="button" onClick={onClose}>Fechar</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-function TimelineList({
-  icon,
-  title,
-  empty,
-  items,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  empty: string;
-  items: { id: string; title: string; subtitle: string | null; meta: string }[];
-}) {
-  return (
-    <div className="rounded-md border border-[var(--tenant-line)] p-4">
-      <div className="mb-3 flex items-center gap-2">
-        {icon}
-        <h3 className="font-semibold">{title}</h3>
-      </div>
-      {items.length === 0 ? (
-        <p className="text-sm text-[var(--color-muted-foreground)]">{empty}</p>
-      ) : (
-        <div className="space-y-3">
-          {items.map((item) => (
-            <div key={item.id} className="rounded-md bg-[var(--tenant-surface-muted)] p-3">
-              <p className="text-sm font-semibold">{item.title}</p>
-              <p className="mt-1 line-clamp-3 text-xs text-[var(--color-muted-foreground)]">{item.subtitle ?? "-"}</p>
-              <p className="mt-2 font-mono text-[11px] text-[var(--color-muted-foreground)]">{item.meta}</p>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+function Signal({ icon, label, value, detail, warning = false }: { icon: React.ReactNode; label: string; value: string; detail: string; warning?: boolean }) {
+  return <div className="flex items-start gap-3 p-4 sm:p-5"><span className={warning ? "text-[var(--tenant-brass)]" : "text-[var(--tenant-brass)]"}>{icon}</span><div className="min-w-0"><p className="text-xs text-[var(--color-muted-foreground)]">{label}</p><p className={`mt-1 truncate text-sm font-semibold ${warning ? "text-[var(--tenant-brass)]" : "text-[var(--tenant-surface-foreground)]"}`}>{value}</p><p className="mt-1 truncate text-xs text-[var(--color-muted-foreground)]">{detail}</p></div></div>;
 }
