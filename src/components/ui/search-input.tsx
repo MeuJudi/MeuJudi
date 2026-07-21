@@ -28,8 +28,9 @@ type Item = {
 type Props = {
   // lista local para sugestões client-side (filtra na hora)
   items?: Item[];
-  // server-side search (debounce, 300ms)
-  onServerSearch?: (q: string) => Promise<SearchHit[]>;
+  // server action referenciada diretamente para serialização RSC
+  // Aceita qualquer função que receba (query, options) e retorne Promise<SearchHit[]>
+  onServerSearch?: (q: string, options?: Record<string, unknown>) => Promise<SearchHit[]>;
   // placeholder da input
   placeholder?: string;
   // ao clicar em um item

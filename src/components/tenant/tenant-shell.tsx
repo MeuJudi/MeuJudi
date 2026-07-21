@@ -197,7 +197,7 @@ export function TenantShell({ children, userName, role, gender, avatarUrl, initi
             <div className="flex min-w-[240px] flex-1 items-center gap-2 text-sm text-[var(--color-muted-foreground)]">
               <SearchInput
                 placeholder="Buscar processo, cliente ou tarefa..."
-                onServerSearch={(q) => globalSearch(q, { perType: 4 })}
+                onServerSearch={globalSearch}
                 className="w-full"
               />
             </div>

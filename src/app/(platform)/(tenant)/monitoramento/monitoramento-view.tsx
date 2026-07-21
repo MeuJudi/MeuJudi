@@ -678,7 +678,7 @@ export function MonitoramentoView({
                 value={query}
                 onChange={setQuery}
                 placeholder="Filtrar por CNJ, parte, tribunal ou tag"
-                onServerSearch={(q) => globalSearch(q, { perType: 3 })}
+                onServerSearch={globalSearch}
                 className="flex-1 md:max-w-md"
               />
             </div>

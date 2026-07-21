@@ -306,7 +306,7 @@ export function ClientesView({ tenantId, columns, clients, scope, userId }: { te
                 value={query}
                 onChange={setQuery}
                 placeholder="Filtrar por nome, email ou telefone"
-                onServerSearch={(q) => globalSearch(q, { perType: 3 })}
+                onServerSearch={globalSearch}
                 className="flex-1 md:max-w-md"
               />
             </div>
