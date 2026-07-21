@@ -65,7 +65,16 @@ export class MuralClient {
     if (dataFim) params.set("dataDisponibilizacaoFim", dataFim);
 
     const url = `${MURAL_BASE}?${params.toString()}`;
-    const response = await fetch(url, { headers: { Accept: "application/json" } });
+    const response = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        // Sem User-Agent de navegador, o WAF do PJe devolve 403 pra
+        // requisições vindas de servidor (ex: função serverless da Vercel).
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept-Language": "pt-BR,pt;q=0.9",
+      },
+    });
 
     if (!response.ok) {
       throw new Error(`Mural HTTP ${response.status}`);
