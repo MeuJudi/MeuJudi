@@ -13,6 +13,8 @@ import { deveGerarRegexNovo } from "@/lib/ia/detector-padroes-repetidos";
 import { aprenderRegex } from "@/lib/ia/aprender-regex";
 import { verificarTetoCusto, registrarConsumoIA } from "@/lib/ia/guard-custo";
 import { criarItemRevisao } from "./central-revisao";
+import { classificarERegistrar, enfileirarParaLote } from "./fila-lote";
+import type { ContextoUrgencia } from "./classificador-urgencia";
 import type { ContextoProcesso } from "@/lib/ia/prompts";
 import type { CampoExtraido, MatchResult, NivelConfianca } from "@/lib/ia/types";
 
@@ -22,6 +24,7 @@ export type OrigemResultado =
   | "ia_confirmadora"
   | "ia_generalista"
   | "bloqueado_por_custo"
+  | "enfileirado_lote"
   | "nao_resolvido";
 
 export interface ResultadoExtracao {
@@ -42,6 +45,14 @@ export async function extrairCampo(
     campo: CampoExtraido;
     tribunal: string;
     contextoProcesso: ContextoProcesso;
+    /**
+     * Só passado pelos pollers automáticos (DataJud/Mural, Sprint 2), que já
+     * sabem prazo/audiência detectados nos dados estruturados antes de gastar
+     * IA. Quando presente e nada resolveu ainda, decide tempo real vs fila de
+     * lote (Parte 9) antes de chamar Camada 3/4. Ausente (ex.: reprocessar no
+     * admin) preserva o comportamento síncrono de sempre.
+     */
+    contextoUrgencia?: ContextoUrgencia;
   },
 ): Promise<ResultadoExtracao> {
   // CAMADA 0: dado já sincronizado e estruturado? Usa direto, sem custo.
@@ -65,6 +76,32 @@ export async function extrairCampo(
   }
 
   const nenhumRegexBateu = !resultadoRegex.match;
+
+  // Gate de urgência (Sprint 2, Parte 9): decide tempo real vs fila de lote
+  // ANTES de checar custo/chamar IA — se puder esperar o lote (~50% mais
+  // barato via Batch API), nem entra no orçamento de hoje.
+  if (params.contextoUrgencia) {
+    const classificacao = await classificarERegistrar(supabase, params.tenantId, params.contextoUrgencia);
+    if (classificacao.classificacao === "lote") {
+      await enfileirarParaLote(supabase, {
+        tenantId: params.tenantId,
+        processoId: params.processoId,
+        campo: params.campo,
+        texto: params.texto,
+        contexto: params.contextoProcesso as unknown as Record<string, unknown>,
+      });
+      // NOTA: o resultado do lote (Parte 9, coletar-resultados-lote) ainda
+      // não é aplicado de volta em processos/agenda — fica pra depois
+      // (fechar esse loop não fazia parte do escopo combinado nesta rodada).
+      return {
+        origem: "enfileirado_lote",
+        valor: resultadoRegex.match ?? null,
+        confianca: resultadoRegex.match ? "media" : null,
+        precisaRevisaoHumana: false,
+        matchResult: resultadoRegex,
+      };
+    }
+  }
 
   // Controle de custo (Parte 8): verifica os 2 tetos ANTES de qualquer
   // chamada de IA (Camadas 3, 4 e 5) — nunca depois, senão o gasto já saiu.
