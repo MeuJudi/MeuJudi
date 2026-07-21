@@ -5,14 +5,14 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const tabs = [
-  { href: "/configuracoes/meujudi-cs", label: "MeuJudi CS" },
   { href: "/configuracoes/perfil", label: "Meu perfil" },
-  { href: "/configuracoes/escritorio", label: "Escritório" },
+  { href: "/configuracoes/escritorio", label: "Escrit\u00f3rio" },
+  { href: "/configuracoes/meujudi-cs", label: "MeuJudi CS" },
   { href: "/configuracoes/oabs", label: "OABs" },
-  { href: "/configuracoes/honorarios", label: "Honorários" },
+  { href: "/configuracoes/honorarios", label: "Honor\u00e1rios" },
   { href: "/configuracoes/equipe", label: "Equipe" },
-  { href: "/configuracoes/seguranca", label: "Segurança" },
-  { href: "/configuracoes/notificacoes", label: "Notificações" },
+  { href: "/configuracoes/seguranca", label: "Seguran\u00e7a" },
+  { href: "/configuracoes/notificacoes", label: "Notifica\u00e7\u00f5es" },
 ];
 
 export default function ConfiguracoesLayout({ children }: { children: React.ReactNode }) {
@@ -22,14 +22,13 @@ export default function ConfiguracoesLayout({ children }: { children: React.Reac
     <div className="w-full space-y-6">
       <header>
         <h1 className="font-display text-3xl font-bold text-[var(--color-card-foreground)]">
-          Configurações
+          Configura\u00e7\u00f5es
         </h1>
         <p className="mt-2 max-w-3xl text-sm text-[var(--color-muted-foreground)]">
-          Gerencie seu perfil, dados do escritório, equipe e preferências.
+          Gerencie seu perfil, dados do escrit\u00f3rio, equipe e prefer\u00eancias.
         </p>
       </header>
 
-      {/* Desktop tabs */}
       <nav className="hidden gap-1 border-b border-[var(--tenant-line)] md:flex">
         {tabs.map((tab) => (
           <Link
@@ -47,7 +46,6 @@ export default function ConfiguracoesLayout({ children }: { children: React.Reac
         ))}
       </nav>
 
-      {/* Mobile tabs */}
       <select
         value={pathname}
         onChange={(e) => {
