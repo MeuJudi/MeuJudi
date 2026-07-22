@@ -24,6 +24,7 @@ type Props = {
   profile: {
     id: string;
     name: string;
+    nickname: string | null;
     email: string;
     phone: string | null;
     oab_number: string | null;
@@ -41,6 +42,7 @@ export function PerfilForm({ profile }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [name, setName] = useState(profile.name);
+  const [nickname, setNickname] = useState(profile.nickname ?? "");
   const [phone, setPhone] = useState(profile.phone ?? "");
   const [oabNumber, setOabNumber] = useState(profile.oab_number ?? "");
   const [oabUf, setOabUf] = useState(profile.oab_uf ?? "");
@@ -85,6 +87,7 @@ export function PerfilForm({ profile }: Props) {
 
     const formData = new FormData();
     formData.set("name", name);
+    formData.set("nickname", nickname);
     formData.set("phone", phone);
     formData.set("oab_number", oabNumber);
     formData.set("oab_uf", oabUf);
@@ -164,6 +167,18 @@ export function PerfilForm({ profile }: Props) {
                 className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--color-card-foreground)]"
                 required
               />
+            </div>
+
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="nickname" className="text-[var(--color-card-foreground)]">Apelido</Label>
+              <Input
+                id="nickname"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                placeholder="Como você prefere ser chamado"
+                className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--color-card-foreground)]"
+              />
+              <p className="text-xs text-[var(--color-muted-foreground)]">Será usado nas telas internas no lugar do nome completo.</p>
             </div>
 
             <div className="space-y-2 sm:col-span-2">

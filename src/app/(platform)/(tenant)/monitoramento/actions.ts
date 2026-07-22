@@ -11,6 +11,12 @@ import { processarComunicacao } from "@/lib/mural/processar-comunicacao";
 const allowedStatuses = ["ativo", "suspenso", "arquivado", "concluido"] as const;
 const columnColors = ["#9a6a22", "#4b6b4e", "#7a2e2e", "#2563eb", "#7c3aed", "#0e7490"];
 
+function syncErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "object" && error && "message" in error) return String(error.message);
+  return "Falha desconhecida durante a sincronização.";
+}
+
 /*
  * The monitoramento screen intentionally has no demo-data action. Real process
  * data must come from the tenant workflow, CS/PJe, DataJud or Mural.
@@ -267,73 +273,87 @@ export async function deleteKanbanColumn(columnId: string, targetColumnId: strin
 }
 
 export async function syncProcessDataJudNow(processId: string) {
-  const apiKey = process.env.DATAJUD_API_KEY;
-  if (!apiKey) throw new Error("DATAJUD_API_KEY nao configurada.");
-  const { supabase, profile } = await requireAppUser();
-  if (!profile.tenant_id) throw new Error("Usuario sem escritorio.");
+  try {
+    const apiKey = process.env.DATAJUD_API_KEY;
+    if (!apiKey) return { ok: false as const, message: "DATAJUD_API_KEY não configurada no ambiente de produção." };
+    const { supabase, profile } = await requireAppUser();
+    if (!profile.tenant_id) return { ok: false as const, message: "Usuário sem escritório vinculado." };
 
-  const { data: processRow, error } = await supabase
-    .from("processos")
-    .select("id, cnj, data_ultima_movimentacao")
-    .eq("id", processId)
-    .eq("tenant_id", profile.tenant_id)
-    .single();
-  if (error || !processRow) throw new Error("Processo nao encontrado.");
+    const { data: processRow, error } = await supabase
+      .from("processos")
+      .select("id, cnj, data_ultima_movimentacao")
+      .eq("id", processId)
+      .eq("tenant_id", profile.tenant_id)
+      .single();
+    if (error) throw new Error(`Falha ao localizar processo: ${error.message}`);
+    if (!processRow) throw new Error("Processo não encontrado.");
 
-  const result = await sincronizarProcessoDataJud(createServiceClient(), profile.tenant_id, processRow, apiKey);
-  revalidatePath("/monitoramento");
-  return result;
+    const result = await sincronizarProcessoDataJud(createServiceClient(), profile.tenant_id, processRow, apiKey);
+    revalidatePath("/monitoramento");
+    return { ok: true as const, ...result };
+  } catch (error) {
+    console.error("[monitoramento] sincronização DataJud falhou:", error);
+    return { ok: false as const, message: syncErrorMessage(error) };
+  }
 }
 
 export async function syncTenantDataJudNow() {
-  const apiKey = process.env.DATAJUD_API_KEY;
-  if (!apiKey) throw new Error("DATAJUD_API_KEY nao configurada.");
-  const { supabase, profile } = await requireAppUser();
-  if (!profile.tenant_id) throw new Error("Usuario sem escritorio.");
+  try {
+    const apiKey = process.env.DATAJUD_API_KEY;
+    if (!apiKey) return { ok: false as const, message: "DATAJUD_API_KEY não configurada no ambiente de produção." };
+    const { supabase, profile } = await requireAppUser();
+    if (!profile.tenant_id) return { ok: false as const, message: "Usuário sem escritório vinculado." };
 
-  const { data: processes, error } = await supabase
-    .from("processos")
-    .select("id, cnj, data_ultima_movimentacao")
-    .eq("tenant_id", profile.tenant_id)
-    .eq("status", "ativo")
-    .eq("nivel_sigilo", 0);
-  if (error) throw new Error(error.message);
+    const { data: processes, error } = await supabase
+      .from("processos")
+      .select("id, cnj, data_ultima_movimentacao")
+      .eq("tenant_id", profile.tenant_id)
+      .eq("status", "ativo")
+      .eq("nivel_sigilo", 0);
+    if (error) throw new Error(`Falha ao listar processos: ${error.message}`);
 
-  const service = createServiceClient();
-  const result = { processados: 0, atualizados: 0, sem_mudanca: 0, nao_encontrados: 0, erros: 0 };
-  for (const process of processes ?? []) {
-    try {
-      const synced = await sincronizarProcessoDataJud(service, profile.tenant_id, process, apiKey);
-      result.processados++;
-      if (synced.status === "atualizado") result.atualizados++;
-      if (synced.status === "sem_mudanca") result.sem_mudanca++;
-      if (synced.status === "nao_encontrado") result.nao_encontrados++;
-    } catch {
-      result.erros++;
+    const service = createServiceClient();
+    const result = { processados: 0, atualizados: 0, sem_mudanca: 0, nao_encontrados: 0, erros: 0 };
+    for (const process of processes ?? []) {
+      try {
+        const synced = await sincronizarProcessoDataJud(service, profile.tenant_id, process, apiKey);
+        result.processados++;
+        if (synced.status === "atualizado") result.atualizados++;
+        if (synced.status === "sem_mudanca") result.sem_mudanca++;
+        if (synced.status === "nao_encontrado") result.nao_encontrados++;
+      } catch (error) {
+        result.erros++;
+        console.error(`[monitoramento] DataJud falhou para ${process.cnj}:`, error);
+      }
     }
+    revalidatePath("/monitoramento");
+    return { ok: true as const, ...result };
+  } catch (error) {
+    console.error("[monitoramento] sincronização DataJud do escritório falhou:", error);
+    return { ok: false as const, message: syncErrorMessage(error) };
   }
-  revalidatePath("/monitoramento");
-  return result;
 }
 
 export async function syncProcessMuralNow(processId: string) {
-  const { supabase, profile } = await requireAppUser();
-  if (!profile.tenant_id) throw new Error("Usuario sem escritorio.");
-  const { data: process, error: processError } = await supabase
-    .from("processos")
-    .select("id, cnj")
-    .eq("id", processId)
-    .eq("tenant_id", profile.tenant_id)
-    .single();
-  if (processError || !process) throw new Error("Processo nao encontrado.");
+  try {
+    const { supabase, profile } = await requireAppUser();
+    if (!profile.tenant_id) return { ok: false as const, message: "Usuário sem escritório vinculado." };
+    const { data: process, error: processError } = await supabase
+      .from("processos")
+      .select("id, cnj")
+      .eq("id", processId)
+      .eq("tenant_id", profile.tenant_id)
+      .single();
+    if (processError) throw new Error(`Falha ao localizar processo: ${processError.message}`);
+    if (!process) throw new Error("Processo não encontrado.");
 
   const { data: oabs, error: oabError } = await supabase
     .from("escritorio_oabs")
     .select("oab_number, oab_uf")
     .eq("tenant_id", profile.tenant_id)
     .eq("is_active", true);
-  if (oabError) throw new Error(oabError.message);
-  if (!oabs?.length) throw new Error("Nenhuma OAB ativa cadastrada no escritorio.");
+  if (oabError) throw new Error(`Falha ao consultar OABs: ${oabError.message}`);
+  if (!oabs?.length) throw new Error("Nenhuma OAB ativa cadastrada no escritório.");
 
   const mural = new MuralClient();
   const service = createServiceClient();
@@ -360,7 +380,11 @@ export async function syncProcessMuralNow(processId: string) {
   }
 
   revalidatePath("/monitoramento");
-  return { recebidas, encontradas: seen.size, novas };
+    return { ok: true as const, recebidas, encontradas: seen.size, novas };
+  } catch (error) {
+    console.error("[monitoramento] sincronização Mural falhou:", error);
+    return { ok: false as const, message: syncErrorMessage(error) };
+  }
 }
 
 /*

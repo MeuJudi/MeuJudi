@@ -16,6 +16,7 @@ export default async function PerfilPage() {
         profile={{
           id: profile.id,
           name: profile.name,
+          nickname: profile.nickname,
           email: profile.email,
           phone: profile.phone,
           oab_number: profile.oab_number,

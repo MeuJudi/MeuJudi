@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { displayUserName } from "@/lib/auth/display-name";
 import { deleteTask, updateTask, type TaskUpdateData } from "./actions";
 
 export type TaskItem = {
@@ -41,7 +42,7 @@ export type TaskItem = {
   attachments: { id: string; name: string; type: string; url: string; source: string }[];
 };
 
-type UserProfile = { id: string; name: string; email: string; avatar_url: string | null };
+type UserProfile = { id: string; name: string; nickname: string | null; email: string; oab_number: string | null; oab_uf: string | null; avatar_url: string | null };
 
 const priorityLabels: Record<TaskItem["priority"], string> = {
   alta: "Alta",
@@ -69,7 +70,7 @@ function getErrorMessage(error: unknown) {
 }
 
 function userInitials(user: UserProfile) {
-  return (user.name || user.email)
+  return displayUserName(user)
     .split(/[ @.]+/)
     .map((part) => part[0])
     .filter(Boolean)
@@ -339,7 +340,7 @@ export function TarefaModal({
                         className="inline-flex items-center gap-2 rounded-full border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-2.5 py-1 text-sm font-semibold text-[var(--tenant-surface-foreground)]"
                       >
                         <AvatarInitials user={user} />
-                        {user.name || user.email}
+                        {displayUserName(user)}
                         <button
                           type="button"
                           onClick={() => removeAssigned(user.id)}
@@ -363,7 +364,7 @@ export function TarefaModal({
                     {availableAssignees.length ? (
                       availableAssignees.map((user) => (
                         <SelectItem key={user.id} value={user.id}>
-                          {user.name || user.email}
+                          {displayUserName(user)}
                         </SelectItem>
                       ))
                     ) : (
@@ -590,7 +591,7 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
 
 function AvatarInitials({ user }: { user: UserProfile }) {
   return (
-    user.avatar_url ? <img src={user.avatar_url} alt={user.name || user.email} className="h-6 w-6 shrink-0 rounded-full object-cover" /> : <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--tenant-surface-muted)] font-mono text-[10px] font-black text-[var(--tenant-surface-foreground)]">{userInitials(user)}</span>
+    user.avatar_url ? <img src={user.avatar_url} alt={displayUserName(user)} className="h-6 w-6 shrink-0 rounded-full object-cover" /> : <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--tenant-surface-muted)] font-mono text-[10px] font-black text-[var(--tenant-surface-foreground)]">{userInitials(user)}</span>
   );
 }
 
@@ -600,7 +601,7 @@ function UserPill({ user, fallback }: { user: UserProfile | null; fallback: stri
   return (
     <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-2.5 py-1 text-sm font-semibold text-[var(--tenant-surface-foreground)]">
       <AvatarInitials user={user} />
-      <span className="min-w-0 truncate">{user.name || user.email}</span>
+      <span className="min-w-0 truncate">{displayUserName(user)}</span>
     </span>
   );
 }

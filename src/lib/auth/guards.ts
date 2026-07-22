@@ -9,6 +9,7 @@ type AppUser = {
   tenant_id: string | null;
   role: "owner" | "lawyer" | "intern" | "staff" | "super_admin";
   name: string;
+  nickname: string | null;
   email: string;
   phone: string | null;
   oab_number: string | null;
@@ -33,7 +34,7 @@ export async function requireAppUser(scope?: AuthScope) {
   const { supabase, authUser } = await requireSession(scope);
   const { data: profile } = await supabase
     .from("users")
-    .select("id, tenant_id, role, name, email, phone, oab_number, oab_uf, avatar_url, gender, created_at")
+    .select("id, tenant_id, role, name, nickname, email, phone, oab_number, oab_uf, avatar_url, gender, created_at")
     .eq("id", authUser.id)
     .single<AppUser>();
 

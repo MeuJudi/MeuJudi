@@ -216,12 +216,13 @@ export async function consultarOab(inscricao: string, uf: string): Promise<OabAd
  */
 export async function checkOabApiHealth(): Promise<{
   healthy: boolean;
+  configured: boolean;
   latencyMs: number;
   checkedAt: string;
 }> {
   const start = Date.now();
   if (!OAB_API_KEY) {
-    return { healthy: false, latencyMs: 0, checkedAt: new Date().toISOString() };
+    return { healthy: false, configured: false, latencyMs: 0, checkedAt: new Date().toISOString() };
   }
   try {
     const response = await fetch(OABS_WS_URL, {
@@ -236,12 +237,14 @@ export async function checkOabApiHealth(): Promise<{
     const latencyMs = Date.now() - start;
     return {
       healthy: response.ok,
+      configured: true,
       latencyMs,
       checkedAt: new Date().toISOString(),
     };
   } catch {
     return {
       healthy: false,
+      configured: true,
       latencyMs: Date.now() - start,
       checkedAt: new Date().toISOString(),
     };

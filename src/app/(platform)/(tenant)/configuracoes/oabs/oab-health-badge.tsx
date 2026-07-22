@@ -50,7 +50,9 @@ export function OabHealthBadge() {
         "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium",
         health.healthy
           ? "border-green-200 bg-green-50 text-green-700"
-          : "border-red-200 bg-red-50 text-red-700"
+          : health.configured
+            ? "border-red-200 bg-red-50 text-red-700"
+            : "border-amber-200 bg-amber-50 text-amber-700"
       )}
       title={`Latência: ${health.latencyMs}ms · Verificado: ${new Date(health.checkedAt).toLocaleTimeString("pt-BR")}`}
     >
@@ -69,7 +71,7 @@ export function OabHealthBadge() {
           )}
         </>
       ) : (
-        "API OAB fora do ar"
+        health.configured ? "API OAB indisponível" : "Credencial OAB não configurada"
       )}
     </span>
   );

@@ -175,9 +175,11 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
     try {
       if (source === "datajud") {
         const result = await syncProcessDataJudNow(processId);
+        if (!result.ok) throw new Error(result.message);
         setSyncMessage(result.status === "atualizado" ? `${result.movimentacoes} movimentacoes novas do DataJud.` : "DataJud consultado. Nenhuma movimentacao nova.");
       } else {
         const result = await syncProcessMuralNow(processId);
+        if (!result.ok) throw new Error(result.message);
         setSyncMessage(`${result.novas} novas comunicacoes do Mural encontradas.`);
       }
       const refreshed = await getProcessDetails(processId);
@@ -222,7 +224,7 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(260px,0.75fr)]">
                   <Panel title="Partes e processo" icon={<Scale className="h-4 w-4 text-[var(--tenant-brass)]" />}>
                     <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
-                      <Field label="Autor" value={process.autor} /><Field label="Réu" value={process.reu} /><Field label="Órgão julgador" value={process.orgao_julgador} /><Field label="Classe processual" value={process.classe_nome} /><Field label="Formato" value={process.formato_nome} /><Field label="Data de ajuizamento" value={formatDate(process.data_ajuizamento)} /><Field label="Valor da causa" value={formatCurrency(process.valor_causa)} /><Field label="Origem" value={sourceLabel(process.source_context)} />
+                      <Field label="Autor" value={process.autor} /><Field label="Réu" value={process.reu} /><Field label="Órgão julgador" value={process.orgao_julgador} /><Field label="Magistrado" value={process.magistrado_nome ? `${process.magistrado_tipo ? process.magistrado_tipo.replace(/^./, (letter) => letter.toUpperCase()) + ": " : ""}${process.magistrado_nome}` : null} /><Field label="Classe processual" value={process.classe_nome} /><Field label="Formato" value={process.formato_nome} /><Field label="Data de ajuizamento" value={formatDate(process.data_ajuizamento)} /><Field label="Valor da causa" value={formatCurrency(process.valor_causa)} /><Field label="Origem" value={sourceLabel(process.source_context)} />
                     </dl>
                     <div className="mt-5 flex flex-wrap gap-2 border-t border-[var(--tenant-line)] pt-4">
                       {(process.tags ?? []).map((tag) => <span key={tag} className="rounded border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-2 py-1 text-xs text-[var(--tenant-surface-foreground)]">{tag}</span>)}

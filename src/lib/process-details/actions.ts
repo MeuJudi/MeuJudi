@@ -20,6 +20,8 @@ export type ProcessDetails = {
     assuntos: unknown;
     nivel_sigilo: number;
     orgao_julgador: string | null;
+    magistrado_nome: string | null;
+    magistrado_tipo: string | null;
     autor: string | null;
     reu: string | null;
     advogados: unknown;
@@ -87,6 +89,8 @@ export async function getProcessDetails(processId: string): Promise<ProcessDetai
       assuntos,
       nivel_sigilo,
       orgao_julgador,
+      magistrado_nome,
+      magistrado_tipo,
       autor,
       reu,
       advogados,
@@ -120,9 +124,10 @@ export async function getProcessDetails(processId: string): Promise<ProcessDetai
     return number && uf ? [{ number, uf }] : [];
   });
   const uniqueAttorneyKeys = [...new Map(attorneyKeys.map((key) => [`${key.number}/${key.uf}`, key])).values()];
-  const enrichedAttorneys = await resolveAttorneyAvatars(uniqueAttorneyKeys, attorneys);
-
-  const [{ data: movements }, { data: agenda }, { data: mural }] = await Promise.all([
+  // Todas as partes do modal são independentes depois que o processo foi
+  // autorizado. Executá-las juntas evita que avatar -> movimentações ->
+  // agenda -> Mural virem uma fila de esperas.
+  const [{ data: movements }, { data: agenda }, { data: mural }, enrichedAttorneys] = await Promise.all([
     supabase
       .from("movimentacoes")
       .select("id, data_movimento, nome, texto_completo, fonte, prazo_fatal, is_novo")
@@ -141,6 +146,7 @@ export async function getProcessDetails(processId: string): Promise<ProcessDetai
       .eq("processo_id", processId)
       .order("data_disponibilizacao", { ascending: false })
       .limit(6),
+    resolveAttorneyAvatars(uniqueAttorneyKeys, attorneys),
   ]);
 
   return {
@@ -163,7 +169,7 @@ async function resolveAttorneyAvatars(keys: AttorneyKey[], attorneys: unknown[])
   const ufs = [...new Set(keys.map((key) => key.uf))];
   const [{ data: users }, { data: directory }] = await Promise.all([
     service.from("users")
-      .select("name, oab_number, oab_uf, avatar_url, is_active")
+      .select("name, nickname, oab_number, oab_uf, avatar_url, is_active")
       .in("oab_number", numbers)
       .in("oab_uf", ufs)
       .eq("is_active", true),
@@ -173,45 +179,20 @@ async function resolveAttorneyAvatars(keys: AttorneyKey[], attorneys: unknown[])
       .in("oab_uf", ufs),
   ]);
 
-  const matches = new Map<string, { avatar_url: string; avatar_source: string }>();
+  const matches = new Map<string, { avatar_url: string; avatar_source: string; display_name: string }>();
   for (const user of users ?? []) {
     const number = String(user.oab_number ?? "").replace(/\D/g, "");
     const uf = String(user.oab_uf ?? "").toUpperCase();
     if (number && uf && user.avatar_url) {
-      matches.set(`${number}/${uf}`, { avatar_url: user.avatar_url, avatar_source: "meujudi_user" });
+      const displayName = String(user.nickname ?? user.name ?? "").trim();
+      matches.set(`${number}/${uf}`, { avatar_url: user.avatar_url, avatar_source: "meujudi_user", display_name: displayName ? `Dr. ${displayName}` : "" });
     }
   }
   for (const item of directory ?? []) {
     const key = `${item.oab_number_normalized}/${String(item.oab_uf).toUpperCase()}`;
     if (!matches.has(key) && item.avatar_url) {
-      matches.set(key, { avatar_url: item.avatar_url, avatar_source: item.avatar_source ?? "authorized_external" });
+      matches.set(key, { avatar_url: item.avatar_url, avatar_source: item.avatar_source ?? "authorized_external", display_name: item.canonical_name ?? "" });
     }
-  }
-
-  const recordsToCache = (users ?? [])
-    .map((user) => {
-      const number = String(user.oab_number ?? "").replace(/\D/g, "");
-      const uf = String(user.oab_uf ?? "").toUpperCase();
-      if (!number || !uf || !user.avatar_url) return null;
-      return {
-        oab_number_normalized: number,
-        oab_uf: uf,
-        canonical_name: user.name,
-        avatar_url: user.avatar_url,
-        avatar_source: "meujudi_user" as const,
-        avatar_verified_at: new Date().toISOString(),
-      };
-    })
-    .filter((record): record is {
-      oab_number_normalized: string;
-      oab_uf: string;
-      canonical_name: string;
-      avatar_url: string;
-      avatar_source: "meujudi_user";
-      avatar_verified_at: string;
-    } => Boolean(record));
-  if (recordsToCache.length > 0) {
-    await service.from("lawyers_directory").upsert(recordsToCache, { onConflict: "oab_number_normalized,oab_uf" });
   }
 
   return attorneys.map((value) => {
@@ -220,6 +201,6 @@ async function resolveAttorneyAvatars(keys: AttorneyKey[], attorneys: unknown[])
     const number = String(record.oab ?? record.numero_oab ?? "").replace(/\D/g, "");
     const uf = String(record.uf ?? record.uf_oab ?? "").trim().toUpperCase();
     const match = matches.get(`${number}/${uf}`);
-    return match ? { ...record, avatar_url: match.avatar_url, avatar_source: match.avatar_source } : value;
+    return match ? { ...record, nome: match.display_name || record.nome, avatar_url: match.avatar_url, avatar_source: match.avatar_source } : value;
   });
 }

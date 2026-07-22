@@ -1,9 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MuralComunicacao } from "./client";
-import { extrairPrazoDias, extrairPrazoHoras, extrairAudienciaV2 } from "@/lib/regex/patterns";
+import { converterValorMonetario, extrairAudienciaV2, extrairPrazoDias, extrairPrazoHoras, extrairValor } from "@/lib/regex/patterns";
 import { calcularPrazoFatal } from "@/lib/prazo/calcular-prazo-fatal";
 import { extrairCampo } from "@/lib/extracao/pipeline";
 import { sugerirVinculoCliente, type PoloParte } from "@/lib/clientes/sugestao-vinculo";
+import { registrarAdvogadosDoMural } from "./advogados-diretorio";
+import { extrairMetadadosMural } from "./extrair-metadados";
 
 function poloParaPt(polo: string): PoloParte | null {
   if (polo === "A") return "autor";
@@ -12,14 +14,43 @@ function poloParaPt(polo: string): PoloParte | null {
 }
 
 export async function processarComunicacao(supabase: SupabaseClient, tenantId: string, com: MuralComunicacao): Promise<boolean> {
-  const { data: existente } = await supabase.from("comunicacoes_mural").select("id").eq("tenant_id", tenantId).eq("mural_id", com.id).maybeSingle();
-  if (existente) return false;
+  const { data: existente } = await supabase
+    .from("comunicacoes_mural")
+    .select("id, processo_id, texto, valor_causa_extraido")
+    .eq("tenant_id", tenantId)
+    .eq("mural_id", com.id)
+    .maybeSingle();
+  if (existente) {
+    // Reprocessa somente o campo determinístico que pode ter sido perdido em
+    // importações antigas. Não reabre a comunicação nem sobrescreve valores
+    // já confirmados no processo.
+    const valorCausa = converterValorMonetario(extrairValor(existente.texto));
+    const metadados = extrairMetadadosMural(existente.texto);
+    if (valorCausa != null && existente.processo_id) {
+      if (existente.valor_causa_extraido == null) {
+        await supabase.from("comunicacoes_mural").update({ valor_causa_extraido: valorCausa }).eq("id", existente.id).eq("tenant_id", tenantId);
+      }
+      await supabase.from("processos").update({ valor_causa: valorCausa }).eq("id", existente.processo_id).eq("tenant_id", tenantId).is("valor_causa", null);
+    }
+    if (existente.processo_id && (metadados.magistradoNome || metadados.orgaoJulgador)) {
+      if (metadados.orgaoJulgador) {
+        await supabase.from("processos").update({ orgao_julgador: metadados.orgaoJulgador }).eq("id", existente.processo_id).eq("tenant_id", tenantId).is("orgao_julgador", null);
+      }
+      if (metadados.magistradoNome) {
+        await supabase.from("processos").update({ magistrado_nome: metadados.magistradoNome, magistrado_tipo: metadados.magistradoTipo }).eq("id", existente.processo_id).eq("tenant_id", tenantId).is("magistrado_nome", null);
+      }
+      await supabase.from("comunicacoes_mural").update({
+        ...(metadados.magistradoNome ? { magistrado_nome: metadados.magistradoNome, magistrado_tipo: metadados.magistradoTipo } : {}),
+      }).eq("id", existente.id).eq("tenant_id", tenantId);
+    }
+    return false;
+  }
 
   let processoId: string;
   let processoNovo = false;
   const { data: processo } = await supabase
     .from("processos")
-    .select("id, data_ultima_movimentacao")
+    .select("id, data_ultima_movimentacao, valor_causa, orgao_julgador, magistrado_nome")
     .eq("tenant_id", tenantId)
     .eq("cnj", com.numero_processo)
     .maybeSingle();
@@ -43,6 +74,11 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
   const prazoDias = extrairPrazoDias(com.texto);
   const prazoHoras = extrairPrazoHoras(com.texto);
   const audiencia = extrairAudienciaV2(com.texto);
+  // O valor da causa é um dado estruturado simples: Regex determinística
+  // resolve o formato explícito do Mural sem consumir IA.
+  const valorCausa = converterValorMonetario(extrairValor(com.texto));
+  const metadados = extrairMetadadosMural(com.texto);
+  const orgaoJulgador = com.nomeOrgao?.trim() || metadados.orgaoJulgador;
   const dataAudienciaIso = audiencia?.data_iso ?? null;
   if (!prazoDias && !dataAudienciaIso) {
     await extrairCampo(supabase, {
@@ -67,8 +103,17 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
       ...(d.advogado.tipo ? { tipo: d.advogado.tipo } : {}),
     })),
     prazo_dias: prazoDias, prazo_horas: prazoHoras, data_prazo_fatal: dataFatal, data_audiencia: dataAudienciaIso,
+    valor_causa_extraido: valorCausa,
+    magistrado_nome: metadados.magistradoNome,
+    magistrado_tipo: metadados.magistradoTipo,
   });
   if (comunicacaoError) throw new Error(`Falha ao salvar comunicacao ${com.id}: ${comunicacaoError.message}`);
+
+  try {
+    await registrarAdvogadosDoMural(supabase, tenantId, com.id, com.siglaTribunal, com.destinatarioadvogados);
+  } catch (error) {
+    console.error(`[mural] Falha ao atualizar diretorio de advogados para ${com.id}:`, error);
+  }
 
   const autor = com.destinatarios?.find((d) => d.polo === "A")?.nome ?? null;
   const reu = com.destinatarios?.find((d) => d.polo === "P")?.nome ?? null;
@@ -86,7 +131,13 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
     ...(com.siglaTribunal ? { tribunal: com.siglaTribunal.toLowerCase() } : {}),
     ...(com.codigoClasse ? { classe_codigo: parseInt(com.codigoClasse) } : {}),
     ...(com.nomeClasse ? { classe_nome: com.nomeClasse } : {}),
-    ...(com.nomeOrgao ? { orgao_julgador: com.nomeOrgao } : {}),
+    ...(orgaoJulgador && processo?.orgao_julgador == null ? { orgao_julgador: orgaoJulgador } : {}),
+    ...(metadados.magistradoNome && processo?.magistrado_nome == null ? {
+      magistrado_nome: metadados.magistradoNome,
+      magistrado_tipo: metadados.magistradoTipo,
+    } : {}),
+    // Não sobrescreve um valor confirmado pelo DataJud ou pelo usuário.
+    ...(valorCausa != null && processo?.valor_causa == null ? { valor_causa: valorCausa } : {}),
     ...(dataAudienciaIso ? { proxima_audiencia: dataAudienciaIso } : {}),
     ...(dataFatal ? { prazo_proxima_resposta: dataFatal } : {}),
     data_ultima_movimentacao: processo?.data_ultima_movimentacao && new Date(processo.data_ultima_movimentacao) > new Date(com.data_disponibilizacao)

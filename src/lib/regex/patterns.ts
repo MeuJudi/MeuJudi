@@ -105,3 +105,33 @@ export function extrairValor(texto: string): string | null {
   }
   return null;
 }
+
+/** Converte valores monetários brasileiros capturados no texto para número. */
+export function converterValorMonetario(valor: string | null): number | null {
+  if (!valor) return null;
+
+  const limpo = valor.replace(/\s/g, "");
+  if (!/^[\d.,]+$/.test(limpo)) return null;
+
+  // Em documentos brasileiros, o último separador costuma ser o decimal.
+  // Assim, 16.047,64 vira 16047.64 e 16.047 vira 16047.
+  const ultimoPonto = limpo.lastIndexOf(".");
+  const ultimaVirgula = limpo.lastIndexOf(",");
+  let normalizado = limpo;
+
+  if (ultimaVirgula >= 0) {
+    normalizado = limpo.replace(/\./g, "").replace(",", ".");
+  } else if (ultimoPonto >= 0 && limpo.length - ultimoPonto - 1 === 2) {
+    const partes = limpo.split(".");
+    normalizado = `${partes.slice(0, -1).join("")}.${partes.at(-1)}`;
+  } else {
+    normalizado = limpo.replace(/\./g, "");
+  }
+
+  const numero = Number(normalizado);
+  return Number.isFinite(numero) && numero >= 0 ? numero : null;
+}
+
+export function extrairValorNumerico(texto: string): number | null {
+  return converterValorMonetario(extrairValor(texto));
+}

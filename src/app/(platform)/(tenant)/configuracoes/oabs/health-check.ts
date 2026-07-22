@@ -4,6 +4,7 @@ import { checkOabApiHealth } from "@/lib/oab-service";
 
 export type HealthStatus = {
   healthy: boolean;
+  configured: boolean;
   latencyMs: number;
   checkedAt: string;
 };

@@ -14,10 +14,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { createTask, createTaskColumn, deleteTaskColumn, moveTask, renameTaskColumn, reorderTaskColumns } from "./actions";
 import { TarefaModal, normalizeTask, type TaskItem } from "./tarefa-modal";
+import { displayUserName } from "@/lib/auth/display-name";
 export type { TaskItem };
 
 export type TaskColumn = { id: string; name: string; position: number; color: string; is_default: boolean };
-export type TaskUser = { id: string; name: string; email: string; avatar_url: string | null };
+export type TaskUser = { id: string; name: string; nickname: string | null; email: string; oab_number: string | null; oab_uf: string | null; avatar_url: string | null };
 
 const priorityClass = {
   alta: "bg-[color-mix(in_srgb,var(--tenant-wine)_10%,transparent)] text-[var(--tenant-wine)]",
@@ -35,11 +36,11 @@ function getErrorMessage(error: unknown) {
 }
 
 function initials(user: TaskUser) {
-  return (user.name || user.email).split(/[ @.]+/).map((part) => part[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+  return displayUserName(user).split(/[ @.]+/).map((part) => part[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
 }
 
 function TaskAvatar({ user }: { user: TaskUser }) {
-  return user.avatar_url ? <img src={user.avatar_url} alt={user.name || user.email} className="h-7 w-7 rounded-full border-2 border-[var(--tenant-surface)] object-cover" /> : <span className="grid h-7 w-7 place-items-center rounded-full border-2 border-[var(--tenant-surface)] bg-[var(--tenant-surface-muted)] font-mono text-[10px] font-semibold text-[var(--tenant-surface-foreground)]">{initials(user)}</span>;
+  return user.avatar_url ? <img src={user.avatar_url} alt={displayUserName(user)} className="h-7 w-7 rounded-full border-2 border-[var(--tenant-surface)] object-cover" /> : <span className="grid h-7 w-7 place-items-center rounded-full border-2 border-[var(--tenant-surface)] bg-[var(--tenant-surface-muted)] font-mono text-[10px] font-semibold text-[var(--tenant-surface-foreground)]">{initials(user)}</span>;
 }
 
 function TaskCard({ task, users, completed, handle, onClick }: { task: TaskItem; users: TaskUser[]; completed?: boolean; handle?: React.ReactNode; onClick?: () => void }) {
@@ -69,7 +70,7 @@ function TaskCard({ task, users, completed, handle, onClick }: { task: TaskItem;
           {task.due_date && <Badge className="rounded-full bg-[var(--tenant-surface-muted)] text-[var(--color-muted-foreground)]">{new Date(task.due_date).toLocaleDateString("pt-BR")}</Badge>}
           {(task.checklist?.length ?? 0) > 0 && <Badge className="rounded-full bg-[var(--tenant-surface-muted)] text-[var(--color-muted-foreground)]">{task.checklist.filter((i) => i.done).length}/{task.checklist.length}</Badge>}
         </div>
-        {assignedUsers.length ? <div className="mt-3 flex items-center gap-2 border-t border-[var(--tenant-line)] pt-3"><div className="flex -space-x-2">{assignedUsers.slice(0, 4).map((user) => <TaskAvatar key={user.id} user={user} />)}</div><span className="truncate text-xs text-[var(--color-muted-foreground)]">{assignedUsers.length === 1 ? assignedUsers[0].name || assignedUsers[0].email : `${assignedUsers.length} responsáveis`}</span></div> : null}
+        {assignedUsers.length ? <div className="mt-3 flex items-center gap-2 border-t border-[var(--tenant-line)] pt-3"><div className="flex -space-x-2">{assignedUsers.slice(0, 4).map((user) => <TaskAvatar key={user.id} user={user} />)}</div><span className="truncate text-xs text-[var(--color-muted-foreground)]">{assignedUsers.length === 1 ? displayUserName(assignedUsers[0]) : `${assignedUsers.length} responsáveis`}</span></div> : null}
       </CardContent>
     </Card>
   );

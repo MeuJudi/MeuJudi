@@ -184,7 +184,8 @@ export default async function MonitoramentoPage({
         tenantId={null}
         kanbanColumns={[]}
         processes={[]}
-        metrics={{ active: 0, newMovements: 0, upcomingDeadlines: 0, muralPending: 0 }}
+        metrics={{ active: 0, newMovements: 0, upcomingDeadlines: 0, muralPending: 0, closed: 0 }}
+        muralProcessIds={[]}
         muralItems={[]}
         agendaItems={[]}
         error={params.error ? decodeURIComponent(params.error) : undefined}
@@ -296,6 +297,7 @@ export default async function MonitoramentoPage({
       return date >= today && date <= nextThirtyDays;
     }).length,
     muralPending: muralItems.length,
+    closed: processes.filter((process) => process.status === "concluido" || process.status === "arquivado").length,
   };
 
   return (
@@ -310,6 +312,7 @@ export default async function MonitoramentoPage({
       }))}
       processes={processes}
       metrics={metrics}
+      muralProcessIds={[...new Set(((muralRows ?? []) as MuralRow[]).flatMap((item) => item.processo_id ? [item.processo_id] : []))]}
       muralItems={muralItems}
       agendaItems={agendaItems}
       error={params.error ? decodeURIComponent(params.error) : undefined}

@@ -24,6 +24,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   AlertTriangle,
+  Archive,
   Bell,
   CalendarDays,
   Check,
@@ -94,7 +95,9 @@ type MonitoramentoViewProps = {
     newMovements: number;
     upcomingDeadlines: number;
     muralPending: number;
+    closed: number;
   };
+  muralProcessIds: string[];
   muralItems: {
     id: string;
     title: string;
@@ -540,6 +543,7 @@ export function MonitoramentoView({
   kanbanColumns,
   processes,
   metrics,
+  muralProcessIds,
   muralItems,
   agendaItems,
   error,
@@ -548,6 +552,7 @@ export function MonitoramentoView({
 }: MonitoramentoViewProps) {
   const [view, setView] = useState<"lista" | "kanban" | "mural">("lista");
   const [query, setQuery] = useState("");
+  const [activeMetricFilters, setActiveMetricFilters] = useState<Set<"active" | "newMovements" | "upcomingDeadlines" | "muralPending" | "closed">>(() => new Set());
   const [page, setPage] = useState(0);
   const [localColumns, setLocalColumns] = useState(() => [...kanbanColumns].sort((a, b) => a.position - b.position));
   const [localProcesses, setLocalProcesses] = useState(processes);
@@ -573,6 +578,29 @@ export function MonitoramentoView({
     if (scope === "mine" && userId) {
       result = result.filter((process) => process.responsavelId === userId);
     }
+    if (activeMetricFilters.has("active")) {
+      result = result.filter((process) => process.status === "ativo");
+    }
+    if (activeMetricFilters.has("newMovements")) {
+      result = result.filter((process) => process.unreadMovements > 0);
+    }
+    if (activeMetricFilters.has("upcomingDeadlines")) {
+      const today = new Date();
+      const nextThirtyDays = new Date(today);
+      nextThirtyDays.setDate(today.getDate() + 30);
+      result = result.filter((process) => {
+        if (!process.prazoProximaResposta) return false;
+        const date = new Date(process.prazoProximaResposta);
+        return date >= today && date <= nextThirtyDays;
+      });
+    }
+    if (activeMetricFilters.has("muralPending")) {
+      const muralProcesses = new Set(muralProcessIds);
+      result = result.filter((process) => muralProcesses.has(process.id));
+    }
+    if (activeMetricFilters.has("closed")) {
+      result = result.filter((process) => process.status === "concluido" || process.status === "arquivado");
+    }
     if (!term) return result;
     return result.filter((process) =>
       [process.cnj, process.title, process.subtitle, process.tribunal, process.statusLabel, ...process.tags]
@@ -580,7 +608,7 @@ export function MonitoramentoView({
         .toLowerCase()
         .includes(term),
     );
-  }, [localProcesses, query, scope, userId]);
+  }, [activeMetricFilters, localProcesses, muralProcessIds, query, scope, userId]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / MONITOR_PAGE_SIZE));
   const currentPage = Math.min(page, totalPages - 1);
@@ -591,7 +619,16 @@ export function MonitoramentoView({
 
   useEffect(() => {
     setPage(0);
-  }, [query, scope]);
+  }, [activeMetricFilters, query, scope]);
+
+  function toggleMetricFilter(filter: "active" | "newMovements" | "upcomingDeadlines" | "muralPending" | "closed") {
+    setActiveMetricFilters((current) => {
+      const next = new Set(current);
+      if (next.has(filter)) next.delete(filter);
+      else next.add(filter);
+      return next;
+    });
+  }
 
   const grouped = useMemo(() => {
     return localColumns.map((column) => ({
@@ -705,7 +742,7 @@ export function MonitoramentoView({
     startTransition(async () => {
       try {
         const result = await syncTenantDataJudNow();
-        setSyncMessage(`${result.atualizados} atualizados, ${result.sem_mudanca} sem mudanca e ${result.nao_encontrados} nao encontrados.`);
+        setSyncMessage(result.ok ? `${result.atualizados} atualizados, ${result.sem_mudanca} sem mudanca e ${result.nao_encontrados} nao encontrados.` : result.message);
       } catch (error) {
         setSyncMessage(error instanceof Error ? error.message : "Nao foi possivel sincronizar o DataJud.");
       }
@@ -782,23 +819,29 @@ export function MonitoramentoView({
         </div>
       ) : null}
 
-      <section className="grid gap-3 md:grid-cols-4">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {[
-          { label: "Processos ativos", value: metrics.active, icon: FileText },
-          { label: "Movimentacoes novas", value: metrics.newMovements, icon: Bell },
-          { label: "Prazos proximos", value: metrics.upcomingDeadlines, icon: CalendarDays },
-          { label: "Mural pendente", value: metrics.muralPending, icon: Megaphone },
-        ].map((metric) => (
-          <Card key={metric.label} className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
-            <CardContent className="flex items-center justify-between gap-3 p-4">
+          { key: "active", label: "Processos ativos", value: metrics.active, icon: FileText },
+          { key: "newMovements", label: "Movimentacoes novas", value: metrics.newMovements, icon: Bell },
+          { key: "upcomingDeadlines", label: "Prazos proximos", value: metrics.upcomingDeadlines, icon: CalendarDays },
+          { key: "muralPending", label: "Mural pendente", value: metrics.muralPending, icon: Megaphone },
+          { key: "closed", label: "Encerrados / arquivados", value: metrics.closed, icon: Archive },
+        ].map((metric) => {
+          const isActive = activeMetricFilters.has(metric.key as typeof activeMetricFilters extends Set<infer T> ? T : never);
+          return (
+          <Card key={metric.label} className={cn("border-[var(--tenant-line)] text-[var(--tenant-surface-foreground)] transition-colors", isActive ? "border-[var(--tenant-brass)] bg-[color-mix(in_srgb,var(--tenant-brass)_15%,var(--tenant-surface))] shadow-md" : "bg-[var(--tenant-surface)]")}>
+            <CardContent className="p-0">
+              <button type="button" aria-pressed={isActive} onClick={() => toggleMetricFilter(metric.key as "active" | "newMovements" | "upcomingDeadlines" | "muralPending" | "closed")} className="flex w-full items-center justify-between gap-3 p-4 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--tenant-brass)]">
               <div>
-                <p className="text-sm text-[var(--color-muted-foreground)]">{metric.label}</p>
+                <p className={cn("text-sm", isActive ? "font-semibold text-[var(--tenant-brass)]" : "text-[var(--color-muted-foreground)]")}>{metric.label}</p>
                 <p className="mt-1 text-3xl font-semibold">{metric.value}</p>
               </div>
-              <metric.icon className="h-6 w-6 text-primary" />
+              <metric.icon className={cn("h-6 w-6", isActive ? "text-[var(--tenant-brass)]" : "text-primary")} />
+              </button>
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
       </section>
 
       <Card className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">

@@ -19,6 +19,7 @@ export async function updateProfile(formData: FormData) {
     .from("users")
     .update({
       name: String(formData.get("name") ?? "").trim(),
+      nickname: String(formData.get("nickname") ?? "").trim() || null,
       phone: stripMask(String(formData.get("phone") ?? "")) || null,
       oab_number: stripMask(String(formData.get("oab_number") ?? "")) || null,
       oab_uf: String(formData.get("oab_uf") ?? "").trim().toUpperCase() || null,

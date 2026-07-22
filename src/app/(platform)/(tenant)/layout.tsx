@@ -3,6 +3,7 @@ import { TenantShell } from "@/components/tenant/tenant-shell";
 import { requireAppUser } from "@/lib/auth/guards";
 import type { PaletteId } from "@/lib/themes/palettes";
 import { getRelevantMaintenance } from "@/lib/maintenance";
+import { displayUserName } from "@/lib/auth/display-name";
 
 const VALID_PALETTE_IDS = new Set<string>([
   "padrao", "escuro", "rosa", "lavanda", "esmeralda", "oceano", "ambar",
@@ -24,7 +25,7 @@ export default async function TenantLayout({
 
   return (
     <TenantShell
-      userName={profile.name}
+      userName={displayUserName(profile)}
       role={profile.role}
       gender={profile.gender}
       avatarUrl={profile.avatar_url}
