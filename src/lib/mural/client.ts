@@ -21,6 +21,10 @@ export interface MuralDestinatarioAdvogado {
     nome: string;
     numero_oab: string;
     uf_oab: string;
+    principal?: boolean;
+    is_principal?: boolean;
+    representante_principal?: boolean;
+    tipo?: string;
   };
 }
 

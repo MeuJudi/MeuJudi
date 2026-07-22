@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   closestCorners,
   DndContext,
@@ -132,6 +132,8 @@ const agendaTypeLabels = {
   reuniao: "Reuniao",
   outro: "Evento",
 } as const;
+
+const MONITOR_PAGE_SIZE = 40;
 
 const agendaTypeClasses = {
   audiencia: "bg-[var(--tenant-brass)]",
@@ -544,6 +546,7 @@ export function MonitoramentoView({
 }: MonitoramentoViewProps) {
   const [view, setView] = useState<"lista" | "kanban" | "mural">("lista");
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
   const [localColumns, setLocalColumns] = useState(() => [...kanbanColumns].sort((a, b) => a.position - b.position));
   const [localProcesses, setLocalProcesses] = useState(processes);
   const [activeProcess, setActiveProcess] = useState<MonitorProcess | null>(null);
@@ -576,12 +579,23 @@ export function MonitoramentoView({
     );
   }, [localProcesses, query, scope, userId]);
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / MONITOR_PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages - 1);
+  const visibleProcesses = useMemo(
+    () => filtered.slice(currentPage * MONITOR_PAGE_SIZE, (currentPage + 1) * MONITOR_PAGE_SIZE),
+    [currentPage, filtered],
+  );
+
+  useEffect(() => {
+    setPage(0);
+  }, [query, scope]);
+
   const grouped = useMemo(() => {
     return localColumns.map((column) => ({
       ...column,
-      processes: filtered.filter((process) => process.kanbanColumnId === column.id),
+      processes: visibleProcesses.filter((process) => process.kanbanColumnId === column.id),
     }));
-  }, [filtered, localColumns]);
+  }, [localColumns, visibleProcesses]);
 
   function shouldStartBoardPan(target: EventTarget | null) {
     if (!(target instanceof Element)) return false;
@@ -598,7 +612,8 @@ export function MonitoramentoView({
       startX: event.clientX,
       startScrollLeft: board.scrollLeft,
       active: true,
-    };
+};
+
     board.setPointerCapture(event.pointerId);
     board.dataset.panning = "true";
   }
@@ -811,7 +826,7 @@ export function MonitoramentoView({
               {filtered.length === 0 ? (
                 <EmptyState />
               ) : (
-                filtered.map((process) => <ProcessCard key={process.id} process={process} onOpen={setSelectedProcessId} />)
+                visibleProcesses.map((process) => <ProcessCard key={process.id} process={process} onOpen={setSelectedProcessId} />)
               )}
             </div>
           ) : null}
@@ -844,7 +859,7 @@ export function MonitoramentoView({
                         onDraftNameChange={setDraftName}
                         onSaveName={handleSaveName}
                         onCancelEdit={() => setEditingColumnId(null)}
-                        onDeleteColumn={handleDeleteColumn}
+                        onDeleteColumn={(column) => handleDeleteColumn(column, localProcesses.filter((process) => process.kanbanColumnId === column.id).length)}
                         onOpenProcess={setSelectedProcessId}
                       />
                     ))}
@@ -888,6 +903,39 @@ export function MonitoramentoView({
                 ) : null}
               </DragOverlay>
             </DndContext>
+          ) : null}
+
+          {view !== "mural" && filtered.length > 0 ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--tenant-line)] pt-4 text-sm text-[var(--color-muted-foreground)]">
+              <span>
+                Mostrando {currentPage * MONITOR_PAGE_SIZE + 1}-{Math.min((currentPage + 1) * MONITOR_PAGE_SIZE, filtered.length)} de {filtered.length} processos
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage === 0}
+                  onClick={() => setPage((value) => Math.max(0, value - 1))}
+                >
+                  <ChevronLeft className="mr-1 h-4 w-4" />
+                  Anterior
+                </Button>
+                <span className="min-w-24 text-center text-xs font-medium text-[var(--tenant-surface-foreground)]">
+                  Página {currentPage + 1} de {totalPages}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage >= totalPages - 1}
+                  onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
+                >
+                  Próxima
+                  <ChevronRight className="ml-1 h-4 w-4" />
+                </Button>
+              </div>
+            </div>
           ) : null}
 
           {view === "mural" ? (

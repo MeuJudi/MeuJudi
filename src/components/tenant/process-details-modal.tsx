@@ -5,6 +5,7 @@ import { AlertTriangle, CalendarDays, Check, Clock3, Copy, FileText, Info, LockK
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getProcessDetails, type ProcessDetails } from "@/lib/process-details/actions";
+import { formatMuralText } from "@/lib/mural/format-text";
 
 type ProcessDetailsModalProps = { processId: string | null; onClose: () => void };
 type ProcessTab = "resumo" | "movimentacoes" | "agenda" | "mural" | "documentos";
@@ -38,6 +39,26 @@ function attorneyName(value: unknown) {
   return String(value ?? "");
 }
 
+function isPrincipalAttorney(value: unknown) {
+  if (typeof value !== "object" || !value) return false;
+  const record = value as Record<string, unknown>;
+  return record.principal === true
+    || record.is_principal === true
+    || record.representante_principal === true
+    || (typeof record.tipo === "string" && record.tipo.toLowerCase().includes("principal"));
+}
+
+function attorneyDetails(value: unknown) {
+  if (typeof value !== "object" || !value) return { name: attorneyName(value), oab: "", uf: "", principal: false };
+  const record = value as Record<string, unknown>;
+  return {
+    name: attorneyName(value),
+    oab: String(record.oab ?? record.numero_oab ?? ""),
+    uf: String(record.uf ?? record.uf_oab ?? ""),
+    principal: isPrincipalAttorney(value),
+  };
+}
+
 function sourceLabel(value: string) {
   const labels: Record<string, string> = { datajud: "DataJud", mural: "Mural", pje: "PJe/CS", manual: "Manual", tenant: "Escritório", public: "Público" };
   return labels[value.toLowerCase()] ?? value;
@@ -69,7 +90,7 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function TimelineList({ title, icon, empty, items }: { title: string; icon: React.ReactNode; empty: string; items: { id: string; title: string; subtitle: string | null; meta: string; source?: string; warning?: boolean }[] }) {
+function TimelineList({ title, icon, empty, items }: { title: string; icon: React.ReactNode; empty: string; items: { id: string; title: string; subtitle: string | null; meta: string; source?: string; warning?: boolean; longText?: boolean }[] }) {
   return (
     <Panel title={title} icon={icon}>
       {items.length === 0 ? <p className="text-sm text-[var(--color-muted-foreground)]">{empty}</p> : (
@@ -83,7 +104,7 @@ function TimelineList({ title, icon, empty, items }: { title: string; icon: Reac
                 <p className="text-sm font-semibold text-[var(--tenant-surface-foreground)]">{item.title}</p>
                 <span className="font-mono text-[11px] text-[var(--color-muted-foreground)]">{item.meta}</span>
               </div>
-              <p className="mt-1 line-clamp-3 text-xs leading-5 text-[var(--color-muted-foreground)]">{item.subtitle || "Sem descrição adicional."}</p>
+              <p className={"mt-1 text-xs leading-5 text-[var(--color-muted-foreground)] " + (item.longText || item.source === "mural" ? "max-h-56 overflow-y-auto whitespace-pre-line" : "line-clamp-3")}>{item.source === "mural" ? formatMuralText(item.subtitle) : item.subtitle || "Sem descrição adicional."}</p>
               {item.source ? <span className="mt-2 inline-flex rounded border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-2 py-0.5 text-[11px] font-medium text-[var(--tenant-surface-foreground)]">{sourceLabel(item.source)}</span> : null}
             </article>
           ))}
@@ -113,8 +134,8 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
   const error = state.processId === processId ? state.error : null;
   const loading = state.processId !== processId;
   const process = details?.process;
-  const attorneys = arrayFromJson(process?.advogados);
-  const mainAttorney = attorneyName(attorneys[0]) || "Nenhum responsável cadastrado";
+  const attorneys = arrayFromJson(process?.advogados).map(attorneyDetails);
+  const orderedAttorneys = [...attorneys].sort((a, b) => Number(b.principal) - Number(a.principal));
   const recentItems = useMemo(() => {
     if (!details) return [];
     const movements = details.movements.map((item) => ({ id: `movement-${item.id}`, title: item.nome, subtitle: item.texto_completo, meta: formatDateTime(item.data_movimento), source: item.fonte, warning: Boolean(item.prazo_fatal) }));
@@ -177,11 +198,21 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
                       {(process.tags ?? []).length === 0 ? <span className="text-xs text-[var(--color-muted-foreground)]">Sem tags cadastradas.</span> : null}
                     </div>
                   </Panel>
-                  <Panel title="Responsáveis" icon={<UserRound className="h-4 w-4 text-[var(--tenant-brass)]" />}>
-                    <div className="flex items-center gap-3">
-                      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[var(--tenant-surface-muted)] font-semibold text-[var(--tenant-brass)]">{initials(mainAttorney)}</span>
-                      <div className="min-w-0"><p className="truncate text-sm font-semibold">{mainAttorney}</p><p className="text-xs text-[var(--color-muted-foreground)]">Responsável pelo processo</p></div>
-                    </div>
+                  <Panel title="Advogados identificados" icon={<UserRound className="h-4 w-4 text-[var(--tenant-brass)]" />}>
+                    {orderedAttorneys.length > 0 ? <div className="space-y-3">
+                      {orderedAttorneys.map((attorney, index) => (
+                        <div key={attorney.name + "-" + attorney.oab + "-" + index} className={"flex items-center gap-3 " + (index > 0 ? "border-t border-[var(--tenant-line)] pt-3" : "")}>
+                          <span className={"grid h-10 w-10 shrink-0 place-items-center rounded-full font-semibold " + (attorney.principal ? "bg-[var(--tenant-brass)] text-[var(--tenant-surface)]" : "bg-[var(--tenant-surface-muted)] text-[var(--tenant-brass)]")}>{initials(attorney.name)}</span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="truncate text-sm font-semibold">{attorney.name || "Nome não informado"}</p>
+                              {attorney.principal ? <span className="rounded-full bg-[color-mix(in_srgb,var(--tenant-brass)_15%,transparent)] px-2 py-0.5 text-[10px] font-semibold text-[var(--tenant-brass)]">Principal informado pela fonte</span> : null}
+                            </div>
+                            <p className="text-xs text-[var(--color-muted-foreground)]">{[attorney.oab && "OAB " + attorney.oab, attorney.uf].filter(Boolean).join(" / ") || "OAB não informada"}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div> : <p className="text-sm text-[var(--color-muted-foreground)]">Nenhum advogado informado pela fonte.</p>}
                     <div className="mt-4 border-t border-[var(--tenant-line)] pt-4"><p className="text-xs font-semibold">Fontes de dados</p><div className="mt-2 flex flex-wrap gap-2">{["Mural", "DataJud", "PJe/CS"].map((source) => <span key={source} className="rounded border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-2 py-1 text-xs">{source}</span>)}</div></div>
                     <div className="mt-4 flex items-start gap-2 text-xs text-[var(--color-muted-foreground)]"><Info className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Últimas sincronizações: Mural {formatDateTime(process.ultima_sync_mural)}.</div>
                   </Panel>

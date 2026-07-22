@@ -142,6 +142,32 @@ async function ensureKanbanColumns(
   return (insertedRows ?? []) as KanbanColumnRow[];
 }
 
+async function fetchAllProcessRows(
+  supabase: Awaited<ReturnType<typeof requireAppUser>>["supabase"],
+  tenantId: string,
+) {
+  const pageSize = 1000;
+  const rows: ProcessRow[] = [];
+  let page = 0;
+
+  while (true) {
+    const from = page * pageSize;
+    const to = from + pageSize - 1;
+    const { data, error } = await supabase
+      .from("processos")
+      .select("id, cnj, tribunal, classe_nome, autor, reu, prazo_proxima_resposta, proxima_audiencia, status, kanban_column_id, tags, is_favorito, data_ultima_movimentacao, responsavel_id, created_at, ultima_sync_mural")
+      .eq("tenant_id", tenantId)
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (error) throw new Error(`Falha ao carregar processos: ${error.message}`);
+
+    rows.push(...((data ?? []) as ProcessRow[]));
+    if (!data || data.length < pageSize) return rows;
+    page += 1;
+  }
+}
+
 export default async function MonitoramentoPage({
   searchParams,
 }: {
@@ -177,15 +203,8 @@ export default async function MonitoramentoPage({
       .is("kanban_column_id", null);
   }
 
-  const [{ data: processRows }, { data: movementRows }, { data: muralRows }] = await Promise.all([
-    supabase
-      .from("processos")
-      .select("id, cnj, tribunal, classe_nome, autor, reu, prazo_proxima_resposta, proxima_audiencia, status, kanban_column_id, tags, is_favorito, data_ultima_movimentacao, responsavel_id, created_at, ultima_sync_mural")
-      .eq("tenant_id", tenantId)
-      // Prioriza os processos recém-importados; muitos deles ainda não têm
-      // data_ultima_movimentacao preenchida pelo Mural.
-      .order("created_at", { ascending: false })
-      .limit(120),
+  const [processRows, { data: movementRows }, { data: muralRows }] = await Promise.all([
+    fetchAllProcessRows(supabase, tenantId),
     supabase
       .from("movimentacoes")
       .select("processo_id, nome, data_movimento, is_novo")

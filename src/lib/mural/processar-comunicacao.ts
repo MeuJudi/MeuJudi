@@ -17,7 +17,12 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
 
   let processoId: string;
   let processoNovo = false;
-  const { data: processo } = await supabase.from("processos").select("id").eq("tenant_id", tenantId).eq("cnj", com.numero_processo).maybeSingle();
+  const { data: processo } = await supabase
+    .from("processos")
+    .select("id, data_ultima_movimentacao")
+    .eq("tenant_id", tenantId)
+    .eq("cnj", com.numero_processo)
+    .maybeSingle();
   if (processo) {
     processoId = processo.id;
   } else {
@@ -52,7 +57,15 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
     tenant_id: tenantId, processo_id: processoId, mural_id: com.id, data_disponibilizacao: com.data_disponibilizacao,
     sigla_tribunal: com.siglaTribunal, tipo_comunicacao: com.tipoComunicacao, nome_orgao: com.nomeOrgao, texto: com.texto,
     meio: com.meio, link_processo: com.link, destinatarios: com.destinatarios,
-    advogados: com.destinatarioadvogados?.map((d) => ({ nome: d.advogado.nome, oab: d.advogado.numero_oab, uf: d.advogado.uf_oab })),
+    advogados: com.destinatarioadvogados?.map((d) => ({
+      nome: d.advogado.nome,
+      oab: d.advogado.numero_oab,
+      uf: d.advogado.uf_oab,
+      ...(d.advogado.principal !== undefined ? { principal: d.advogado.principal } : {}),
+      ...(d.advogado.is_principal !== undefined ? { is_principal: d.advogado.is_principal } : {}),
+      ...(d.advogado.representante_principal !== undefined ? { representante_principal: d.advogado.representante_principal } : {}),
+      ...(d.advogado.tipo ? { tipo: d.advogado.tipo } : {}),
+    })),
     prazo_dias: prazoDias, prazo_horas: prazoHoras, data_prazo_fatal: dataFatal, data_audiencia: dataAudienciaIso,
   });
   if (comunicacaoError) throw new Error(`Falha ao salvar comunicacao ${com.id}: ${comunicacaoError.message}`);
@@ -61,9 +74,25 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
   const reu = com.destinatarios?.find((d) => d.polo === "P")?.nome ?? null;
   const { error: processoError } = await supabase.from("processos").update({
     ...(autor ? { autor } : {}), ...(reu ? { reu } : {}),
-    advogados: com.destinatarioadvogados?.map((d) => ({ nome: d.advogado.nome, oab: d.advogado.numero_oab, uf: d.advogado.uf_oab })),
+    advogados: com.destinatarioadvogados?.map((d) => ({
+      nome: d.advogado.nome,
+      oab: d.advogado.numero_oab,
+      uf: d.advogado.uf_oab,
+      ...(d.advogado.principal !== undefined ? { principal: d.advogado.principal } : {}),
+      ...(d.advogado.is_principal !== undefined ? { is_principal: d.advogado.is_principal } : {}),
+      ...(d.advogado.representante_principal !== undefined ? { representante_principal: d.advogado.representante_principal } : {}),
+      ...(d.advogado.tipo ? { tipo: d.advogado.tipo } : {}),
+    })),
+    ...(com.siglaTribunal ? { tribunal: com.siglaTribunal.toLowerCase() } : {}),
+    ...(com.codigoClasse ? { classe_codigo: parseInt(com.codigoClasse) } : {}),
+    ...(com.nomeClasse ? { classe_nome: com.nomeClasse } : {}),
+    ...(com.nomeOrgao ? { orgao_julgador: com.nomeOrgao } : {}),
     ...(dataAudienciaIso ? { proxima_audiencia: dataAudienciaIso } : {}),
-    ...(dataFatal ? { prazo_proxima_resposta: dataFatal } : {}), ultima_sync_mural: new Date().toISOString(),
+    ...(dataFatal ? { prazo_proxima_resposta: dataFatal } : {}),
+    data_ultima_movimentacao: processo?.data_ultima_movimentacao && new Date(processo.data_ultima_movimentacao) > new Date(com.data_disponibilizacao)
+      ? processo.data_ultima_movimentacao
+      : com.data_disponibilizacao,
+    ultima_sync_mural: new Date().toISOString(),
   }).eq("id", processoId).eq("tenant_id", tenantId);
   if (processoError) throw new Error(`Falha ao atualizar processo ${processoId}: ${processoError.message}`);
 
