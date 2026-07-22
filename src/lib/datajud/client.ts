@@ -12,15 +12,24 @@ export interface DataJudMovimento {
   codigo: number;
   nome: string;
   complementosTabelados?: Array<{ nome: string }>;
-  orgaoJulgador?: { nome?: string; codigo?: string };
+  orgaoJulgador?: {
+    nome?: string;
+    nomeOrgao?: string;
+    codigo?: string | number;
+    codigoOrgao?: string | number;
+  };
 }
 
 export interface DataJudProcesso {
   numeroProcesso: string;
+  tribunal?: string;
+  dataAjuizamento?: string;
   classe?: { codigo: number; nome: string };
   assuntos?: unknown[];
-  orgaoJulgador?: { nome?: string; codigo?: number };
-  sistema?: { nome: string };
+  nivelSigilo?: number;
+  formato?: { codigo?: number; nome?: string };
+  orgaoJulgador?: { nome?: string; codigo?: number; codigoMunicipioIBGE?: number };
+  sistema?: { codigo?: number; nome?: string };
   grau?: string;
   dataHoraUltimaAtualizacao: string;
   movimentos?: DataJudMovimento[];

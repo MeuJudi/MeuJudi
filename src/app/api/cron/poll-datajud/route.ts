@@ -96,28 +96,41 @@ export async function POST(req: NextRequest) {
               ? new Date(processo.data_ultima_movimentacao)
               : new Date(0);
 
+            const metadataUpdate = {
+              classe_codigo: fresh.classe?.codigo ?? null,
+              classe_nome: fresh.classe?.nome ?? null,
+              assuntos: fresh.assuntos ?? [],
+              orgao_julgador: fresh.orgaoJulgador?.nome ?? null,
+              orgao_julgador_codigo: fresh.orgaoJulgador?.codigo ?? null,
+              orgao_julgador_municipio_ibge: fresh.orgaoJulgador?.codigoMunicipioIBGE ?? null,
+              tribunal: fresh.tribunal ?? tribunalUsado,
+              grau: fresh.grau ?? null,
+              sistema: fresh.sistema?.nome ?? null,
+              nivel_sigilo: fresh.nivelSigilo ?? 0,
+              data_ajuizamento: fresh.dataAjuizamento ?? null,
+              formato_codigo: fresh.formato?.codigo ?? null,
+              formato_nome: fresh.formato?.nome ?? null,
+              ultima_sync_datajud: new Date().toISOString(),
+            };
+
             if (dataFresh <= dataLocal) {
               resultado.sem_mudanca++;
-              await supabase
+              const { error: metadataError } = await supabase
                 .from("processos")
-                .update({ ultima_sync_datajud: new Date().toISOString(), tribunal: tribunalUsado })
+                .update(metadataUpdate)
                 .eq("id", processo.id);
+              if (metadataError) throw metadataError;
               return;
             }
 
-            await supabase
+            const { error: processError } = await supabase
               .from("processos")
               .update({
-                classe_codigo: fresh.classe?.codigo ?? null,
-                classe_nome: fresh.classe?.nome ?? null,
-                assuntos: fresh.assuntos ?? [],
-                orgao_julgador: fresh.orgaoJulgador?.nome ?? null,
-                tribunal: tribunalUsado,
-                grau: fresh.grau ?? null,
+                ...metadataUpdate,
                 data_ultima_movimentacao: fresh.dataHoraUltimaAtualizacao,
-                ultima_sync_datajud: new Date().toISOString(),
               })
               .eq("id", processo.id);
+            if (processError) throw processError;
 
             const novasMovs = (fresh.movimentos ?? []).filter((m) => new Date(m.dataHora) > dataLocal);
 
@@ -126,7 +139,7 @@ export async function POST(req: NextRequest) {
               const prazoDias = extrairPrazoDias(textoCompleto);
               const prazoHoras = extrairPrazoHoras(textoCompleto);
 
-              const { data: movInserida } = await supabase
+              const { data: movInserida, error: movementError } = await supabase
                 .from("movimentacoes")
                 .insert({
                   tenant_id: tenant.id,
@@ -136,6 +149,7 @@ export async function POST(req: NextRequest) {
                   nome: mov.nome,
                   texto_completo: textoCompleto,
                   orgao_julgador: mov.orgaoJulgador?.nome ?? null,
+                  orgao_julgador_codigo: mov.orgaoJulgador?.codigoOrgao ?? mov.orgaoJulgador?.codigo ?? null,
                   fonte: "datajud",
                   is_novo: true,
                   prazo_dias: prazoDias,
@@ -143,6 +157,7 @@ export async function POST(req: NextRequest) {
                 })
                 .select("id")
                 .single();
+              if (movementError && movementError.code !== "23505") throw movementError;
 
               if (prazoDias) {
                 const dataFatal = calcularPrazoFatal(new Date(mov.dataHora), prazoDias);

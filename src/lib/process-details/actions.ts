@@ -9,6 +9,11 @@ export type ProcessDetails = {
     tribunal: string | null;
     grau: string | null;
     sistema: string | null;
+    data_ajuizamento: string | null;
+    formato_codigo: number | null;
+    formato_nome: string | null;
+    orgao_julgador_codigo: number | null;
+    orgao_julgador_municipio_ibge: number | null;
     classe_codigo: number | null;
     classe_nome: string | null;
     assuntos: unknown;
@@ -71,6 +76,11 @@ export async function getProcessDetails(processId: string): Promise<ProcessDetai
       tribunal,
       grau,
       sistema,
+      data_ajuizamento,
+      formato_codigo,
+      formato_nome,
+      orgao_julgador_codigo,
+      orgao_julgador_municipio_ibge,
       classe_codigo,
       classe_nome,
       assuntos,
