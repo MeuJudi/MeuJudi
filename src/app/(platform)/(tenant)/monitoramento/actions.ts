@@ -332,6 +332,51 @@ export async function syncTenantDataJudNow() {
   }
 }
 
+/** Sincroniza um lote curto para evitar timeout de Server Action em escritórios grandes. */
+export async function syncTenantDataJudBatch(offset = 0, batchSize = 3) {
+  try {
+    const apiKey = process.env.DATAJUD_API_KEY;
+    if (!apiKey) return { ok: false as const, message: "DATAJUD_API_KEY não configurada no ambiente de produção." };
+    const { supabase, profile } = await requireAppUser();
+    if (!profile.tenant_id) return { ok: false as const, message: "Usuário sem escritório vinculado." };
+
+    const safeOffset = Math.max(0, Math.floor(offset));
+    const safeBatchSize = Math.min(5, Math.max(1, Math.floor(batchSize)));
+    const { data: processes, count, error } = await supabase
+      .from("processos")
+      .select("id, cnj, data_ultima_movimentacao", { count: "exact" })
+      .eq("tenant_id", profile.tenant_id)
+      .eq("status", "ativo")
+      .eq("nivel_sigilo", 0)
+      .order("id", { ascending: true })
+      .range(safeOffset, safeOffset + safeBatchSize - 1);
+    if (error) throw new Error(`Falha ao listar processos: ${error.message}`);
+
+    const result = { processados: 0, atualizados: 0, sem_mudanca: 0, nao_encontrados: 0, erros: 0 };
+    const service = createServiceClient();
+    for (const process of processes ?? []) {
+      try {
+        const synced = await sincronizarProcessoDataJud(service, profile.tenant_id, process, apiKey);
+        result.processados++;
+        if (synced.status === "atualizado") result.atualizados++;
+        if (synced.status === "sem_mudanca") result.sem_mudanca++;
+        if (synced.status === "nao_encontrado") result.nao_encontrados++;
+      } catch (error) {
+        result.erros++;
+        console.error(`[monitoramento] DataJud falhou para ${process.cnj}:`, error);
+      }
+    }
+
+    const nextOffset = safeOffset + (processes?.length ?? 0);
+    const done = nextOffset >= (count ?? 0) || (processes?.length ?? 0) < safeBatchSize;
+    if (done) revalidatePath("/monitoramento");
+    return { ok: true as const, ...result, offset: safeOffset, nextOffset, total: count ?? 0, done };
+  } catch (error) {
+    console.error("[monitoramento] lote DataJud falhou:", error);
+    return { ok: false as const, message: syncErrorMessage(error) };
+  }
+}
+
 export async function syncProcessMuralNow(processId: string) {
   try {
     const { supabase, profile } = await requireAppUser();
