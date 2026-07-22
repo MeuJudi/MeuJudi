@@ -204,7 +204,7 @@ export default async function MonitoramentoPage({
       .is("kanban_column_id", null);
   }
 
-  const [processRows, { data: movementRows }, { data: muralRows }] = await Promise.all([
+  const [processRows, { data: movementRows }, { data: muralRows }, { count: newMovementsCount }, { count: muralCount }] = await Promise.all([
     fetchAllProcessRows(supabase, tenantId),
     supabase
       .from("movimentacoes")
@@ -218,6 +218,15 @@ export default async function MonitoramentoPage({
       .eq("tenant_id", tenantId)
       .order("data_disponibilizacao", { ascending: false })
       .limit(20),
+    supabase
+      .from("movimentacoes")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("is_novo", true),
+    supabase
+      .from("comunicacoes_mural")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId),
   ]);
 
   const today = new Date();
@@ -290,13 +299,13 @@ export default async function MonitoramentoPage({
 
   const metrics = {
     active: processes.filter((process) => process.status === "ativo").length,
-    newMovements: movements.filter((movement) => movement.is_novo).length,
+    newMovements: newMovementsCount ?? 0,
     upcomingDeadlines: processes.filter((process) => {
       if (!process.prazoProximaResposta) return false;
       const date = new Date(process.prazoProximaResposta);
       return date >= today && date <= nextThirtyDays;
     }).length,
-    muralPending: muralItems.length,
+    muralPending: muralCount ?? 0,
     closed: processes.filter((process) => process.status === "concluido" || process.status === "arquivado").length,
   };
 
