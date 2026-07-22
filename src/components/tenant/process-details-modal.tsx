@@ -50,13 +50,15 @@ function isPrincipalAttorney(value: unknown) {
 }
 
 function attorneyDetails(value: unknown) {
-  if (typeof value !== "object" || !value) return { name: attorneyName(value), oab: "", uf: "", principal: false };
+  if (typeof value !== "object" || !value) return { name: attorneyName(value), oab: "", uf: "", principal: false, avatarUrl: "", avatarSource: "" };
   const record = value as Record<string, unknown>;
   return {
     name: attorneyName(value),
     oab: String(record.oab ?? record.numero_oab ?? ""),
     uf: String(record.uf ?? record.uf_oab ?? ""),
     principal: isPrincipalAttorney(value),
+    avatarUrl: String(record.avatar_url ?? ""),
+    avatarSource: String(record.avatar_source ?? ""),
   };
 }
 
@@ -231,7 +233,7 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
                     {orderedAttorneys.length > 0 ? <div className="space-y-3">
                       {orderedAttorneys.map((attorney, index) => (
                         <div key={attorney.name + "-" + attorney.oab + "-" + index} className={"flex items-center gap-3 " + (index > 0 ? "border-t border-[var(--tenant-line)] pt-3" : "")}>
-                          <span className={"grid h-10 w-10 shrink-0 place-items-center rounded-full font-semibold " + (attorney.principal ? "bg-[var(--tenant-brass)] text-[var(--tenant-surface)]" : "bg-[var(--tenant-surface-muted)] text-[var(--tenant-brass)]")}>{initials(attorney.name)}</span>
+                          {attorney.avatarUrl ? <img src={attorney.avatarUrl} alt={attorney.name || "Advogado"} className={"h-10 w-10 shrink-0 rounded-full object-cover " + (attorney.principal ? "ring-2 ring-[var(--tenant-brass)] ring-offset-2 ring-offset-[var(--tenant-surface)]" : "")} /> : <span className={"grid h-10 w-10 shrink-0 place-items-center rounded-full font-semibold " + (attorney.principal ? "bg-[var(--tenant-brass)] text-[var(--tenant-surface)]" : "bg-[var(--tenant-surface-muted)] text-[var(--tenant-brass)]")}>{initials(attorney.name)}</span>}
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="truncate text-sm font-semibold">{attorney.name || "Nome não informado"}</p>

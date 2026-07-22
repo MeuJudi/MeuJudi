@@ -24,27 +24,37 @@ export type OabAdvogado = {
   telefone?: string;
   email?: string;
   cpf?: string;
+  numeroSeguranca?: number;
 };
 
 const OABS_WS_URL = "https://www5.oab.org.br/cnaws/service.asmx";
+const OAB_API_KEY = process.env.OAB_API_KEY?.trim() ?? "";
+
+function xmlEscape(value: string) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
 
 function buildSoapEnvelope(inscricao: string, uf: string, nome: string): string {
+  const header = OAB_API_KEY
+    ? `<soap:Header><Authentication xmlns="http://tempuri.org/"><Key>${xmlEscape(OAB_API_KEY)}</Key></Authentication></soap:Header>`
+    : "<soap:Header />";
   return `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                xmlns:xsd="http://www.w3.org/2001/XMLSchema"
                xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  ${header}
   <soap:Body>
     <ConsultaAdvogado xmlns="http://tempuri.org/">
-      <inscricao>${inscricao}</inscricao>
-      <uf>${uf}</uf>
-      <nome>${nome}</nome>
+      <inscricao>${xmlEscape(inscricao)}</inscricao>
+      <uf>${xmlEscape(uf)}</uf>
+      <nome>${xmlEscape(nome)}</nome>
     </ConsultaAdvogado>
   </soap:Body>
 </soap:Envelope>`;
 }
 
 function extractFromXml(xml: string, tag: string): string | null {
-  const match = xml.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, "i"));
+  const match = xml.match(new RegExp(`<(?:(?:[A-Za-z_][\\w.-]*):)?${tag}[^>]*>([\\s\\S]*?)</(?:(?:[A-Za-z_][\\w.-]*):)?${tag}>`, "i"));
   if (!match) return null;
   return match[1]
     .replace(/&lt;/g, "<")
@@ -56,18 +66,22 @@ function extractFromXml(xml: string, tag: string): string | null {
 }
 
 function parseSoapResponse(xml: string): OabAdvogado | null {
-  const nome = extractFromXml(xml, "NOME");
-  const inscricao = extractFromXml(xml, "INSCRICAO");
-  const uf = extractFromXml(xml, "UF");
-  const situacao = extractFromXml(xml, "SITUACAO");
-  const tipo = extractFromXml(xml, "TIPO");
-  const endereco = extractFromXml(xml, "ENDERECO");
-  const cidade = extractFromXml(xml, "CIDADE");
-  const estado = extractFromXml(xml, "ESTADO");
-  const cep = extractFromXml(xml, "CEP");
-  const telefone = extractFromXml(xml, "TELEFONE");
-  const email = extractFromXml(xml, "EMAIL");
-  const cpf = extractFromXml(xml, "CPF");
+  const result = extractFromXml(xml, "ConsultaAdvogadoResult");
+  const payload = result && /<[^>]+>/.test(result) ? result : xml;
+  const nome = extractFromXml(payload, "NOME");
+  const inscricao = extractFromXml(payload, "INSCRICAO");
+  const uf = extractFromXml(payload, "UF");
+  const situacao = extractFromXml(payload, "SITUACAO");
+  const tipo = extractFromXml(payload, "TIPO");
+  const endereco = extractFromXml(payload, "ENDERECO");
+  const cidade = extractFromXml(payload, "CIDADE");
+  const estado = extractFromXml(payload, "ESTADO");
+  const cep = extractFromXml(payload, "CEP");
+  const telefone = extractFromXml(payload, "TELEFONE");
+  const email = extractFromXml(payload, "EMAIL");
+  const cpf = extractFromXml(payload, "CPF");
+  const numeroSegurancaRaw = extractFromXml(payload, "NUMEROSEGURANCA") ?? extractFromXml(payload, "NUMERO_SEGURANCA");
+  const numeroSeguranca = numeroSegurancaRaw && /^\d+$/.test(numeroSegurancaRaw) ? Number(numeroSegurancaRaw) : undefined;
 
   if (!nome && !inscricao) {
     return null;
@@ -86,6 +100,7 @@ function parseSoapResponse(xml: string): OabAdvogado | null {
     telefone: telefone ?? undefined,
     email: email ?? undefined,
     cpf: cpf ?? undefined,
+    numeroSeguranca,
   };
 }
 
@@ -95,6 +110,9 @@ export async function consultarOab(inscricao: string, uf: string): Promise<OabAd
 
   if (!numero || !estado) {
     throw new Error("Número da OAB e UF são obrigatórios.");
+  }
+  if (!OAB_API_KEY) {
+    throw new Error("OAB_API_KEY não configurada no ambiente do servidor.");
   }
 
   // Tenta cache primeiro (válido por 7 dias)
@@ -143,7 +161,8 @@ export async function consultarOab(inscricao: string, uf: string): Promise<OabAd
       });
 
       if (!response.ok) {
-        throw new Error(`OAB retornou status ${response.status}`);
+        const body = await response.text().catch(() => "");
+        throw new Error(`OAB retornou status ${response.status}: ${body.replace(/\\s+/g, " ").slice(0, 240)}`);
       }
 
       const xml = await response.text();
@@ -201,6 +220,9 @@ export async function checkOabApiHealth(): Promise<{
   checkedAt: string;
 }> {
   const start = Date.now();
+  if (!OAB_API_KEY) {
+    return { healthy: false, latencyMs: 0, checkedAt: new Date().toISOString() };
+  }
   try {
     const response = await fetch(OABS_WS_URL, {
       method: "POST",
