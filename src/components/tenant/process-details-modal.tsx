@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CalendarDays, Check, Clock3, Copy, FileText, Info, LockKeyhole, Scale, UserRound } from "lucide-react";
+import { AlertTriangle, CalendarDays, Check, Clock3, Copy, FileText, Info, LockKeyhole, RefreshCw, Scale, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getProcessDetails, type ProcessDetails } from "@/lib/process-details/actions";
 import { formatMuralText } from "@/lib/mural/format-text";
+import { syncProcessDataJudNow, syncProcessMuralNow } from "@/app/(platform)/(tenant)/monitoramento/actions";
 
 type ProcessDetailsModalProps = { processId: string | null; onClose: () => void };
 type ProcessTab = "resumo" | "movimentacoes" | "agenda" | "mural" | "documentos";
@@ -117,6 +118,8 @@ function TimelineList({ title, icon, empty, items }: { title: string; icon: Reac
 export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalProps) {
   const [activeTab, setActiveTab] = useState<ProcessTab>("resumo");
   const [copied, setCopied] = useState(false);
+  const [syncing, setSyncing] = useState<"datajud" | "mural" | null>(null);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [state, setState] = useState<{ processId: string | null; details: ProcessDetails | null; error: string | null }>({ processId: null, details: null, error: null });
 
   useEffect(() => {
@@ -136,6 +139,11 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
   const process = details?.process;
   const attorneys = arrayFromJson(process?.advogados).map(attorneyDetails);
   const orderedAttorneys = [...attorneys].sort((a, b) => Number(b.principal) - Number(a.principal));
+  const sourceBadges = process ? [
+    { label: "Mural", date: process.ultima_sync_mural },
+    { label: "DataJud", date: process.ultima_sync_datajud },
+    { label: "PJe/CS", date: process.ultima_sync_pje },
+  ].filter((source) => Boolean(source.date)) : [];
   const recentItems = useMemo(() => {
     if (!details) return [];
     const movements = details.movements.map((item) => ({ id: `movement-${item.id}`, title: item.nome, subtitle: item.texto_completo, meta: formatDateTime(item.data_movimento), source: item.fonte, warning: Boolean(item.prazo_fatal) }));
@@ -158,10 +166,31 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
     window.setTimeout(() => setCopied(false), 1800);
   }
 
+  async function syncSource(source: "datajud" | "mural") {
+    if (!processId) return;
+    setSyncing(source);
+    setSyncMessage(null);
+    try {
+      if (source === "datajud") {
+        const result = await syncProcessDataJudNow(processId);
+        setSyncMessage(result.status === "atualizado" ? `${result.movimentacoes} movimentacoes novas do DataJud.` : "DataJud consultado. Nenhuma movimentacao nova.");
+      } else {
+        const result = await syncProcessMuralNow(processId);
+        setSyncMessage(`${result.novas} novas comunicacoes do Mural encontradas.`);
+      }
+      const refreshed = await getProcessDetails(processId);
+      setState({ processId, details: refreshed, error: null });
+    } catch (err) {
+      setSyncMessage(err instanceof Error ? err.message : "Nao foi possivel sincronizar a fonte.");
+    } finally {
+      setSyncing(null);
+    }
+  }
+
   return (
     <Dialog open={!!processId} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[92vh] max-w-[min(1100px,calc(100vw-24px))] gap-0 overflow-hidden border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-0 text-[var(--tenant-surface-foreground)] shadow-2xl">
-        <DialogHeader className="border-b border-[var(--tenant-line)] px-5 py-5 pr-14 sm:px-7">
+      <DialogContent className="flex max-h-[92vh] max-w-[min(1100px,calc(100vw-24px))] flex-col gap-0 overflow-hidden border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-0 text-[var(--tenant-surface-foreground)] shadow-2xl">
+        <DialogHeader className="shrink-0 border-b border-[var(--tenant-line)] px-5 py-5 pr-14 sm:px-7">
           <div className="flex flex-wrap items-center gap-3">
             <span className="rounded border border-[var(--tenant-brass)] bg-[color-mix(in_srgb,var(--tenant-brass)_12%,var(--tenant-surface))] px-2 py-1 text-xs font-semibold text-[var(--tenant-brass)]">{process ? statusLabel(process.status) : "Carregando"}</span>
             <DialogTitle className="font-mono text-base font-semibold tracking-normal text-[var(--tenant-surface-foreground)] sm:text-lg">{process?.cnj ?? "Detalhes do processo"}</DialogTitle>
@@ -171,7 +200,7 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
           <DialogDescription className="mt-1 text-sm text-[var(--color-muted-foreground)]">{[process?.tribunal, process?.grau, process?.sistema].filter(Boolean).join(" · ") || "Processo do escritório"}</DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {loading ? <div className="m-5 rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-10 text-center text-sm text-[var(--color-muted-foreground)]">Carregando informações do processo...</div> : null}
           {error ? <div className="m-5 rounded-md border border-[color-mix(in_srgb,var(--color-destructive)_30%,var(--tenant-line))] bg-[color-mix(in_srgb,var(--color-destructive)_10%,var(--tenant-surface))] p-4 text-sm text-[var(--color-destructive)]">{error}</div> : null}
 
@@ -213,7 +242,7 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
                         </div>
                       ))}
                     </div> : <p className="text-sm text-[var(--color-muted-foreground)]">Nenhum advogado informado pela fonte.</p>}
-                    <div className="mt-4 border-t border-[var(--tenant-line)] pt-4"><p className="text-xs font-semibold">Fontes de dados</p><div className="mt-2 flex flex-wrap gap-2">{["Mural", "DataJud", "PJe/CS"].map((source) => <span key={source} className="rounded border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-2 py-1 text-xs">{source}</span>)}</div></div>
+<div className="mt-4 border-t border-[var(--tenant-line)] pt-4"><p className="text-xs font-semibold">Fontes de dados atualizadas</p><div className="mt-2 flex flex-wrap gap-2">{sourceBadges.length > 0 ? sourceBadges.map((source) => <span key={source.label} className="rounded border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-2 py-1 text-xs">{source.label}</span>) : <span className="text-xs text-[var(--color-muted-foreground)]">Nenhuma fonte sincronizada.</span>}</div></div>
                     <div className="mt-4 flex items-start gap-2 text-xs text-[var(--color-muted-foreground)]"><Info className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Últimas sincronizações: Mural {formatDateTime(process.ultima_sync_mural)}.</div>
                   </Panel>
                 </div>
@@ -227,7 +256,10 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
           </> : null}
         </div>
 
-        <DialogFooter className="border-t border-[var(--tenant-line)] px-5 py-4 sm:px-7">
+        <DialogFooter className="shrink-0 border-t border-[var(--tenant-line)] px-5 py-4 sm:px-7">
+          {syncMessage ? <span className="mr-auto max-w-[38%] text-xs text-[var(--color-muted-foreground)]">{syncMessage}</span> : null}
+          <Button type="button" variant="outline" onClick={() => syncSource("mural")} disabled={!process || !!syncing}><RefreshCw className={"h-4 w-4 " + (syncing === "mural" ? "animate-spin" : "")} /> Mural</Button>
+          <Button type="button" variant="outline" onClick={() => syncSource("datajud")} disabled={!process || !!syncing}><RefreshCw className={"h-4 w-4 " + (syncing === "datajud" ? "animate-spin" : "")} /> DataJud</Button>
           <Button type="button" variant="outline" onClick={copyCnj} disabled={!process}>{copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? "Copiado" : "Copiar CNJ"}</Button>
           <Button type="button" onClick={onClose}>Fechar</Button>
         </DialogFooter>

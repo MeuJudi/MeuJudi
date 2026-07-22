@@ -3,6 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireWritableAppUser as requireAppUser } from "@/lib/auth/guards";
+import { sincronizarProcessoDataJud } from "@/lib/datajud/sincronizar-processo";
+import { MuralClient, type MuralComunicacao } from "@/lib/mural/client";
+import { processarComunicacao } from "@/lib/mural/processar-comunicacao";
 
 const allowedStatuses = ["ativo", "suspenso", "arquivado", "concluido"] as const;
 const columnColors = ["#9a6a22", "#4b6b4e", "#7a2e2e", "#2563eb", "#7c3aed", "#0e7490"];
@@ -260,6 +263,101 @@ export async function deleteKanbanColumn(columnId: string, targetColumnId: strin
   }
 
   revalidatePath("/monitoramento");
+}
+
+export async function syncProcessDataJudNow(processId: string) {
+  const apiKey = process.env.DATAJUD_API_KEY;
+  if (!apiKey) throw new Error("DATAJUD_API_KEY nao configurada.");
+  const { supabase, profile } = await requireAppUser();
+  if (!profile.tenant_id) throw new Error("Usuario sem escritorio.");
+
+  const { data: processRow, error } = await supabase
+    .from("processos")
+    .select("id, cnj, data_ultima_movimentacao")
+    .eq("id", processId)
+    .eq("tenant_id", profile.tenant_id)
+    .single();
+  if (error || !processRow) throw new Error("Processo nao encontrado.");
+
+  const result = await sincronizarProcessoDataJud(supabase, profile.tenant_id, processRow, apiKey);
+  revalidatePath("/monitoramento");
+  return result;
+}
+
+export async function syncTenantDataJudNow() {
+  const apiKey = process.env.DATAJUD_API_KEY;
+  if (!apiKey) throw new Error("DATAJUD_API_KEY nao configurada.");
+  const { supabase, profile } = await requireAppUser();
+  if (!profile.tenant_id) throw new Error("Usuario sem escritorio.");
+
+  const { data: processes, error } = await supabase
+    .from("processos")
+    .select("id, cnj, data_ultima_movimentacao")
+    .eq("tenant_id", profile.tenant_id)
+    .eq("status", "ativo")
+    .eq("nivel_sigilo", 0);
+  if (error) throw new Error(error.message);
+
+  const result = { processados: 0, atualizados: 0, sem_mudanca: 0, nao_encontrados: 0, erros: 0 };
+  for (const process of processes ?? []) {
+    try {
+      const synced = await sincronizarProcessoDataJud(supabase, profile.tenant_id, process, apiKey);
+      result.processados++;
+      if (synced.status === "atualizado") result.atualizados++;
+      if (synced.status === "sem_mudanca") result.sem_mudanca++;
+      if (synced.status === "nao_encontrado") result.nao_encontrados++;
+    } catch {
+      result.erros++;
+    }
+  }
+  revalidatePath("/monitoramento");
+  return result;
+}
+
+export async function syncProcessMuralNow(processId: string) {
+  const { supabase, profile } = await requireAppUser();
+  if (!profile.tenant_id) throw new Error("Usuario sem escritorio.");
+  const { data: process, error: processError } = await supabase
+    .from("processos")
+    .select("id, cnj")
+    .eq("id", processId)
+    .eq("tenant_id", profile.tenant_id)
+    .single();
+  if (processError || !process) throw new Error("Processo nao encontrado.");
+
+  const { data: oabs, error: oabError } = await supabase
+    .from("escritorio_oabs")
+    .select("oab_number, oab_uf")
+    .eq("tenant_id", profile.tenant_id)
+    .eq("is_active", true);
+  if (oabError) throw new Error(oabError.message);
+  if (!oabs?.length) throw new Error("Nenhuma OAB ativa cadastrada no escritorio.");
+
+  const mural = new MuralClient();
+  const end = new Date();
+  const start = new Date(end);
+  start.setMonth(start.getMonth() - 12);
+  const targetCnj = process.cnj.replace(/\D/g, "");
+  const seen = new Set<number>();
+  let recebidas = 0;
+  let novas = 0;
+
+  for (const oab of oabs) {
+    for (let page = 1; page <= 200; page++) {
+      const response = await mural.buscarPorOAB(oab.oab_number, oab.oab_uf, start.toISOString().slice(0, 10), end.toISOString().slice(0, 10), page, 100);
+      const items = response.items ?? [];
+      recebidas += items.length;
+      for (const item of items.filter((candidate) => candidate.numero_processo.replace(/\D/g, "") === targetCnj)) {
+        if (seen.has(item.id)) continue;
+        seen.add(item.id);
+        if (await processarComunicacao(supabase, profile.tenant_id, item)) novas++;
+      }
+      if (items.length < 100) break;
+    }
+  }
+
+  revalidatePath("/monitoramento");
+  return { recebidas, encontradas: seen.size, novas };
 }
 
 /*

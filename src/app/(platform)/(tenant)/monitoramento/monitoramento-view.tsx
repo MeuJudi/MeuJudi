@@ -37,6 +37,7 @@ import {
   ListFilter,
   Megaphone,
   Plus,
+  RefreshCw,
   Trash2,
   X,
 } from "lucide-react";
@@ -53,6 +54,7 @@ import {
   moveProcessToColumn,
   renameKanbanColumn,
   reorderKanbanColumns,
+  syncTenantDataJudNow,
 } from "./actions";
 import { cn } from "@/lib/utils";
 
@@ -556,6 +558,7 @@ export function MonitoramentoView({
   const [creatingNewColumn, setCreatingNewColumn] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
   const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const boardScrollRef = useRef<HTMLDivElement | null>(null);
   const panStateRef = useRef<{ pointerId: number; startX: number; startScrollLeft: number; active: boolean } | null>(null);
@@ -697,6 +700,18 @@ export function MonitoramentoView({
     });
   }
 
+  function syncNow() {
+    setSyncMessage(null);
+    startTransition(async () => {
+      try {
+        const result = await syncTenantDataJudNow();
+        setSyncMessage(`${result.atualizados} atualizados, ${result.sem_mudanca} sem mudanca e ${result.nao_encontrados} nao encontrados.`);
+      } catch (error) {
+        setSyncMessage(error instanceof Error ? error.message : "Nao foi possivel sincronizar o DataJud.");
+      }
+    });
+  }
+
   function addNewColumn() {
     const cleanName = newColumnName.trim();
     if (!cleanName) return;
@@ -818,8 +833,14 @@ export function MonitoramentoView({
                 onServerSearch={globalSearch}
                 className="flex-1 md:max-w-md"
               />
+              <Button type="button" variant="outline" size="sm" onClick={syncNow} disabled={isPending || !tenantId}>
+                <RefreshCw className={cn("mr-2 h-4 w-4", isPending && "animate-spin")} />
+                Sincronizar agora
+              </Button>
             </div>
           </div>
+
+          {syncMessage ? <div className="rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-3 py-2 text-sm text-[var(--tenant-surface-foreground)]">{syncMessage}</div> : null}
 
           {view === "lista" ? (
             <div className="space-y-3">
