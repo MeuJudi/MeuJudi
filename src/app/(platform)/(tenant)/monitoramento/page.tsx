@@ -19,6 +19,8 @@ type ProcessRow = {
   is_favorito: boolean;
   data_ultima_movimentacao: string | null;
   responsavel_id: string | null;
+  created_at: string;
+  ultima_sync_mural: string | null;
 };
 
 type KanbanColumnRow = {
@@ -178,9 +180,11 @@ export default async function MonitoramentoPage({
   const [{ data: processRows }, { data: movementRows }, { data: muralRows }] = await Promise.all([
     supabase
       .from("processos")
-      .select("id, cnj, tribunal, classe_nome, autor, reu, prazo_proxima_resposta, proxima_audiencia, status, kanban_column_id, tags, is_favorito, data_ultima_movimentacao, responsavel_id")
+      .select("id, cnj, tribunal, classe_nome, autor, reu, prazo_proxima_resposta, proxima_audiencia, status, kanban_column_id, tags, is_favorito, data_ultima_movimentacao, responsavel_id, created_at, ultima_sync_mural")
       .eq("tenant_id", tenantId)
-      .order("data_ultima_movimentacao", { ascending: false, nullsFirst: false })
+      // Prioriza os processos recém-importados; muitos deles ainda não têm
+      // data_ultima_movimentacao preenchida pelo Mural.
+      .order("created_at", { ascending: false })
       .limit(120),
     supabase
       .from("movimentacoes")
