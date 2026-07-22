@@ -3,7 +3,11 @@
 import { useState, useTransition, useRef } from "react";
 import { Loader2, Upload, FileUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { uploadCsRelease } from "./actions";
+import {
+  createCsReleaseUploadTicket,
+  finalizeCsReleaseUpload,
+} from "./actions";
+import { createClient } from "@/lib/supabase/client";
 
 export function CsReleaseForm() {
   const [isPending, startTransition] = useTransition();
@@ -22,7 +26,26 @@ export function CsReleaseForm() {
 
     startTransition(async () => {
       try {
-        await uploadCsRelease(formData);
+        const file = formData.get("file");
+        if (!(file instanceof File) || file.size === 0) {
+          throw new Error("Nenhum arquivo selecionado.");
+        }
+
+        const ticket = await createCsReleaseUploadTicket({
+          version: String(formData.get("version") ?? ""),
+          fileName: file.name,
+          fileSizeBytes: file.size,
+          contentType: file.type || "application/octet-stream",
+          changelog: String(formData.get("changelog") ?? "") || null,
+        });
+
+        const supabase = createClient("admin");
+        const { error: uploadError } = await supabase.storage
+          .from(ticket.bucket)
+          .uploadToSignedUrl(ticket.path, ticket.token, file);
+        if (uploadError) throw uploadError;
+
+        await finalizeCsReleaseUpload(ticket);
         setSuccess(true);
         form.reset();
         setFileName(null);

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { requireSuperAdmin } from "@/lib/auth/guards";
 
 export type CsRelease = {
@@ -53,61 +54,87 @@ export async function listCsReleases(): Promise<CsRelease[]> {
  * 2. Desativa todas as versões anteriores
  * 3. Cria registro na tabela cs_releases
  */
-export async function uploadCsRelease(formData: FormData) {
+type CsReleaseUploadTicket = {
+  bucket: string;
+  path: string;
+  token: string;
+  publicUrl: string;
+  fileName: string;
+  fileSizeBytes: number;
+  version: string;
+  changelog: string | null;
+};
+
+/**
+ * Prepara um upload direto para o Storage. O binário não passa pela Server
+ * Action, evitando o limite de body da Vercel (o instalador pode ter dezenas
+ * de MB).
+ */
+export async function createCsReleaseUploadTicket(input: {
+  version: string;
+  fileName: string;
+  fileSizeBytes: number;
+  contentType: string;
+  changelog: string | null;
+}): Promise<CsReleaseUploadTicket> {
+  await requireSuperAdmin();
+
+  const version = input.version.trim();
+  const fileName = input.fileName.trim();
+  if (!version) throw new Error("Versão é obrigatória.");
+  if (!fileName || input.fileSizeBytes <= 0) {
+    throw new Error("Nenhum arquivo selecionado.");
+  }
+  if (input.fileSizeBytes > 500 * 1024 * 1024) {
+    throw new Error("O arquivo não pode ultrapassar 500 MB.");
+  }
+
+  const fileExt = fileName.split(".").pop() ?? "exe";
+  const filePath = `releases/v${version}.${fileExt}`;
+  const service = createServiceClient();
+  let { data, error } = await service.storage
+    .from("cs-releases")
+    .createSignedUploadUrl(filePath);
+
+  if (error?.message?.includes("Bucket not found")) {
+    const { error: bucketError } = await service.storage.createBucket("cs-releases", {
+      public: true,
+      fileSizeLimit: 500 * 1024 * 1024,
+      allowedMimeTypes: [
+        "application/octet-stream",
+        "application/x-msdownload",
+        "application/x-executable",
+        "application/vnd.microsoft.portable-executable",
+      ],
+    });
+    if (bucketError && !bucketError.message?.toLowerCase().includes("already exists")) {
+      throw bucketError;
+    }
+    ({ data, error } = await service.storage
+      .from("cs-releases")
+      .createSignedUploadUrl(filePath));
+  }
+
+  if (error || !data) throw error ?? new Error("Não foi possível preparar o upload.");
+
+  const { data: publicData } = service.storage.from("cs-releases").getPublicUrl(filePath);
+  return {
+    bucket: "cs-releases",
+    path: filePath,
+    token: data.token,
+    publicUrl: publicData.publicUrl,
+    fileName,
+    fileSizeBytes: input.fileSizeBytes,
+    version,
+    changelog: input.changelog?.trim() || null,
+  };
+}
+
+/** Registra no banco um arquivo que já foi enviado diretamente ao Storage. */
+export async function finalizeCsReleaseUpload(ticket: CsReleaseUploadTicket) {
   const ctx = await requireSuperAdmin();
   const supabase = ctx.supabase;
   const profile = ctx.profile;
-
-  const version = String(formData.get("version") ?? "").trim();
-  const changelog = String(formData.get("changelog") ?? "").trim() || null;
-  const file = formData.get("file") as File;
-
-  if (!version) throw new Error("Versão é obrigatória.");
-  if (!file || file.size === 0) throw new Error("Nenhum arquivo selecionado.");
-
-  // Upload para Storage
-  const fileExt = file.name.split(".").pop() ?? "exe";
-  const filePath = `releases/v${version}.${fileExt}`;
-
-  const arrayBuffer = await file.arrayBuffer();
-  const buffer = new Uint8Array(arrayBuffer);
-
-  const { error: uploadError } = await supabase.storage
-    .from("cs-releases")
-    .upload(filePath, buffer, {
-      upsert: true,
-      contentType: file.type || "application/octet-stream",
-    });
-
-  if (uploadError) {
-    // Se o bucket não existe, cria automaticamente
-    if (uploadError.message?.includes("Bucket not found")) {
-      await supabase.storage.createBucket("cs-releases", {
-        public: true,
-        fileSizeLimit: 500 * 1024 * 1024, // 500MB
-        allowedMimeTypes: [
-          "application/octet-stream",
-          "application/x-msdownload",
-          "application/x-executable",
-          "application/vnd.microsoft.portable-executable",
-        ],
-      });
-      // Retry upload
-      const { error: retryError } = await supabase.storage
-        .from("cs-releases")
-        .upload(filePath, buffer, {
-          upsert: true,
-          contentType: file.type || "application/octet-stream",
-        });
-      if (retryError) throw retryError;
-    } else {
-      throw uploadError;
-    }
-  }
-
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from("cs-releases").getPublicUrl(filePath);
 
   // Desativa todas as versões anteriores
   await supabase
@@ -117,11 +144,11 @@ export async function uploadCsRelease(formData: FormData) {
 
   // Insere nova versão
   const { error: insertError } = await supabase.from("cs_releases").insert({
-    version,
-    file_url: publicUrl,
-    file_name: file.name,
-    file_size_bytes: file.size,
-    changelog,
+    version: ticket.version,
+    file_url: ticket.publicUrl,
+    file_name: ticket.fileName,
+    file_size_bytes: ticket.fileSizeBytes,
+    changelog: ticket.changelog,
     uploaded_by: profile.id,
     is_active: true,
   });
