@@ -5,8 +5,6 @@ import { redirect } from "next/navigation";
 import { requireWritableAppUser as requireAppUser } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/service";
 import { sincronizarProcessoDataJud } from "@/lib/datajud/sincronizar-processo";
-import { MuralClient, type MuralComunicacao } from "@/lib/mural/client";
-import { processarComunicacao } from "@/lib/mural/processar-comunicacao";
 
 const allowedStatuses = ["ativo", "suspenso", "arquivado", "concluido"] as const;
 const columnColors = ["#9a6a22", "#4b6b4e", "#7a2e2e", "#2563eb", "#7c3aed", "#0e7490"];
@@ -347,44 +345,41 @@ export async function syncProcessMuralNow(processId: string) {
     if (processError) throw new Error(`Falha ao localizar processo: ${processError.message}`);
     if (!process) throw new Error("Processo não encontrado.");
 
-  const { data: oabs, error: oabError } = await supabase
-    .from("escritorio_oabs")
-    .select("oab_number, oab_uf")
-    .eq("tenant_id", profile.tenant_id)
-    .eq("is_active", true);
-  if (oabError) throw new Error(`Falha ao consultar OABs: ${oabError.message}`);
-  if (!oabs?.length) throw new Error("Nenhuma OAB ativa cadastrada no escritório.");
-
-  const mural = new MuralClient();
-  const service = createServiceClient();
   const end = new Date();
   const start = new Date(end);
   start.setMonth(start.getMonth() - 12);
-  const targetCnj = process.cnj.replace(/\D/g, "");
-  const seen = new Set<number>();
-  let recebidas = 0;
-  let novas = 0;
+  const { data: request, error: requestError } = await supabase
+    .from("cs_mural_requests")
+    .insert({
+      tenant_id: profile.tenant_id,
+      process_id: process.id,
+      requested_by: profile.id,
+      data_inicio: start.toISOString().slice(0, 10),
+      data_fim: end.toISOString().slice(0, 10),
+    })
+    .select("id")
+    .single();
+  if (requestError || !request) throw new Error(`Não foi possível solicitar a consulta pelo CS: ${requestError?.message ?? "solicitação não criada"}`);
 
-  for (const oab of oabs) {
-    for (let page = 1; page <= 200; page++) {
-      const response = await mural.buscarPorOAB(oab.oab_number, oab.oab_uf, start.toISOString().slice(0, 10), end.toISOString().slice(0, 10), page, 100);
-      const items = response.items ?? [];
-      recebidas += items.length;
-      for (const item of items.filter((candidate) => candidate.numero_processo.replace(/\D/g, "") === targetCnj)) {
-        if (seen.has(item.id)) continue;
-        seen.add(item.id);
-        if (await processarComunicacao(service, profile.tenant_id, item)) novas++;
-      }
-      if (items.length < 100) break;
-    }
-  }
-
-  revalidatePath("/monitoramento");
-    return { ok: true as const, recebidas, encontradas: seen.size, novas };
+  return { ok: true as const, queued: true as const, requestId: request.id as string };
   } catch (error) {
     console.error("[monitoramento] sincronização Mural falhou:", error);
     return { ok: false as const, message: syncErrorMessage(error) };
   }
+}
+
+export async function getMuralSyncRequest(requestId: string) {
+  const { supabase, profile } = await requireAppUser();
+  if (!profile.tenant_id) return { ok: false as const, message: "Usuário sem escritório vinculado." };
+  const { data, error } = await supabase
+    .from("cs_mural_requests")
+    .select("id, status, result, error_message, completed_at")
+    .eq("id", requestId)
+    .eq("tenant_id", profile.tenant_id)
+    .maybeSingle();
+  if (error) return { ok: false as const, message: error.message };
+  if (!data) return { ok: false as const, message: "Solicitação de sincronização não encontrada." };
+  return { ok: true as const, status: data.status as "pending" | "processing" | "completed" | "failed", result: data.result, errorMessage: data.error_message };
 }
 
 /*

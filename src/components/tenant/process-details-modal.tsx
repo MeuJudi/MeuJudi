@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getProcessDetails, type ProcessDetails } from "@/lib/process-details/actions";
 import { formatMuralText } from "@/lib/mural/format-text";
-import { syncProcessDataJudNow, syncProcessMuralNow } from "@/app/(platform)/(tenant)/monitoramento/actions";
+import { getMuralSyncRequest, syncProcessDataJudNow, syncProcessMuralNow } from "@/app/(platform)/(tenant)/monitoramento/actions";
 
 type ProcessDetailsModalProps = { processId: string | null; onClose: () => void };
 type ProcessTab = "resumo" | "movimentacoes" | "agenda" | "mural" | "documentos";
@@ -180,7 +180,20 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
       } else {
         const result = await syncProcessMuralNow(processId);
         if (!result.ok) throw new Error(result.message);
-        setSyncMessage(`${result.novas} novas comunicacoes do Mural encontradas.`);
+        if (!result.queued) throw new Error("Solicitação do Mural não foi colocada na fila.");
+        setSyncMessage("Solicitação enviada ao MeuJudi CS. Aguardando consulta local...");
+        for (let attempt = 0; attempt < 30; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 2000));
+          const status = await getMuralSyncRequest(result.requestId);
+          if (!status.ok) throw new Error(status.message);
+          if (status.status === "completed") {
+            const payload = typeof status.result === "object" && status.result ? status.result as { novas?: number; encontradas?: number } : {};
+            setSyncMessage(`${payload.novas ?? 0} novas comunicações do Mural encontradas pelo CS.`);
+            break;
+          }
+          if (status.status === "failed") throw new Error(status.errorMessage || "O MeuJudi CS não conseguiu consultar o Mural.");
+          setSyncMessage(`MeuJudi CS consultando o Mural... (${attempt + 1}/30)`);
+        }
       }
       const refreshed = await getProcessDetails(processId);
       setState({ processId, details: refreshed, error: null });
