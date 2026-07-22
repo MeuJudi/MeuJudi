@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { buscarProcessoEmTribunais } from "./client";
+import { buscarProcessoEmTribunais, normalizarDataJudData } from "./client";
 import { extrairTribunaisCandidatos } from "./tribunal-from-cnj";
 import { extrairPrazoDias, extrairPrazoHoras } from "@/lib/regex/patterns";
 import { calcularPrazoFatal } from "@/lib/prazo/calcular-prazo-fatal";
@@ -21,7 +21,9 @@ export async function sincronizarProcessoDataJud(
 
   const { processo: fresh, tribunalUsado } = achado;
   const dataLocal = processo.data_ultima_movimentacao ? new Date(processo.data_ultima_movimentacao) : new Date(0);
-  const dataFresh = new Date(fresh.dataHoraUltimaAtualizacao);
+  const dataFreshIso = normalizarDataJudData(fresh.dataHoraUltimaAtualizacao);
+  if (!dataFreshIso) throw new Error(`Data de atualização inválida retornada pelo DataJud: ${fresh.dataHoraUltimaAtualizacao}`);
+  const dataFresh = new Date(dataFreshIso);
   const metadata = {
     classe_codigo: fresh.classe?.codigo ?? null,
     classe_nome: fresh.classe?.nome ?? null,
@@ -33,14 +35,14 @@ export async function sincronizarProcessoDataJud(
     grau: fresh.grau ?? null,
     sistema: fresh.sistema?.nome ?? null,
     nivel_sigilo: fresh.nivelSigilo ?? 0,
-    data_ajuizamento: fresh.dataAjuizamento ?? null,
+    data_ajuizamento: normalizarDataJudData(fresh.dataAjuizamento),
     formato_codigo: fresh.formato?.codigo ?? null,
     formato_nome: fresh.formato?.nome ?? null,
     ultima_sync_datajud: new Date().toISOString(),
   };
 
   const update = dataFresh > dataLocal
-    ? { ...metadata, data_ultima_movimentacao: fresh.dataHoraUltimaAtualizacao }
+    ? { ...metadata, data_ultima_movimentacao: dataFreshIso }
     : metadata;
   const { error: processError } = await supabase.from("processos").update(update).eq("id", processo.id).eq("tenant_id", tenantId);
   if (processError) throw processError;
@@ -48,14 +50,15 @@ export async function sincronizarProcessoDataJud(
 
   let movimentacoes = 0;
   for (const mov of fresh.movimentos ?? []) {
-    if (new Date(mov.dataHora) <= dataLocal) continue;
+    const dataMovimentoIso = normalizarDataJudData(mov.dataHora);
+    if (!dataMovimentoIso || new Date(dataMovimentoIso) <= dataLocal) continue;
     const texto = `${mov.nome} ${(mov.complementosTabelados ?? []).map((item) => item.nome).join(" ")}`.trim();
     const prazoDias = extrairPrazoDias(texto);
     const prazoHoras = extrairPrazoHoras(texto);
     const { data: inserted, error } = await supabase.from("movimentacoes").insert({
       tenant_id: tenantId,
       processo_id: processo.id,
-      data_movimento: mov.dataHora,
+      data_movimento: dataMovimentoIso,
       codigo: mov.codigo,
       nome: mov.nome,
       texto_completo: texto,
@@ -70,7 +73,7 @@ export async function sincronizarProcessoDataJud(
     if (!error) movimentacoes++;
 
     if (prazoDias && inserted?.id) {
-      const dataFatal = calcularPrazoFatal(new Date(mov.dataHora), prazoDias);
+      const dataFatal = calcularPrazoFatal(new Date(dataMovimentoIso), prazoDias);
       await supabase.from("processos").update({ prazo_proxima_resposta: dataFatal }).eq("id", processo.id).eq("tenant_id", tenantId);
     }
   }

@@ -85,6 +85,11 @@ export class MuralClient {
       // "challenge de WAF" (HTML), "bloqueio por IP" (mensagem custom) e
       // "rate limit" (formato JSON próprio), cada um com correção diferente.
       const corpo = await response.text().catch(() => "");
+      if (response.status === 403) {
+        throw new Error(
+          "O Mural do PJe bloqueou esta consulta (HTTP 403). Sincronize pelo MeuJudi CS conectado ao escritório; o Web não consegue consultar este endpoint diretamente pela Vercel.",
+        );
+      }
       throw new Error(`Mural HTTP ${response.status}: ${corpo.slice(0, 300)}`);
     }
 

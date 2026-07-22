@@ -35,6 +35,22 @@ export interface DataJudProcesso {
   movimentos?: DataJudMovimento[];
 }
 
+/** Normaliza datas do DataJud, que podem vir como ISO ou YYYYMMDDHHMMSS. */
+export function normalizarDataJudData(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const raw = String(value).trim();
+  const compact = raw.match(/^(\d{4})(\d{2})(\d{2})(\d{2})?(\d{2})?(\d{2})?$/);
+  if (compact) {
+    const [, year, month, day, hour = "00", minute = "00", second = "00"] = compact;
+    const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)));
+    if (date.getUTCFullYear() !== Number(year) || date.getUTCMonth() !== Number(month) - 1 || date.getUTCDate() !== Number(day)) return null;
+    return date.toISOString();
+  }
+
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
 class DataJudHttpError extends Error {
   constructor(
     message: string,
