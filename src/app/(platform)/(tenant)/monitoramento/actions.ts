@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireWritableAppUser as requireAppUser } from "@/lib/auth/guards";
+import { createServiceClient } from "@/lib/supabase/service";
 import { sincronizarProcessoDataJud } from "@/lib/datajud/sincronizar-processo";
 import { MuralClient, type MuralComunicacao } from "@/lib/mural/client";
 import { processarComunicacao } from "@/lib/mural/processar-comunicacao";
@@ -279,7 +280,7 @@ export async function syncProcessDataJudNow(processId: string) {
     .single();
   if (error || !processRow) throw new Error("Processo nao encontrado.");
 
-  const result = await sincronizarProcessoDataJud(supabase, profile.tenant_id, processRow, apiKey);
+  const result = await sincronizarProcessoDataJud(createServiceClient(), profile.tenant_id, processRow, apiKey);
   revalidatePath("/monitoramento");
   return result;
 }
@@ -298,10 +299,11 @@ export async function syncTenantDataJudNow() {
     .eq("nivel_sigilo", 0);
   if (error) throw new Error(error.message);
 
+  const service = createServiceClient();
   const result = { processados: 0, atualizados: 0, sem_mudanca: 0, nao_encontrados: 0, erros: 0 };
   for (const process of processes ?? []) {
     try {
-      const synced = await sincronizarProcessoDataJud(supabase, profile.tenant_id, process, apiKey);
+      const synced = await sincronizarProcessoDataJud(service, profile.tenant_id, process, apiKey);
       result.processados++;
       if (synced.status === "atualizado") result.atualizados++;
       if (synced.status === "sem_mudanca") result.sem_mudanca++;
@@ -334,6 +336,7 @@ export async function syncProcessMuralNow(processId: string) {
   if (!oabs?.length) throw new Error("Nenhuma OAB ativa cadastrada no escritorio.");
 
   const mural = new MuralClient();
+  const service = createServiceClient();
   const end = new Date();
   const start = new Date(end);
   start.setMonth(start.getMonth() - 12);
@@ -350,7 +353,7 @@ export async function syncProcessMuralNow(processId: string) {
       for (const item of items.filter((candidate) => candidate.numero_processo.replace(/\D/g, "") === targetCnj)) {
         if (seen.has(item.id)) continue;
         seen.add(item.id);
-        if (await processarComunicacao(supabase, profile.tenant_id, item)) novas++;
+        if (await processarComunicacao(service, profile.tenant_id, item)) novas++;
       }
       if (items.length < 100) break;
     }
