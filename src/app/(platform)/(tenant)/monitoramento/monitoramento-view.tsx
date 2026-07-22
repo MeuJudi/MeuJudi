@@ -55,7 +55,8 @@ import {
   moveProcessToColumn,
   renameKanbanColumn,
   reorderKanbanColumns,
-  syncTenantDataJudBatch,
+  getTenantDataJudSyncJob,
+  startTenantDataJudSyncJob,
 } from "./actions";
 import { cn } from "@/lib/utils";
 
@@ -621,6 +622,14 @@ export function MonitoramentoView({
     setPage(0);
   }, [activeMetricFilters, query, scope]);
 
+  useEffect(() => {
+    let active = true;
+    getTenantDataJudSyncJob().then((result) => {
+      if (active && result.ok && result.job) watchDataJudJob(result.job.id);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+
   function toggleMetricFilter(filter: "active" | "newMovements" | "upcomingDeadlines" | "muralPending" | "closed") {
     setActiveMetricFilters((current) => {
       const next = new Set(current);
@@ -741,32 +750,30 @@ export function MonitoramentoView({
     setSyncMessage(null);
     startTransition(async () => {
       try {
-        let offset = 0;
-        let total = 0;
-        let processados = 0;
-        let atualizados = 0;
-        let semMudanca = 0;
-        let naoEncontrados = 0;
-        let erros = 0;
-        let done = false;
-        while (!done) {
-          const result = await syncTenantDataJudBatch(offset, 3);
-          if (!result.ok) throw new Error(result.message);
-          offset = result.nextOffset;
-          total = result.total;
-          processados += result.processados;
-          atualizados += result.atualizados;
-          semMudanca += result.sem_mudanca;
-          naoEncontrados += result.nao_encontrados;
-          erros += result.erros;
-          done = result.done;
-          setSyncMessage(`DataJud: ${processados} de ${total} processos consultados...`);
-        }
-        setSyncMessage(`${atualizados} atualizados, ${semMudanca} sem mudança, ${naoEncontrados} não encontrados${erros ? ` e ${erros} com erro` : ""}.`);
+        const result = await startTenantDataJudSyncJob();
+        if (!result.ok) throw new Error(result.message);
+        setSyncMessage(result.resumed ? "Sincronização DataJud já estava em andamento. Retomando..." : "Sincronização DataJud iniciada em segundo plano...");
+        watchDataJudJob(result.jobId);
       } catch (error) {
         setSyncMessage(error instanceof Error ? error.message : "Nao foi possivel sincronizar o DataJud.");
       }
     });
+  }
+
+  async function watchDataJudJob(jobId: string) {
+    for (let attempt = 0; attempt < 720; attempt += 1) {
+      const result = await getTenantDataJudSyncJob(jobId);
+      if (!result.ok) { setSyncMessage(result.message); return; }
+      const job = result.job;
+      if (!job) { setSyncMessage("Sincronização DataJud não encontrada."); return; }
+      if (job.status === "completed") {
+        setSyncMessage(`${job.updated_count} atualizados, ${job.unchanged_count} sem mudança, ${job.not_found_count} não encontrados${job.error_count ? ` e ${job.error_count} com erro` : ""}.`);
+        return;
+      }
+      if (job.status === "failed") { setSyncMessage(job.last_error || "A sincronização DataJud falhou."); return; }
+      setSyncMessage(`DataJud em segundo plano: ${job.processed} de ${job.total} processos consultados...`);
+      await new Promise((resolve) => window.setTimeout(resolve, 3000));
+    }
   }
 
   function addNewColumn() {

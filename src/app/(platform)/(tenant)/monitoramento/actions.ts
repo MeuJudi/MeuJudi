@@ -295,6 +295,55 @@ export async function syncProcessDataJudNow(processId: string) {
   }
 }
 
+export async function startTenantDataJudSyncJob() {
+  try {
+    if (!process.env.DATAJUD_API_KEY) return { ok: false as const, message: "DATAJUD_API_KEY não configurada no ambiente de produção." };
+    const { supabase, profile } = await requireAppUser();
+    if (!profile.tenant_id) return { ok: false as const, message: "Usuário sem escritório vinculado." };
+
+    const { data: active } = await supabase
+      .from("datajud_sync_jobs")
+      .select("id")
+      .eq("tenant_id", profile.tenant_id)
+      .in("status", ["pending", "running"])
+      .maybeSingle();
+    if (active?.id) return { ok: true as const, jobId: active.id as string, resumed: true as const };
+
+    const { count, error: countError } = await supabase
+      .from("processos")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", profile.tenant_id)
+      .eq("status", "ativo")
+      .eq("nivel_sigilo", 0);
+    if (countError) throw new Error(`Falha ao contar processos: ${countError.message}`);
+
+    const { data: job, error } = await supabase
+      .from("datajud_sync_jobs")
+      .insert({ tenant_id: profile.tenant_id, requested_by: profile.id, total: count ?? 0 })
+      .select("id")
+      .single();
+    if (error || !job) throw new Error(`Falha ao iniciar sincronização: ${error?.message ?? "job não criado"}`);
+    return { ok: true as const, jobId: job.id as string, resumed: false as const };
+  } catch (error) {
+    console.error("[monitoramento] não foi possível iniciar job DataJud:", error);
+    return { ok: false as const, message: syncErrorMessage(error) };
+  }
+}
+
+export async function getTenantDataJudSyncJob(jobId?: string) {
+  const { supabase, profile } = await requireAppUser();
+  if (!profile.tenant_id) return { ok: false as const, message: "Usuário sem escritório vinculado." };
+  let query = supabase
+    .from("datajud_sync_jobs")
+    .select("id, status, total, processed, updated_count, unchanged_count, not_found_count, error_count, last_error, created_at, completed_at")
+    .eq("tenant_id", profile.tenant_id);
+  if (jobId) query = query.eq("id", jobId);
+  else query = query.in("status", ["pending", "running"]);
+  const { data, error } = await query.maybeSingle();
+  if (error) return { ok: false as const, message: error.message };
+  return { ok: true as const, job: data };
+}
+
 export async function syncTenantDataJudNow() {
   try {
     const apiKey = process.env.DATAJUD_API_KEY;
