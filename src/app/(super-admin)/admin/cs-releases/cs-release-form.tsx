@@ -4,10 +4,9 @@ import { useState, useTransition, useRef } from "react";
 import { Loader2, Upload, FileUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  createCsReleaseUploadTicket,
-  finalizeCsReleaseUpload,
+  createGithubReleaseUploadTicket,
+  finalizeGithubReleaseUpload,
 } from "./actions";
-import { createClient } from "@/lib/supabase/client";
 
 export function CsReleaseForm() {
   const [isPending, startTransition] = useTransition();
@@ -31,23 +30,37 @@ export function CsReleaseForm() {
           throw new Error("Nenhum arquivo selecionado.");
         }
 
-        const ticketResult = await createCsReleaseUploadTicket({
+        const ticketResult = await createGithubReleaseUploadTicket({
           version: String(formData.get("version") ?? ""),
           fileName: file.name,
           fileSizeBytes: file.size,
-          contentType: file.type || "application/octet-stream",
           changelog: String(formData.get("changelog") ?? "") || null,
         });
         if (!ticketResult.ok) throw new Error(ticketResult.error);
         const ticket = ticketResult.data;
 
-        const supabase = createClient("admin");
-        const { error: uploadError } = await supabase.storage
-          .from(ticket.bucket)
-          .uploadToSignedUrl(ticket.path, ticket.token, file);
-        if (uploadError) throw uploadError;
+        const uploadResponse = await fetch(ticket.uploadUrl, {
+          method: "POST",
+          headers: {
+            Accept: "application/vnd.github+json",
+            Authorization: `Bearer ${ticket.token}`,
+            "Content-Type": file.type || "application/octet-stream",
+          },
+          body: file,
+        });
+        if (!uploadResponse.ok) {
+          throw new Error(`GitHub upload: ${await uploadResponse.text()}`);
+        }
+        const asset = (await uploadResponse.json()) as {
+          id: number;
+          browser_download_url: string;
+        };
 
-        const finalizeResult = await finalizeCsReleaseUpload(ticket);
+        const finalizeResult = await finalizeGithubReleaseUpload({
+          ...ticket,
+          assetId: asset.id,
+          browserDownloadUrl: asset.browser_download_url,
+        });
         if (!finalizeResult.ok) throw new Error(finalizeResult.error);
         setSuccess(true);
         form.reset();
