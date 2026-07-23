@@ -1,6 +1,6 @@
 # 19 — CS: autenticação por tenant + sincronização real (Mural e PJe)
 
-> **Status:** 📋 Planejado — não iniciado
+> **Status:** 🚧 Em implementação — fundação pronta (Web), CS scheduler pendente
 > **Motivação:** descoberta durante o Sprint 2 do Web (DataJud/Mural) em 21/07/2026
 > **Dependências:** [`09-cert-a1.md`](09-cert-a1.md), [`16-implementacao-cert-a1.md`](16-implementacao-cert-a1.md), [`07-edge-mural.md`](07-edge-mural.md)
 > **Duração estimada:** ~4-5 dias úteis
@@ -287,18 +287,21 @@ pareado, mostra "Conectado como {tenant.name} — {user.name}" e um botão
 
 ---
 
-## 📋 Fases de implementação sugeridas
+## 📋 Fases de implementação
 
-| Fase | O quê | Onde |
-|---|---|---|
-| 1 | Migration `cs_pairing_codes` + `cs_devices` | Web |
-| 2 | Extrair `processarComunicacao` pra módulo compartilhado | Web |
-| 3 | Rotas `/api/cs/pair`, `/api/cs/gerar-codigo`, `/api/cs/sync/mural` | Web |
-| 4 | Tela "Conectar MeuJudi CS" em Configurações (gerar código + listar/revogar devices) | Web |
-| 5 | `pairing.ts` + tela "Conectar" no CS | CS |
-| 6 | `mural-sync.ts` (portar `MuralClient`) + scheduler real | CS |
-| 7 | Teste ponta a ponta: gerar código no Web → parear no CS → sync manual → confirmar dado no Supabase | Web + CS |
-| 8 (futuro) | Mesmo padrão pro PJe (`pje-sync.ts`, rota `/api/cs/sync/pje`) — reusa toda a fundação das fases 1-5 | CS |
+| Fase | O quê | Onde | Status |
+|---|---|---|---|
+| 1 | Migration `cs_pairing_codes` + `cs_devices` | Web | ✅ Feito |
+| 2 | Extrair `processarComunicacao` pra módulo compartilhado | Web | ✅ Feito |
+| 3 | Rotas `/api/cs/pair`, `/api/cs/gerar-codigo`, `/api/cs/sync/mural` | Web | ✅ Feito |
+| 4 | Tela "Conectar MeuJudi CS" em Configurações (gerar código + listar/revogar devices) | Web | ✅ Feito |
+| 5 | `pairing.ts` + tela "Conectar" no CS | CS | ✅ Feito |
+| 6 | Migration `cs_mural_requests` refatorada (OAB ao invés de processo) | Web | ✅ Feito |
+| 7 | Cron `/api/cron/solicitar-mural` — cria pedidos pras OABs ativas | Web | ✅ Feito |
+| 8 | Atualizar `GET /api/cs/mural-requests` — retorna OAB+UF ao invés de CNJ | Web | ✅ Feito |
+| 9 | `mural-sync.ts` — CS busca no PJe e envia resultado | CS | 🔲 Pendente |
+| 10 | Scheduler CS — poll periódico a cada 5min | CS | 🔲 Pendente |
+| 11 | Teste ponta a ponta completo | Web + CS | 🔲 Pendente |
 
 A fase 8 (PJe) é o motivo original do CS existir e **reusa 100% da fundação
 de pareamento** construída nas fases 1-6 — depois que o dispositivo já está
@@ -334,3 +337,132 @@ pareado e sabe seu `device_token`, adicionar um segundo tipo de sync
 > 🏢 **MeuJudi é uma vertical** (meujudi) do monorepo multi-tenant.
 >
 > **Criado em:** 21/07/2026, após descoberta do bloqueio de IP (403 CloudFront) no poller de Mural do Sprint 2.
+
+---
+
+## 🔄 Fluxo atualizado: atualização do Mural via CS
+
+### Visão geral
+
+```
+CRON WEB (a cada 6h, /api/cron/solicitar-mural)
+    │
+    ├─► Busca OABs ativas (escritorio_oabs WHERE is_active=true)
+    │   Para cada OAB, verifica último sync bem-sucedido
+    │
+    ├─► Cria cs_mural_requests:
+    │   oab_number, oab_uf, data_inicio, data_fim, status=pending
+    │
+    ▼
+CS (poll a cada 5min quando está rodando)
+    │
+    ├─► GET /api/cs/mural-requests
+    │   Retorna até 5 pedidos pendentes pro tenant do CS
+    │   Marca como "processing"
+    │
+    ├─► Para cada pedido:
+    │   1. Chama PJe: GET comunicaapi.pje.jus.br
+    │      ?numeroOab={oab_number}&ufOab={oab_uf}
+    │      &dataDisponibilizacaoInicio={data_inicio}
+    │      &dataDisponibilizacaoFim={data_fim}
+    │   2. Retorna o JSON bruto (MuralComunicacao[])
+    │
+    ├─► POST /api/cs/sync/mural { comunicacoes: [...] }
+    │   Web processa e salva (processarComunicacao)
+    │
+    └─► POST /api/cs/mural-requests/{id} { ok: true }
+        Marca como completed
+```
+
+### Schema: cs_mural_requests (refatorado)
+
+```sql
+-- Migration 20260723000001_cs_mural_requests_refactor_oab.sql
+CREATE TABLE cs_mural_requests (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  oab_number text NOT NULL CHECK (oab_number ~ '^[0-9]+$'),
+  oab_uf text NOT NULL CHECK (length(oab_uf) = 2),
+  requested_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  status text NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+  data_inicio date NOT NULL,
+  data_fim date NOT NULL,
+  result jsonb,
+  error_message text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  claimed_at timestamptz,
+  completed_at timestamptz
+);
+```
+
+### API Contract pro CS
+
+#### `GET /api/cs/mural-requests`
+Pegar pedidos pendentes.
+
+**Request:** `GET /api/cs/mural-requests`
+**Headers:** `Authorization: Bearer <device_token>`
+
+**Response 200:**
+```json
+{
+  "requests": [
+    {
+      "id": "uuid",
+      "oab_number": "67553",
+      "oab_uf": "PR",
+      "data_inicio": "2026-07-20",
+      "data_fim": "2026-07-23"
+    }
+  ]
+}
+```
+
+#### `POST /api/cs/mural-requests/{requestId}`
+Marcar pedido como completo/falhou.
+
+**Request:** `POST /api/cs/mural-requests/{requestId}`
+**Headers:** `Authorization: Bearer <device_token>`
+**Body (sucesso):**
+```json
+{ "ok": true }
+```
+**Body (falha):**
+```json
+{ "ok": false, "error": "PJe retornou HTTP 403" }
+```
+
+#### `POST /api/cs/sync/mural`
+Enviar comunicações encontradas.
+
+**Request:** `POST /api/cs/sync/mural`
+**Headers:** `Authorization: Bearer <device_token>`
+**Body:**
+```json
+{
+  "comunicacoes": [
+    {
+      "id": 123456,
+      "data_disponibilizacao": "2026-07-23T10:00:00",
+      "siglaTribunal": "TRF4",
+      "tipoComunicacao": "Intimação",
+      "nomeOrgao": "12ª Turma",
+      "texto": "<html>...</html>",
+      "numero_processo": "50440513720254047000",
+      "meio": "eletronico",
+      "link": "https://...",
+      "nomeClasse": "Apelação Cível",
+      "codigoClasse": "86",
+      "destinatarios": [...],
+      "destinatarioadvogados": [...]
+    }
+  ]
+}
+```
+
+### Lógica de janela de datas
+
+- **Primeiro sync**: `data_inicio = hoje - 3 dias`, `data_fim = hoje`
+- **Syncs seguintes**: `data_inicio = último completed_at`, `data_fim = agora`
+- **Dedup**: se já existe pedido `pending`/`processing` pra mesma OAB, não cria outro
