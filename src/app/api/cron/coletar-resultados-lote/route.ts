@@ -46,11 +46,16 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServiceClient();
 
+  // Filtra tenant ativo + liberado (Fase 1 da validação de OAB) — se o
+  // tenant deixou de estar liberado entre o envio e a coleta, o item fica
+  // parado em "enviado_batch" até ele voltar a ficar liberado.
   const { data: emAndamento } = await supabase
     .from("fila_processamento_lote")
-    .select("id, tenant_id, processo_id, campo, texto, contexto, created_at, batch_id_anthropic")
+    .select("id, tenant_id, processo_id, campo, texto, contexto, created_at, batch_id_anthropic, tenants!inner(is_active, access_status)")
     .eq("status", "enviado_batch")
     .not("batch_id_anthropic", "is", null)
+    .eq("tenants.is_active", true)
+    .eq("tenants.access_status", "liberado")
     .returns<Array<ItemFila & { batch_id_anthropic: string }>>();
 
   const itensPorId = new Map((emAndamento ?? []).map((item) => [item.id, item]));

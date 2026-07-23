@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireWritableAppUser as requireAppUser } from "@/lib/auth/guards";
+import { requireWritableTenantDataAccess as requireAppUser } from "@/lib/auth/tenant-access";
 import { createServiceClient } from "@/lib/supabase/service";
 import { sincronizarProcessoDataJud } from "@/lib/datajud/sincronizar-processo";
 

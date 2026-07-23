@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireWritableAppUser as requireAppUser } from "@/lib/auth/guards";
+import { requireWritableTenantDataAccess as requireAppUser } from "@/lib/auth/tenant-access";
 
 function applyDatePreservingTime(value: string, dateKey: string) {
   const next = new Date(value);

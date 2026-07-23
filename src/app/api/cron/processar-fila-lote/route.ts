@@ -21,10 +21,14 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServiceClient();
 
+  // Filtra tenant ativo + liberado (Fase 1 da validação de OAB) — antes
+  // disso essa rota processava item de qualquer tenant, ativo ou não.
   const { data: pendentes, error } = await supabase
     .from("fila_processamento_lote")
-    .select("*")
+    .select("id, texto, contexto, tenants!inner(is_active, access_status)")
     .eq("status", "pendente")
+    .eq("tenants.is_active", true)
+    .eq("tenants.access_status", "liberado")
     .limit(1000); // Batch API aceita até 10k requests por batch — 1000 é um lote conservador inicial
 
   if (error) {

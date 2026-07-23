@@ -1,8 +1,5 @@
-import { createClient } from "@/lib/supabase/server";
 import { requireAppUser } from "@/lib/auth/guards";
 import { OabsForm } from "./oabs-form";
-import { OabRow } from "./oab-row";
-import { OabHealthBadge } from "./oab-health-badge";
 import { cn } from "@/lib/utils";
 
 type OabRowData = {
@@ -11,11 +8,6 @@ type OabRowData = {
   oab_uf: string;
   is_primary: boolean;
   user_id: string | null;
-  validado_em?: string | null;
-  validado_nome?: string | null;
-  validado_situacao?: string | null;
-  validado_tipo?: string | null;
-  validado_match?: boolean | null;
 };
 
 export default async function OabsPage() {
@@ -27,44 +19,26 @@ export default async function OabsPage() {
   try {
     const { supabase, profile } = await requireAppUser();
 
-    // Carrega OABs com cache de validação
     const { data: oabsData, error: oabsErr } = await supabase
       .from("escritorio_oabs")
-      .select(
-        "id, oab_number, oab_uf, is_primary, user_id, validado_em, validado_nome, validado_situacao, validado_tipo, validado_match"
-      )
+      .select("id, oab_number, oab_uf, is_primary, user_id")
       .eq("tenant_id", profile.tenant_id)
       .order("is_primary", { ascending: false });
 
     if (oabsErr) {
-      // Fallback sem colunas de validação
-      if (
-        /validado_/i.test(oabsErr.message) ||
-        /column.*does not exist/i.test(oabsErr.message)
-      ) {
-        const { data: fallback } = await supabase
-          .from("escritorio_oabs")
-          .select("id, oab_number, oab_uf, is_primary, user_id")
-          .eq("tenant_id", profile.tenant_id)
-          .order("is_primary", { ascending: false });
-        oabs = (fallback ?? []) as OabRowData[];
-      } else {
-        // erro real — mostra mensagem
-        return (
-          <div className="space-y-4">
-            <h2 className="font-display text-xl font-semibold text-[var(--color-card-foreground)]">
-              OABs do escritório
-            </h2>
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-              <p className="font-semibold">Erro ao listar OABs</p>
-              <p className="mt-1 font-mono text-xs">{oabsErr.message}</p>
-            </div>
+      return (
+        <div className="space-y-4">
+          <h2 className="font-display text-xl font-semibold text-[var(--color-card-foreground)]">
+            OABs do escritório
+          </h2>
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            <p className="font-semibold">Erro ao listar OABs</p>
+            <p className="mt-1 font-mono text-xs">{oabsErr.message}</p>
           </div>
-        );
-      }
-    } else {
-      oabs = (oabsData ?? []) as OabRowData[];
+        </div>
+      );
     }
+    oabs = (oabsData ?? []) as OabRowData[];
 
     // Nome do escritório
     const { data: tenant } = await supabase
@@ -114,37 +88,16 @@ export default async function OabsPage() {
     );
   }
 
-  const migrationMissing =
-    oabs.length > 0 && oabs[0].validado_em === undefined;
-
   return (
     <div className="space-y-4">
       <div>
-        <div className="flex items-center justify-between">
-          <h2 className="font-display text-xl font-semibold text-[var(--color-card-foreground)]">
-            OABs do escritório
-          </h2>
-          <OabHealthBadge />
-        </div>
+        <h2 className="font-display text-xl font-semibold text-[var(--color-card-foreground)]">
+          OABs do escritório
+        </h2>
         <p className="text-sm text-[var(--color-muted-foreground)]">
-          Lista de inscrições (OAB) vinculadas a este escritório. Clique em{" "}
-          <strong>Validar</strong> para consultar a base oficial da OAB e
-          conferir a situação e o nome do advogado.
+          Lista de inscrições (OAB) vinculadas a este escritório.
         </p>
       </div>
-
-      {migrationMissing && (
-        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <p className="font-semibold">Migration pendente</p>
-          <p className="mt-1 text-xs">
-            Aplique no Supabase a migration{" "}
-            <code className="rounded bg-amber-100 px-1 py-0.5 font-mono text-[11px]">
-              20260721000002_oab_validation_columns.sql
-            </code>{" "}
-            para habilitar a validação contra a base oficial da OAB.
-          </p>
-        </div>
-      )}
 
       {oabs.length === 0 ? (
         <p className="rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-6 text-center text-sm text-[var(--color-muted-foreground)]">
@@ -158,7 +111,6 @@ export default async function OabsPage() {
                 <th className="px-4 py-3">OAB</th>
                 <th className="px-4 py-3">Vinculado a</th>
                 <th className="px-4 py-3">Tipo</th>
-                <th className="px-4 py-3">Validação OAB</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--tenant-line)]">
@@ -205,18 +157,6 @@ export default async function OabsPage() {
                       >
                         {isPessoal ? "Pessoal" : "Institucional"}
                       </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <OabRow
-                        oabId={oab.id}
-                        oabNumber={oab.oab_number}
-                        oabUf={oab.oab_uf}
-                        expectedName={vinculado}
-                        initialStatus={oab.validado_situacao ?? null}
-                        initialValidadoEm={oab.validado_em ?? null}
-                        initialValidadoNome={oab.validado_nome ?? null}
-                        initialValidadoMatch={oab.validado_match ?? null}
-                      />
                     </td>
                   </tr>
                 );

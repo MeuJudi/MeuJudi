@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireWritableAppUser as requireAppUser } from "@/lib/auth/guards";
+import { requireWritableTenantDataAccess as requireAppUser } from "@/lib/auth/tenant-access";
 
 const colors = ["#9a6a22", "#2563eb", "#7c3aed", "#0e7490", "#7a2e2e", "#4b6b4e"];
 

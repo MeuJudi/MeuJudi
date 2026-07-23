@@ -1,5 +1,5 @@
 import { MonitoramentoView, type KanbanColumn, type MonitorProcess } from "./monitoramento-view";
-import { requireAppUser } from "@/lib/auth/guards";
+import { requireTenantDataAccess as requireAppUser } from "@/lib/auth/tenant-access";
 import { unstable_noStore as noStore } from "next/cache";
 
 export const dynamic = "force-dynamic";

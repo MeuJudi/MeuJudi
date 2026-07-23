@@ -73,7 +73,8 @@ export async function POST(req: NextRequest) {
   const { data: tenants, error: tenantsError } = await supabase
     .from("tenants")
     .select("id, sync_config")
-    .eq("is_active", true);
+    .eq("is_active", true)
+    .eq("access_status", "liberado");
 
   if (tenantsError) {
     return NextResponse.json({ error: tenantsError.message }, { status: 500 });

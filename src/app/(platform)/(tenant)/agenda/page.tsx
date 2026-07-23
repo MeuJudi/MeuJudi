@@ -1,5 +1,5 @@
 import { AgendaCalendar, type AgendaItem } from "./agenda-calendar";
-import { requireAppUser } from "@/lib/auth/guards";
+import { requireTenantDataAccess as requireAppUser } from "@/lib/auth/tenant-access";
 
 export const dynamic = "force-dynamic";
 

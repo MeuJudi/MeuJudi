@@ -1,5 +1,5 @@
 import { ClientesView, type ClientColumn, type ClientItem } from "./clientes-view";
-import { requireAppUser } from "@/lib/auth/guards";
+import { requireTenantDataAccess as requireAppUser } from "@/lib/auth/tenant-access";
 
 export const dynamic = "force-dynamic";
 

@@ -22,9 +22,10 @@ export async function POST(req: NextRequest) {
   const mural = new MuralClient();
   const { data: oabs, error: oabsError } = await supabase
     .from("escritorio_oabs")
-    .select("tenant_id, oab_number, oab_uf, tenants!inner(is_active)")
+    .select("tenant_id, oab_number, oab_uf, tenants!inner(is_active, access_status)")
     .eq("is_active", true)
-    .eq("tenants.is_active", true);
+    .eq("tenants.is_active", true)
+    .eq("tenants.access_status", "liberado");
 
   if (oabsError) return NextResponse.json({ error: oabsError.message }, { status: 500 });
 
