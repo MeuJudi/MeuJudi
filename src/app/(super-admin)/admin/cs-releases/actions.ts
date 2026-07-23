@@ -94,7 +94,16 @@ async function getGithubInstallationToken() {
       },
     },
   );
-  if (!response.ok) throw new Error(`GitHub token: ${await response.text()}`);
+  if (!response.ok) {
+    const details = await response.text();
+    if (response.status === 404) {
+      throw new Error(
+        "GitHub App nao encontrado. Confira GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID e se o App foi instalado no repositorio MeuJudi/MeuJudi. Detalhes: " +
+          details,
+      );
+    }
+    throw new Error(`GitHub token: ${details}`);
+  }
   const body = (await response.json()) as { token: string };
   return { ...config, token: body.token };
 }
