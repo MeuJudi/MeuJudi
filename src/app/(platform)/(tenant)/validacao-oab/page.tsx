@@ -4,7 +4,6 @@ import { CheckCircle2, ShieldCheck } from "lucide-react";
 import { requireAppUser } from "@/lib/auth/guards";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 import { ValidacaoForm } from "./validacao-form";
 import { StatusCard } from "./status-card";
 
@@ -66,10 +65,12 @@ export default async function ValidacaoOabPage() {
     const verifiedAt = ultimaValidada?.verified_at ?? null;
     return (
       <div className="mx-auto max-w-xl space-y-4 py-12">
-        <Card className="border-green-200 bg-green-50">
+        {/* W2 — auditoria: card com animação de entrada (scale-in + fade-in)
+            e ícone com pulse sutil para reforçar visualmente o sucesso. */}
+        <Card className="animate-scale-in border-green-200 bg-green-50">
           <CardContent className="space-y-4 p-6">
             <div className="flex items-center gap-3">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-green-100 text-green-700">
+              <span className="inline-flex h-10 w-10 animate-pulse items-center justify-center rounded-full bg-green-100 text-green-700">
                 <ShieldCheck className="h-5 w-5" />
               </span>
               <div>
@@ -97,7 +98,7 @@ export default async function ValidacaoOabPage() {
               </p>
             ) : null}
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex animate-fade-in flex-wrap gap-2 [animation-delay:200ms]">
               <Button asChild>
                 <Link href="/monitoramento">
                   <CheckCircle2 className="mr-2 h-4 w-4" />

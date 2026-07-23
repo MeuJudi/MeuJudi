@@ -4,7 +4,7 @@
 // client-side já usado em process-details-modal.tsx (getMuralSyncRequest),
 // já que o projeto não usa Supabase Realtime em nenhum lugar.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -52,7 +52,9 @@ export function StatusCard({ validationId, initialStatus, initialLastError }: St
   const [lastError, setLastError] = useState(initialLastError);
   const [cancelando, setCancelando] = useState(false);
   const [erroCancelamento, setErroCancelamento] = useState<string | null>(null);
-  const terminal = ESTADOS_TERMINAIS.includes(status);
+  // W7 — auditoria: useMemo para evitar recálculo a cada render (o
+  // componente re-renderiza a cada 2s do polling).
+  const terminal = useMemo(() => ESTADOS_TERMINAIS.includes(status), [status]);
   const statusRef = useRef(status);
   statusRef.current = status;
 

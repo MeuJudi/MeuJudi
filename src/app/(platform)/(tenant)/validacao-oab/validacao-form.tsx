@@ -5,7 +5,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
 import { maskOab } from "@/lib/masks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,9 +23,28 @@ interface ValidacaoFormProps {
   defaultOabNumber: string;
   defaultOabUf: string;
   defaultRequesterName: string;
+  // S5: prop opcional com a última validação (positiva) do usuário.
+  // Quando presente, mostramos um aviso amigável no topo do form.
+  ultimaValidacao?: {
+    verifiedAt: string;
+    oabNumber: string;
+    oabUf: string;
+  } | null;
 }
 
-export function ValidacaoForm({ defaultOabNumber, defaultOabUf, defaultRequesterName }: ValidacaoFormProps) {
+function formatarDataCurta(iso: string): string {
+  const data = new Date(iso);
+  if (Number.isNaN(data.getTime())) return iso;
+  return data.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function ValidacaoForm({ defaultOabNumber, defaultOabUf, defaultRequesterName, ultimaValidacao }: ValidacaoFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +81,23 @@ export function ValidacaoForm({ defaultOabNumber, defaultOabUf, defaultRequester
           O e-mail informado precisa ser o e-mail profissional cadastrado na OAB — ele pode ser
           diferente do e-mail usado para entrar no MeuJudi.
         </p>
+
+        {ultimaValidacao ? (
+          // S5: mostra a última validação positiva. Reduz fricção e educa
+          // o usuário — se nada mudou, ele não precisa validar de novo.
+          <div className="mb-4 flex items-start gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-900">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="font-medium">
+                Última validação: {formatarDataCurta(ultimaValidacao.verifiedAt)} — OAB{" "}
+                {ultimaValidacao.oabNumber}/{ultimaValidacao.oabUf}
+              </p>
+              <p className="mt-0.5 text-green-800">
+                Se seus dados profissionais não mudaram, você não precisa validar de novo.
+              </p>
+            </div>
+          </div>
+        ) : null}
 
         {error ? (
           <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">

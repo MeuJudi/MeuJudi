@@ -83,6 +83,15 @@ export async function POST(request: NextRequest, context: { params: Promise<{ va
   if (nextStatus) update.status = nextStatus;
   if (body.external_request_id) update.external_request_id = body.external_request_id;
 
+  // W8 — auditoria: log explícito quando o evento foi aceito mas não
+  // muda o status. Acontece com `captcha_completed` e `code_pending` por
+  // design — eles só marcam a auditoria sem avançar o status. Sem o log
+  // é difícil entender por que o `oab_validations.status` não mudou
+  // quando o evento foi "aceito" (passou pelo ALLOWED_EVENTS).
+  if (!nextStatus) {
+    console.info(`[cs/oab-validations] Evento '${body.event_type}' registrado sem mudança de status (intermediário)`);
+  }
+
   if (body.event_type === "verified") {
     update.returned_name = body.result?.returned_name ?? null;
     update.returned_status = body.result?.returned_status ?? null;

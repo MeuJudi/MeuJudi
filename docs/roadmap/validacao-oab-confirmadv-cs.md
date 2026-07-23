@@ -547,6 +547,54 @@ Implementar o bloqueio para o responsavel profissional do escritorio, mantendo o
 
 Essa arquitetura permite evoluir para uma API oficial futuramente sem mudar o fluxo do usuario: basta trocar o adaptador do ConfirmADV, mantendo os mesmos estados, tabela, gate de acesso e telas.
 
+## Operacao
+
+S7 — auditoria: como o sistema funciona no dia a dia. Para suporte e
+debug, este e o guia de referencia.
+
+### Ciclo de vida do token do CS
+
+O token do CS e gerado quando o advogado pareia o MeuJudi CS com o escritorio via `/configuracoes/meujudi-cs`. Ele e:
+
+1. **Gerado** no pareamento (`POST /api/cs/pair`) — o Web gera um device_token e guarda o hash em `cs_devices.token_hash` (sha256 do token, nao o token em si).
+2. **Criptografado** localmente em `cs-pairing` (electron-store) usando a chave derivada de `node-machine-id` da maquina.
+3. **Enviado** em toda request do CS via `Authorization: Bearer <token>`.
+4. **Validado** no servidor por `autenticarDevice()` em `src/lib/cs/device-auth.ts` — busca pelo hash, checa `revoked_at is null`, atualiza `last_seen_at`.
+5. **Revogado** quando o advogado clica "Desconectar dispositivo" no Web — o Web atualiza `revoked_at = now()` na `cs_devices`.
+
+### Onde cada coisa vive
+
+| Componente | Arquivo | Responsabilidade |
+|------------|---------|------------------|
+| Tabela de validacoes | `supabase/migrations/20260723000010_oab_validations.sql` | Persistir estado da solicitacao + RLS |
+| Tabela de eventos | mesma migration | Auditoria tecnica (sem segredos) |
+| RPC transacional | `supabase/migrations/20260723000014_finalize_oab_validation_rpc.sql` | Atualizar users + tenants atomicamente |
+| Gate de acesso | `src/lib/auth/tenant-access.ts` | Bloquear dados externos ate liberacao |
+| API de claim | `src/app/api/cs/oab-validations/route.ts` | CS faz GET para pegar solicitacao pendente |
+| API de report | `src/app/api/cs/oab-validations/[validationId]/route.ts` | CS posta eventos de lifecycle |
+| Polling do CS | `MeuJudi-CS/src/main/confirmadv.ts` | A cada 15s, busca solicitacao pendente |
+| Janela do ConfirmADV | mesmo arquivo | BrowserWindow isolada com partition fixa |
+| Tela de validacao | `src/app/(platform)/(tenant)/validacao-oab/` | UI Web da Fase 2 + 4 + C3 |
+| Metricas admin | `src/app/(super-admin)/admin/oab-stats/` | Dashboard de saude do sistema |
+
+### Debug
+
+- **CS logs**: `%APPDATA%/meujudi-cs/logs/` — rotação diária, últimos 200 mantidos em memória.
+- **Lifecycle estruturado**: cada evento importante (cs_received, browser_opened, navigate_*, timeout, close) gera uma entrada em `diagnostic_events` no Supabase com `name='oab_validation_lifecycle'`. Use `select * from diagnostic_events where name = 'oab_validation_lifecycle' order by created_at desc limit 50` para reconstruir a sequência.
+- **Auditoria de validacoes**: `oab_validation_events` guarda todos os eventos reportados pelo CS.
+- **Status do tenant**: `select access_status from tenants where id = '<tenant_id>'` — deve ser `liberado` após sucesso.
+
+### Dispositivo perdido
+
+1. Acesse `/configuracoes/meujudi-cs` no Web (com outra sessão ou após recadastro)
+2. Clique em "Desconectar dispositivo" — o Web marca `cs_devices.revoked_at = now()`
+3. Próxima tentativa do CS perdido com o mesmo token retorna 401
+4. O advogado pareia novamente com um código novo
+
+### ConfirmADV indisponível
+
+O tenant continua bloqueado para dados externos (gate `requireTenantDataAccess` falha). O CS continua polling, mas as requests falham. Quando o ConfirmADV voltar, o ciclo normal continua.
+
 ## Referencias
 
 - [ConfirmADV](https://confirmadv.oab.org.br/)
