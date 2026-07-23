@@ -3,6 +3,7 @@ import type { MuralComunicacao } from "./client";
 import { converterValorMonetario, extrairAudienciaV2, extrairPrazoDias, extrairPrazoHoras, extrairValor } from "@/lib/regex/patterns";
 import { calcularPrazoFatal } from "@/lib/prazo/calcular-prazo-fatal";
 import { extrairCampo } from "@/lib/extracao/pipeline";
+import { detectarSinalFracoDeUrgencia } from "@/lib/extracao/detectar-sinal-urgencia";
 import { sugerirVinculoCliente, type PoloParte } from "@/lib/clientes/sugestao-vinculo";
 import { registrarAdvogadosDoMural } from "./advogados-diretorio";
 import { extrairMetadadosMural } from "./extrair-metadados";
@@ -81,10 +82,16 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
   const orgaoJulgador = com.nomeOrgao?.trim() || metadados.orgaoJulgador;
   const dataAudienciaIso = audiencia?.data_iso ?? null;
   if (!prazoDias && !dataAudienciaIso) {
+    // Sinal fraco de urgência evita que texto com chance real de ser urgente
+    // caia direto na fila de lote (achado 02 da auditoria de 23/07/2026).
     await extrairCampo(supabase, {
       tenantId, processoId, texto: com.texto, campo: "prazo", tribunal: com.siglaTribunal ?? "",
       contextoProcesso: { classe: com.nomeClasse ?? "", tribunal: com.siglaTribunal ?? "", tipo: com.tipoComunicacao ?? "" },
-      contextoUrgencia: { prazoDiasDetectado: null, dataAudienciaDetectada: null },
+      contextoUrgencia: {
+        prazoDiasDetectado: null,
+        dataAudienciaDetectada: null,
+        sinalFracoDeUrgencia: detectarSinalFracoDeUrgencia(com.texto, com.tipoComunicacao),
+      },
     });
   }
 

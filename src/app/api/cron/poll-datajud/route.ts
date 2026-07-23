@@ -10,8 +10,16 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { extrairTribunaisCandidatos } from "@/lib/datajud/tribunal-from-cnj";
 import { buscarProcessoEmTribunais, normalizarDataJudData } from "@/lib/datajud/client";
 import { extrairPrazoDias, extrairPrazoHoras } from "@/lib/regex/patterns";
-import { calcularPrazoFatal } from "@/lib/prazo/calcular-prazo-fatal";
+import { aplicarPrazoEncontrado } from "@/lib/prazo/aplicar-prazo";
 import { extrairCampo } from "@/lib/extracao/pipeline";
+import { detectarSinalFracoDeUrgencia } from "@/lib/extracao/detectar-sinal-urgencia";
+
+// Sem isso, a Vercel usa o timeout padrão (bem curto no plano Hobby) e mata a
+// função no meio do processamento — o cron-job.org marca como "falha
+// (timeout)" e nem chega a aparecer erro nenhum nos logs da Vercel, porque
+// não é um erro, é a função sendo cortada antes de terminar. 60s é o teto do
+// plano Hobby; se o MeuJudi migrar pra Pro, dá pra subir esse valor.
+export const maxDuration = 60;
 
 interface SyncConfig {
   horario_inicio: number;
@@ -165,21 +173,21 @@ export async function POST(req: NextRequest) {
               if (movementError && movementError.code !== "23505") throw movementError;
 
               if (prazoDias) {
-                const dataFatal = calcularPrazoFatal(new Date(dataMovimentoIso), prazoDias);
-                await supabase.from("processos").update({ prazo_proxima_resposta: dataFatal }).eq("id", processo.id);
-                await supabase.from("agenda_eventos").insert({
-                  tenant_id: tenant.id,
-                  processo_id: processo.id,
-                  tipo: "prazo",
-                  titulo: `Prazo: ${prazoDias} dias`,
-                  descricao: mov.nome,
-                  data_inicio: dataFatal,
+                await aplicarPrazoEncontrado(supabase, {
+                  tenantId: tenant.id,
+                  processoId: processo.id,
+                  prazoDias,
+                  dataReferencia: new Date(dataMovimentoIso),
                   fonte: "datajud",
-                  fonte_id: movInserida?.id ?? null,
+                  fonteId: movInserida?.id ?? null,
+                  descricao: mov.nome,
                 });
               } else if (movInserida) {
-                // Regex simples não achou prazo — motor completo decide (Camada 0-6);
-                // sem sinal de urgência conhecido aqui, cai pra fila de lote por padrão.
+                // Regex simples não achou prazo — motor completo decide (Camada 0-6).
+                // Sinal fraco de urgência (menção a prazo/audiência/intimação no
+                // texto, ou tipo de movimentação sensível) evita que texto com
+                // chance real de ser urgente caia na fila de lote (achado 02 da
+                // auditoria — antes disso, esse ponto sempre mandava pro lote).
                 await extrairCampo(supabase, {
                   tenantId: tenant.id,
                   processoId: processo.id,
@@ -187,7 +195,11 @@ export async function POST(req: NextRequest) {
                   campo: "prazo",
                   tribunal: tribunalUsado,
                   contextoProcesso: { classe: fresh.classe?.nome ?? "", tribunal: tribunalUsado, tipo: mov.nome },
-                  contextoUrgencia: { prazoDiasDetectado: null, dataAudienciaDetectada: null },
+                  contextoUrgencia: {
+                    prazoDiasDetectado: null,
+                    dataAudienciaDetectada: null,
+                    sinalFracoDeUrgencia: detectarSinalFracoDeUrgencia(textoCompleto, mov.nome),
+                  },
                 });
               }
             }

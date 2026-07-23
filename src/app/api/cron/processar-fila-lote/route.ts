@@ -9,6 +9,10 @@ import { PROMPTS } from "@/lib/ia/prompts";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
+// Sem isso a Vercel mata a função no timeout padrão (curto no Hobby) antes
+// de terminar — ver poll-datajud/route.ts.
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   const auth = req.headers.get("authorization");
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {

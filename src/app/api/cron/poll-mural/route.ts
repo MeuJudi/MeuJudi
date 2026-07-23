@@ -6,6 +6,10 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { MuralClient, type MuralComunicacao } from "@/lib/mural/client";
 import { processarComunicacao } from "@/lib/mural/processar-comunicacao";
 
+// Sem isso a Vercel mata a função no timeout padrão (curto no Hobby) antes
+// de terminar de varrer todas as OABs — ver poll-datajud/route.ts.
+export const maxDuration = 60;
+
 const JANELA_DIAS = 7;
 
 export async function POST(req: NextRequest) {

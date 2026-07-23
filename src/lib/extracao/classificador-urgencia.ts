@@ -6,6 +6,15 @@ export interface ContextoUrgencia {
   prazoDiasDetectado?: number | null;
   dataAudienciaDetectada?: string | null; // ISO
   prioridadeLegal?: string[] | null; // ex: ['Idoso', 'Idoso acima de 80 Anos']
+  /**
+   * Sinal fraco (regex permissivo/tipo de movimentação) de que o texto pode
+   * ser urgente, usado quando não foi possível detectar prazo/audiência
+   * estruturados ainda. Ver detectar-sinal-urgencia.ts — achado 02 da
+   * auditoria de 23/07/2026: sem isso, os pollers automáticos sempre
+   * classificavam como "lote" nesse ponto, mesmo quando o texto podia ser
+   * urgente de verdade.
+   */
+  sinalFracoDeUrgencia?: boolean | null;
 }
 
 export type ClassificacaoUrgencia = "tempo_real" | "lote";
@@ -41,6 +50,10 @@ export function classificarUrgencia(contexto: ContextoUrgencia): ResultadoClassi
     if (diasAteAudiencia <= LIMITE_AUDIENCIA_DIAS) {
       return { classificacao: "tempo_real", motivo: `audiencia_proxima: ${diasAteAudiencia} dias` };
     }
+  }
+
+  if (contexto.sinalFracoDeUrgencia) {
+    return { classificacao: "tempo_real", motivo: "sinal_fraco_de_urgencia_no_texto" };
   }
 
   return { classificacao: "lote", motivo: "sem_sinal_de_urgencia" };
