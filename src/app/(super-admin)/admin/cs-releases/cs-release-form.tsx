@@ -31,13 +31,15 @@ export function CsReleaseForm() {
           throw new Error("Nenhum arquivo selecionado.");
         }
 
-        const ticket = await createCsReleaseUploadTicket({
+        const ticketResult = await createCsReleaseUploadTicket({
           version: String(formData.get("version") ?? ""),
           fileName: file.name,
           fileSizeBytes: file.size,
           contentType: file.type || "application/octet-stream",
           changelog: String(formData.get("changelog") ?? "") || null,
         });
+        if (!ticketResult.ok) throw new Error(ticketResult.error);
+        const ticket = ticketResult.data;
 
         const supabase = createClient("admin");
         const { error: uploadError } = await supabase.storage
@@ -45,7 +47,8 @@ export function CsReleaseForm() {
           .uploadToSignedUrl(ticket.path, ticket.token, file);
         if (uploadError) throw uploadError;
 
-        await finalizeCsReleaseUpload(ticket);
+        const finalizeResult = await finalizeCsReleaseUpload(ticket);
+        if (!finalizeResult.ok) throw new Error(finalizeResult.error);
         setSuccess(true);
         form.reset();
         setFileName(null);

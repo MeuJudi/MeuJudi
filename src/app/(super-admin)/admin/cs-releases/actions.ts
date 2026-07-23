@@ -64,6 +64,9 @@ type CsReleaseUploadTicket = {
   version: string;
   changelog: string | null;
 };
+type CsReleaseActionResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string };
 
 /**
  * Prepara um upload direto para o Storage. O binário não passa pela Server
@@ -76,71 +79,89 @@ export async function createCsReleaseUploadTicket(input: {
   fileSizeBytes: number;
   contentType: string;
   changelog: string | null;
-}): Promise<CsReleaseUploadTicket> {
+}): Promise<CsReleaseActionResult<CsReleaseUploadTicket>> {
   await requireSuperAdmin();
-
-  const version = input.version.trim();
-  const fileName = input.fileName.trim();
-  if (!version) throw new Error("Versão é obrigatória.");
-  if (!fileName || input.fileSizeBytes <= 0) {
-    throw new Error("Nenhum arquivo selecionado.");
-  }
-  if (input.fileSizeBytes > 500 * 1024 * 1024) {
-    throw new Error("O arquivo não pode ultrapassar 500 MB.");
-  }
-
-  const fileExt = fileName.split(".").pop() ?? "exe";
-  const filePath = `releases/v${version}.${fileExt}`;
-  const service = createServiceClient();
-  let { data, error } = await service.storage
-    .from("cs-releases")
-    .createSignedUploadUrl(filePath);
-
-  if (error?.message?.includes("Bucket not found")) {
-    const { error: bucketError } = await service.storage.createBucket("cs-releases", {
-      public: true,
-      fileSizeLimit: 500 * 1024 * 1024,
-      allowedMimeTypes: [
-        "application/octet-stream",
-        "application/x-msdownload",
-        "application/x-executable",
-        "application/vnd.microsoft.portable-executable",
-      ],
-    });
-    if (bucketError && !bucketError.message?.toLowerCase().includes("already exists")) {
-      throw bucketError;
+  try {
+    const version = input.version.trim();
+    const fileName = input.fileName.trim();
+    if (!version) return { ok: false, error: "Versão é obrigatória." };
+    if (!fileName || input.fileSizeBytes <= 0) {
+      return { ok: false, error: "Nenhum arquivo selecionado." };
     }
-    ({ data, error } = await service.storage
+    if (input.fileSizeBytes > 500 * 1024 * 1024) {
+      return { ok: false, error: "O arquivo não pode ultrapassar 500 MB." };
+    }
+
+    const fileExt = fileName.split(".").pop() ?? "exe";
+    const filePath = `releases/v${version}.${fileExt}`;
+    const service = createServiceClient();
+    let { data, error } = await service.storage
       .from("cs-releases")
-      .createSignedUploadUrl(filePath));
+      .createSignedUploadUrl(filePath);
+
+    if (error?.message?.includes("Bucket not found")) {
+      const { error: bucketError } = await service.storage.createBucket("cs-releases", {
+        public: true,
+        fileSizeLimit: 500 * 1024 * 1024,
+        allowedMimeTypes: [
+          "application/octet-stream",
+          "application/x-msdownload",
+          "application/x-executable",
+          "application/vnd.microsoft.portable-executable",
+        ],
+      });
+      if (bucketError && !bucketError.message?.toLowerCase().includes("already exists")) {
+        return { ok: false, error: `Storage: ${bucketError.message}` };
+      }
+      ({ data, error } = await service.storage
+        .from("cs-releases")
+        .createSignedUploadUrl(filePath));
+    }
+
+    if (error || !data) {
+      const message = error?.message ?? "Não foi possível preparar o upload.";
+      console.error("[CS release] Falha ao criar upload assinado:", message);
+      return { ok: false, error: `Storage: ${message}` };
+    }
+
+    const { data: publicData } = service.storage.from("cs-releases").getPublicUrl(filePath);
+    return {
+      ok: true,
+      data: {
+        bucket: "cs-releases",
+        path: filePath,
+        token: data.token,
+        publicUrl: publicData.publicUrl,
+        fileName,
+        fileSizeBytes: input.fileSizeBytes,
+        version,
+        changelog: input.changelog?.trim() || null,
+      },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha desconhecida no Storage.";
+    console.error("[CS release] Falha inesperada ao preparar upload:", error);
+    return { ok: false, error: message };
   }
-
-  if (error || !data) throw error ?? new Error("Não foi possível preparar o upload.");
-
-  const { data: publicData } = service.storage.from("cs-releases").getPublicUrl(filePath);
-  return {
-    bucket: "cs-releases",
-    path: filePath,
-    token: data.token,
-    publicUrl: publicData.publicUrl,
-    fileName,
-    fileSizeBytes: input.fileSizeBytes,
-    version,
-    changelog: input.changelog?.trim() || null,
-  };
 }
 
 /** Registra no banco um arquivo que já foi enviado diretamente ao Storage. */
-export async function finalizeCsReleaseUpload(ticket: CsReleaseUploadTicket) {
+export async function finalizeCsReleaseUpload(
+  ticket: CsReleaseUploadTicket,
+): Promise<CsReleaseActionResult<null>> {
   const ctx = await requireSuperAdmin();
   const supabase = ctx.supabase;
   const profile = ctx.profile;
 
   // Desativa todas as versões anteriores
-  await supabase
+  const { error: deactivateError } = await supabase
     .from("cs_releases")
     .update({ is_active: false })
     .eq("is_active", true);
+  if (deactivateError) {
+    console.error("[CS release] Falha ao desativar versões anteriores:", deactivateError);
+    return { ok: false, error: `Banco: ${deactivateError.message}` };
+  }
 
   // Insere nova versão
   const { error: insertError } = await supabase.from("cs_releases").insert({
@@ -153,12 +174,15 @@ export async function finalizeCsReleaseUpload(ticket: CsReleaseUploadTicket) {
     is_active: true,
   });
 
-  if (insertError) throw insertError;
+  if (insertError) {
+    console.error("[CS release] Falha ao registrar versão:", insertError);
+    return { ok: false, error: `Banco: ${insertError.message}` };
+  }
 
   revalidatePath("/admin/cs-releases");
   revalidatePath("/configuracoes/meujudi-cs");
   revalidatePath("/cs");
-  return { success: true };
+  return { ok: true, data: null };
 }
 
 /**
