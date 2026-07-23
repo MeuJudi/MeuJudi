@@ -12,23 +12,42 @@ import {
 } from "./actions";
 
 type Props = {
-  nextVersion: string;
+  latestVersion: string | null;
   savedVersions: string[];
 };
 
-export function CsReleaseForm({ nextVersion, savedVersions }: Props) {
+type ReleaseKind = "patch" | "minor" | "major";
+
+function calculateVersion(latestVersion: string | null, kind: ReleaseKind): string {
+  if (!latestVersion) {
+    if (kind === "major") return "1.0.0";
+    if (kind === "minor") return "0.2.0";
+    return "0.1.0";
+  }
+  const parts = latestVersion.split(".").map(Number);
+  const major = parts[0] ?? 0;
+  const minor = parts[1] ?? 0;
+  const patch = parts[2] ?? 0;
+  if (kind === "major") return `${major + 1}.0.0`;
+  if (kind === "minor") return `${major}.${minor + 1}.0`;
+  return `${major}.${minor}.${patch + 1}`;
+}
+
+export function CsReleaseForm({ latestVersion, savedVersions }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [source, setSource] = useState<"local" | "git">("local");
+  const [releaseKind, setReleaseKind] = useState<ReleaseKind>("patch");
+  const [version, setVersion] = useState(() => calculateVersion(latestVersion, "patch"));
   const [trackedInstallers, setTrackedInstallers] = useState<TrackedCsInstaller[]>([]);
   const [selectedTracked, setSelectedTracked] = useState<TrackedCsInstaller | null>(null);
   const [trackedError, setTrackedError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const versionRef = useRef<HTMLInputElement>(null);
 
-  const selectedVersion = selectedTracked?.name.match(/Setup-v(.+)\.exe$/i)?.[1] ?? nextVersion;
+  const selectedVersion = selectedTracked?.name.match(/Setup-v(.+)\.exe$/i)?.[1] ?? version;
   const selectedVersionAlreadySaved = savedVersions.includes(selectedVersion);
 
   useEffect(() => {
@@ -124,7 +143,9 @@ export function CsReleaseForm({ nextVersion, savedVersions }: Props) {
               setError(null);
               if (option === "local") {
                 setSelectedTracked(null);
-                if (versionRef.current) versionRef.current.value = nextVersion;
+                const next = calculateVersion(latestVersion, releaseKind);
+                setVersion(next);
+                if (versionRef.current) versionRef.current.value = next;
               }
             }}
             className={`rounded-md border px-3 py-2 text-left text-xs ${source === option ? "border-primary bg-primary/10" : "border-[var(--tenant-line)]"}`}
@@ -138,8 +159,30 @@ export function CsReleaseForm({ nextVersion, savedVersions }: Props) {
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <label htmlFor="version" className="text-xs font-medium text-muted-foreground">Versao *</label>
-          <input ref={versionRef} defaultValue={nextVersion} id="version" name="version" type="text" required readOnly className="w-full rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-3 py-2 text-sm" />
-          <p className="text-[11px] text-muted-foreground">Proxima versao calculada automaticamente. Versoes ja salvas ficam bloqueadas.</p>
+          <input ref={versionRef} value={version} readOnly id="version" name="version" type="text" required className="w-full rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-3 py-2 text-sm" />
+          <p className="text-[11px] text-muted-foreground">A versao e calculada automaticamente e nao pode ser editada.</p>
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="release-kind" className="text-xs font-medium text-muted-foreground">Tipo da versao</label>
+          <select
+            id="release-kind"
+            value={releaseKind}
+            disabled={source === "git"}
+            onChange={(event) => {
+              const kind = event.target.value as ReleaseKind;
+              setReleaseKind(kind);
+              const next = calculateVersion(latestVersion, kind);
+              setVersion(next);
+              if (versionRef.current) versionRef.current.value = next;
+            }}
+            className="w-full rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-3 py-2 text-sm disabled:opacity-60"
+          >
+            <option value="patch">Correcao / ajuste pequeno</option>
+            <option value="minor">Nova funcionalidade</option>
+            <option value="major">Versao principal</option>
+          </select>
+          <p className="text-[11px] text-muted-foreground">{latestVersion ? `Ultima versao: v${latestVersion}` : "Primeira versao do CS"}</p>
         </div>
 
         <div className="space-y-1.5">
@@ -156,7 +199,10 @@ export function CsReleaseForm({ nextVersion, savedVersions }: Props) {
                 const selected = trackedInstallers.find((item) => item.name === event.target.value) ?? null;
                 setSelectedTracked(selected);
                 const version = selected?.name.match(/Setup-v(.+)\.exe$/i)?.[1];
-                if (versionRef.current && version) versionRef.current.value = version;
+                if (version) {
+                  setVersion(version);
+                  if (versionRef.current) versionRef.current.value = version;
+                }
               }}
               className="w-full rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-3 py-2 text-sm"
             >

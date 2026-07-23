@@ -21,15 +21,15 @@ function formatDate(iso: string): string {
   });
 }
 
-function getNextVersion(releases: CsRelease[]): string {
+function getLatestVersion(releases: CsRelease[]): string | null {
   const versions = releases
     .map((release) => release.version.match(/^(\d+)\.(\d+)\.(\d+)$/))
     .filter((match): match is RegExpMatchArray => Boolean(match))
     .map((match) => [Number(match[1]), Number(match[2]), Number(match[3])] as const)
     .sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
-  if (versions.length === 0) return "0.1.0";
+  if (versions.length === 0) return null;
   const [major, minor, patch] = versions[versions.length - 1];
-  return `${major}.${minor}.${patch + 1}`;
+  return `${major}.${minor}.${patch}`;
 }
 
 export default async function CsReleasesPage() {
@@ -85,7 +85,7 @@ export default async function CsReleasesPage() {
 
       {/* Formulário de upload */}
       <CsReleaseForm
-        nextVersion={getNextVersion(releases)}
+        latestVersion={getLatestVersion(releases)}
         savedVersions={releases.map((release) => release.version)}
       />
 
