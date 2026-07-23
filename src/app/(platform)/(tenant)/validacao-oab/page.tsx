@@ -1,11 +1,27 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { CheckCircle2, ShieldCheck } from "lucide-react";
 import { requireAppUser } from "@/lib/auth/guards";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { ValidacaoForm } from "./validacao-form";
 import { StatusCard } from "./status-card";
 
 const ESTADOS_ATIVOS = ["pendente", "aguardando_cs", "recaptcha_em_andamento", "aguardando_codigo", "validando"];
 const ESTADOS_TERMINAIS_NEGATIVOS = ["recusada", "expirada", "erro", "cancelada"];
+
+function formatarDataHora(iso: string): string {
+  const data = new Date(iso);
+  if (Number.isNaN(data.getTime())) return iso;
+  return data.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export default async function ValidacaoOabPage() {
   const { supabase, profile } = await requireAppUser();
@@ -18,7 +34,7 @@ export default async function ValidacaoOabPage() {
     supabase.from("tenants").select("access_status").eq("id", profile.tenant_id).maybeSingle(),
     supabase
       .from("oab_validations")
-      .select("id, status, last_error")
+      .select("id, status, last_error, verified_at, oab_number, oab_uf")
       .eq("user_id", profile.id)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -32,15 +48,71 @@ export default async function ValidacaoOabPage() {
 
   const tenantStatus = tenant?.access_status ?? "preparacao";
 
-  // Se já foi liberado (ex.: liberação aconteceu entre o redirect e o
-  // carregamento desta página), não deixa a pessoa presa aqui.
-  if (tenantStatus === "liberado") {
-    redirect("/monitoramento");
-  }
+  // C3 — auditoria: status "validada" não estava em nenhuma lista e caía
+  // no caso default, mostrando o formulário de novo. Agora tratamos
+  // explicitamente: se há solicitação validada OU o tenant está liberado
+  // (defesa contra C2, onde a RPC pode ter atualizado o user mas falhado
+  // no tenant), mostramos o card de sucesso em vez do formulário.
+  const ultimaValidada = ultimaSolicitacao?.status === "validada" ? ultimaSolicitacao : null;
+  const validadoPorCaminhoNormal = ultimaValidada !== null;
+  const validadoPorLiberacaoTenant = tenantStatus === "liberado";
+  const jaValidado = validadoPorCaminhoNormal || validadoPorLiberacaoTenant;
 
   const solicitacaoAtiva = ultimaSolicitacao && ESTADOS_ATIVOS.includes(ultimaSolicitacao.status) ? ultimaSolicitacao : null;
   const ultimaNegativa = ultimaSolicitacao && ESTADOS_TERMINAIS_NEGATIVOS.includes(ultimaSolicitacao.status) ? ultimaSolicitacao : null;
   const semCsPareado = !dispositivosAtivos;
+
+  if (jaValidado) {
+    const verifiedAt = ultimaValidada?.verified_at ?? null;
+    return (
+      <div className="mx-auto max-w-xl space-y-4 py-12">
+        <Card className="border-green-200 bg-green-50">
+          <CardContent className="space-y-4 p-6">
+            <div className="flex items-center gap-3">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-green-100 text-green-700">
+                <ShieldCheck className="h-5 w-5" />
+              </span>
+              <div>
+                <h1 className="font-display text-xl font-semibold text-green-900">
+                  Identidade profissional validada
+                </h1>
+                <p className="mt-0.5 text-sm text-green-800">
+                  {verifiedAt
+                    ? `Validação concluída em ${formatarDataHora(verifiedAt)}.`
+                    : "Validação concluída. O acesso ao MeuJudi está liberado."}
+                </p>
+              </div>
+            </div>
+
+            {ultimaValidada ? (
+              <p className="rounded-md border border-green-200 bg-white/60 px-3 py-2 text-xs text-green-800">
+                OAB {ultimaValidada.oab_number}/{ultimaValidada.oab_uf} confirmada pelo ConfirmADV.
+              </p>
+            ) : null}
+
+            {!validadoPorCaminhoNormal && validadoPorLiberacaoTenant ? (
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                Esta tela é uma proteção. O escritório foi liberado, mas não localizamos a
+                validação original. Se o problema persistir, abra um chamado.
+              </p>
+            ) : null}
+
+            <div className="flex flex-wrap gap-2">
+              <Button asChild>
+                <Link href="/monitoramento">
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  Ir para o painel
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/configuracoes/escritorio">Voltar para configurações</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-xl space-y-4 py-12">

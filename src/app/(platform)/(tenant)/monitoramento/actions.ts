@@ -344,6 +344,66 @@ export async function getTenantDataJudSyncJob(jobId?: string) {
   return { ok: true as const, job: data };
 }
 
+export type MuralSyncStatus = {
+  status: "idle" | "syncing" | "error" | "never";
+  lastSync?: { completedAt: string; recebidas: number; novas: number; erros: number };
+  processing?: { oabNumber: string; oabUf: string; startedAt: string };
+  errorMessage?: string;
+};
+
+export async function getMuralSyncStatus(): Promise<MuralSyncStatus> {
+  try {
+    const { supabase, profile } = await requireAppUser();
+    if (!profile.tenant_id) return { status: "never" };
+
+    // Checa se há algum pedido em processamento
+    const { data: processing } = await supabase
+      .from("cs_mural_requests")
+      .select("oab_number, oab_uf, claimed_at")
+      .eq("tenant_id", profile.tenant_id)
+      .eq("status", "processing")
+      .order("claimed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (processing) {
+      return {
+        status: "syncing",
+        processing: { oabNumber: processing.oab_number, oabUf: processing.oab_uf, startedAt: processing.claimed_at },
+      };
+    }
+
+    // Busca o último completado
+    const { data: last } = await supabase
+      .from("cs_mural_requests")
+      .select("status, result, error_message, completed_at, created_at")
+      .eq("tenant_id", profile.tenant_id)
+      .in("status", ["completed", "failed"])
+      .order("completed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!last) return { status: "never" };
+
+    if (last.status === "failed") {
+      return { status: "error", errorMessage: last.error_message || "Falha desconhecida" };
+    }
+
+    const result = last.result as { recebidas?: number; novas?: number; erros?: number } | null;
+    return {
+      status: "idle",
+      lastSync: {
+        completedAt: last.completed_at,
+        recebidas: result?.recebidas ?? 0,
+        novas: result?.novas ?? 0,
+        erros: result?.erros ?? 0,
+      },
+    };
+  } catch {
+    return { status: "never" };
+  }
+}
+
 export async function syncTenantDataJudNow() {
   try {
     const apiKey = process.env.DATAJUD_API_KEY;

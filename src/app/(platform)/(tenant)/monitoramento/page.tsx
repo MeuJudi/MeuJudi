@@ -204,7 +204,7 @@ export default async function MonitoramentoPage({
       .is("kanban_column_id", null);
   }
 
-  const [processRows, { data: movementRows }, { data: muralRows }, { count: unreadCount }, { count: urgentTodayCount }] = await Promise.all([
+  const [processRows, { data: movementRows }, { data: muralRows }, { count: unreadCount }, { count: urgentTodayCount }, { data: sourceValidation }] = await Promise.all([
     fetchAllProcessRows(supabase, tenantId),
     supabase
       .from("movimentacoes")
@@ -232,6 +232,16 @@ export default async function MonitoramentoPage({
       .eq("tenant_id", tenantId)
       .eq("status", "ativo")
       .eq("prazo_proxima_resposta", new Date().toISOString().split("T")[0]),
+    // Status da fonte: última validação positiva (Fase 4 da integração).
+    // Quando o gate liberou o tenant, é esse registro que justifica a liberação.
+    supabase
+      .from("oab_validations")
+      .select("id, oab_number, oab_uf, verified_at, returned_name")
+      .eq("tenant_id", tenantId)
+      .eq("status", "validada")
+      .order("verified_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   const today = new Date();
@@ -332,6 +342,16 @@ export default async function MonitoramentoPage({
       error={params.error ? decodeURIComponent(params.error) : undefined}
       scope={scope}
       userId={profile.id}
+      sourceValidation={
+        sourceValidation
+          ? {
+              oabNumber: sourceValidation.oab_number as string,
+              oabUf: sourceValidation.oab_uf as string,
+              verifiedAt: sourceValidation.verified_at as string,
+              returnedName: (sourceValidation.returned_name as string | null) ?? null,
+            }
+          : null
+      }
     />
   );
 }

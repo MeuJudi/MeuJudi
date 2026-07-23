@@ -8,8 +8,8 @@ import { createServiceClient } from "@/lib/supabase/service";
 
 export const maxDuration = 60;
 
-/** Janela padrão: últimos 3 dias (se nunca sincronizou) */
-const JANELA_PADRAO_DIAS = 3;
+/** Janela padrão: últimos 30 dias (se nunca sincronizou) */
+const JANELA_PADRAO_DIAS = 30;
 
 export async function POST(req: NextRequest) {
   const auth = req.headers.get("authorization");

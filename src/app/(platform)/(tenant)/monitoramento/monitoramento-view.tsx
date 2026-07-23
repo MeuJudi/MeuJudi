@@ -57,6 +57,8 @@ import {
   reorderKanbanColumns,
   getTenantDataJudSyncJob,
   startTenantDataJudSyncJob,
+  getMuralSyncStatus,
+  type MuralSyncStatus,
 } from "./actions";
 import { cn } from "@/lib/utils";
 
@@ -118,6 +120,12 @@ type MonitoramentoViewProps = {
   error?: string;
   scope?: string;
   userId?: string;
+  sourceValidation?: {
+    oabNumber: string;
+    oabUf: string;
+    verifiedAt: string;
+    returnedName: string | null;
+  } | null;
 };
 
 const statusClass: Record<MonitorProcess["status"], string> = {
@@ -154,6 +162,18 @@ function dateKey(date: Date) {
 
 function formatTime(value: string) {
   return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
+
+function timeAgo(dateStr: string) {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diffMin = Math.floor((now - then) / 60_000);
+  if (diffMin < 1) return "agora mesmo";
+  if (diffMin < 60) return `há ${diffMin}min`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `há ${diffH}h`;
+  const diffD = Math.floor(diffH / 24);
+  return `há ${diffD}d`;
 }
 
 function TodayAgendaPanel({
@@ -550,6 +570,7 @@ export function MonitoramentoView({
   error,
   scope,
   userId,
+  sourceValidation,
 }: MonitoramentoViewProps) {
   const [view, setView] = useState<"lista" | "kanban" | "mural">("lista");
   const [query, setQuery] = useState("");
@@ -565,6 +586,7 @@ export function MonitoramentoView({
   const [newColumnName, setNewColumnName] = useState("");
   const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [muralStatus, setMuralStatus] = useState<MuralSyncStatus>({ status: "never" });
   const [isPending, startTransition] = useTransition();
   const boardScrollRef = useRef<HTMLDivElement | null>(null);
   const panStateRef = useRef<{ pointerId: number; startX: number; startScrollLeft: number; active: boolean } | null>(null);
@@ -632,6 +654,24 @@ export function MonitoramentoView({
     }).catch(() => undefined);
     return () => { active = false; };
   }, []);
+
+  // Poll do status do Mural a cada 30s
+  useEffect(() => {
+    if (!tenantId) return;
+    let active = true;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    async function fetchStatus() {
+      try {
+        const status = await getMuralSyncStatus();
+        if (active) setMuralStatus(status);
+      } catch { /* ignore */ }
+    }
+
+    fetchStatus();
+    timer = setInterval(fetchStatus, 30_000);
+    return () => { active = false; if (timer) clearInterval(timer); };
+  }, [tenantId]);
 
   function toggleMetricFilter(filter: "active" | "unread" | "upcomingDeadlines" | "urgentToday" | "closed") {
     setActiveMetricFilters((current) => {
@@ -838,9 +878,20 @@ export function MonitoramentoView({
             Atualizacoes dos tribunais, movimentacoes novas, prazos e comunicacoes publicas vinculadas ao escritorio.
           </p>
         </div>
-        <Badge className="rounded-full bg-[color-mix(in_srgb,var(--tenant-moss)_14%,transparent)] text-[var(--tenant-moss)]">
-          {metrics.active} processos ativos
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          {sourceValidation ? (
+            <Badge
+              className="rounded-full bg-[color-mix(in_srgb,var(--tenant-moss)_14%,transparent)] text-[var(--tenant-moss)]"
+              title={`Validado pelo ConfirmADV em ${new Date(sourceValidation.verifiedAt).toLocaleString("pt-BR")}`}
+            >
+              <CheckCircle2 className="mr-1 inline h-3 w-3" />
+              OAB {sourceValidation.oabNumber}/{sourceValidation.oabUf} validada
+            </Badge>
+          ) : null}
+          <Badge className="rounded-full bg-[color-mix(in_srgb,var(--tenant-moss)_14%,transparent)] text-[var(--tenant-moss)]">
+            {metrics.active} processos ativos
+          </Badge>
+        </div>
       </header>
 
       {error ? (
@@ -873,6 +924,39 @@ export function MonitoramentoView({
           );
         })}
       </section>
+
+      {/* Indicador discreto do sync automático do Mural */}
+      {muralStatus.status !== "never" && (
+        <div className={cn(
+          "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-colors",
+          muralStatus.status === "syncing" && "border-[var(--tenant-brass)] bg-[color-mix(in_srgb,var(--tenant-brass)_8%,var(--tenant-surface))] text-[var(--tenant-brass)]",
+          muralStatus.status === "idle" && "border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--color-muted-foreground)]",
+          muralStatus.status === "error" && "border-[var(--tenant-wine)] bg-[color-mix(in_srgb,var(--tenant-wine)_8%,var(--tenant-surface))] text-[var(--tenant-wine)]",
+        )}>
+          {muralStatus.status === "syncing" && (
+            <>
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              <span>Mural sincronizando... OAB {muralStatus.processing?.oabNumber}/{muralStatus.processing?.oabUf}</span>
+            </>
+          )}
+          {muralStatus.status === "idle" && muralStatus.lastSync && (
+            <>
+              <CheckCircle2 className="h-3.5 w-3.5 text-[var(--tenant-moss)]" />
+              <span>
+                Mural: {muralStatus.lastSync.recebidas} recebidas, {muralStatus.lastSync.novas} novas
+                {" — "}
+                {timeAgo(muralStatus.lastSync.completedAt)}
+              </span>
+            </>
+          )}
+          {muralStatus.status === "error" && (
+            <>
+              <AlertTriangle className="h-3.5 w-3.5" />
+              <span>Mural: falha na sincronização</span>
+            </>
+          )}
+        </div>
+      )}
 
       <Card className="border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
         <CardContent className="space-y-4 p-4">

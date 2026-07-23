@@ -17,7 +17,7 @@
     "start": "electron .",
     "lint": "eslint --ext .ts,.tsx src/",
     "typecheck": "tsc --noEmit -p tsconfig.main.json && tsc --noEmit -p src/renderer/tsconfig.json",
-    "test": "node tests/validate-pre-build.js",
+    "test": "node tests/validate-pre-build.js && node tests/confirmadv-helpers.test.js",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win",
     "pack": "npm run build && electron-builder --dir"

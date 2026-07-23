@@ -17,6 +17,21 @@ const STATUS_ATIVOS = [
   "validando",
 ] as const;
 
+const STATUS_TERMINAIS_NEGATIVOS = [
+  "recusada",
+  "expirada",
+  "erro",
+  "cancelada",
+] as const;
+
+// W1 — auditoria: rate limit por usuário. Após MAX_TENTATIVAS_RECENTES
+// tentativas em JANELA_MINUTOS, bloqueia novas solicitações por
+// COOLDOWN_MINUTOS minutos. Isso protege contra advogados em loop
+// fechando a janela sem parar (cada fechamento vira uma nova tentativa).
+const MAX_TENTATIVAS_RECENTES = 5;
+const JANELA_MINUTOS = 60;
+const COOLDOWN_MINUTOS = 30;
+
 export async function criarOuRetomarSolicitacaoValidacao(formData: FormData) {
   const { supabase, profile } = await requireWritableAppUser();
   if (!profile.tenant_id) throw new Error("Usuário sem escritório vinculado.");
@@ -31,6 +46,7 @@ export async function criarOuRetomarSolicitacaoValidacao(formData: FormData) {
   if (!professionalEmail.includes("@")) throw new Error("Informe o e-mail profissional cadastrado na OAB.");
   if (!requesterName) throw new Error("Informe o nome do solicitante.");
 
+  // Já existe ativa? Retorna ela sem criar nova.
   const { data: existente } = await supabase
     .from("oab_validations")
     .select("id, status")
@@ -44,6 +60,47 @@ export async function criarOuRetomarSolicitacaoValidacao(formData: FormData) {
     return { id: existente.id as string, status: existente.status as string };
   }
 
+  // W1: rate limit — conta quantas tentativas em estado terminal
+  // negativo esse usuário teve na última hora. Se excedeu o limite,
+  // bloqueia por cooldown.
+  const janelaInicio = new Date(Date.now() - JANELA_MINUTOS * 60 * 1000).toISOString();
+  const { count: tentativasRecentes, error: countError } = await supabase
+    .from("oab_validations")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", profile.id)
+    .in("status", STATUS_TERMINAIS_NEGATIVOS)
+    .gte("created_at", janelaInicio);
+
+  if (countError) {
+    // Se a contagem falhar (RLS, etc.), segue em frente — o índice
+    // partial unique já impede duplicatas ativas.
+    console.warn("[validacao-oab] Nao foi possivel contar tentativas recentes:", countError.message);
+  } else if ((tentativasRecentes ?? 0) >= MAX_TENTATIVAS_RECENTES) {
+    // Calcula quando o usuário pode tentar de novo (= criação da
+    // tentativa mais recente + cooldown).
+    const { data: ultimaNegativa } = await supabase
+      .from("oab_validations")
+      .select("created_at")
+      .eq("user_id", profile.id)
+      .in("status", STATUS_TERMINAIS_NEGATIVOS)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const tentaEm = ultimaNegativa
+      ? new Date(new Date(ultimaNegativa.created_at).getTime() + COOLDOWN_MINUTOS * 60 * 1000)
+      : new Date(Date.now() + COOLDOWN_MINUTOS * 60 * 1000);
+    const minutosRestantes = Math.max(1, Math.ceil((tentaEm.getTime() - Date.now()) / 60_000));
+
+    throw new Error(
+      `Muitas tentativas recentes. Aguarde ${minutosRestantes} minuto(s) antes de tentar de novo.`,
+    );
+  }
+
+  // Cria a nova solicitação com attempt_count = (recentes + 1).
+  // Assim o campo `attempt_count` deixa de ser decorativo e mostra
+  // a posição desta tentativa na sequência recente.
+  const attemptCount = (tentativasRecentes ?? 0) + 1;
   const { data: criada, error } = await supabase
     .from("oab_validations")
     .insert({
@@ -54,6 +111,7 @@ export async function criarOuRetomarSolicitacaoValidacao(formData: FormData) {
       professional_email: professionalEmail,
       requester_name: requesterName,
       status: "pendente",
+      attempt_count: attemptCount,
     })
     .select("id, status")
     .single();
@@ -61,7 +119,7 @@ export async function criarOuRetomarSolicitacaoValidacao(formData: FormData) {
   if (error || !criada) throw new Error(`Não foi possível criar a solicitação: ${error?.message ?? "erro desconhecido"}`);
 
   revalidatePath("/validacao-oab");
-  return { id: criada.id as string, status: criada.status as string };
+  return { id: criada.id as string, status: criada.status as string, attemptCount };
 }
 
 export async function cancelarSolicitacaoValidacao(validationId: string) {
