@@ -28,10 +28,11 @@ dev-local.cmd
 *.exe
 *.msi
 
-# MeuJudi CS source stays local. Only versioned installer releases are tracked.
-/meujudi-cs/*
-!/meujudi-cs/
-!/meujudi-cs/release/
+# MeuJudi CS installer releases are tracked; source code is tracked too.
+# Older rule (`/meujudi-cs/*`) used to exclude the source, but it caused
+# work to disappear from version control. Removed in favor of explicit
+# ignores inside the CS folder (node_modules, dist, etc.) via the local
+# .gitignore in MeuJudi-CS/.
 !/meujudi-cs/release/MeuJudi-CS-Setup-v*.exe
 
 # Root loose assets copied into public/
