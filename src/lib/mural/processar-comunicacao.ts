@@ -18,14 +18,14 @@ function poloParaPt(polo: string): PoloParte | null {
 export async function processarComunicacao(supabase: SupabaseClient, tenantId: string, com: MuralComunicacao): Promise<boolean> {
   const { data: existente } = await supabase
     .from("comunicacoes_mural")
-    .select("id, processo_id, texto, valor_causa_extraido")
+    .select("id, processo_id, texto, valor_causa_extraido, data_audiencia, prazo_dias, data_prazo_fatal")
     .eq("tenant_id", tenantId)
     .eq("mural_id", com.id)
     .maybeSingle();
   if (existente) {
-    // Reprocessa somente o campo determinístico que pode ter sido perdido em
-    // importações antigas. Não reabre a comunicação nem sobrescreve valores
-    // já confirmados no processo.
+    // Reprocessa campos determinísticos que podem ter sido perdidos em
+    // importações antigas (ex: regexes que não limpavam HTML). Não reabre
+    // a comunicação nem sobrescreve valores já confirmados no processo.
     const valorCausa = converterValorMonetario(extrairValor(existente.texto));
     const metadados = extrairMetadadosMural(existente.texto);
     if (valorCausa != null && existente.processo_id) {
@@ -44,6 +44,49 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
       await supabase.from("comunicacoes_mural").update({
         ...(metadados.magistradoNome ? { magistrado_nome: metadados.magistradoNome, magistrado_tipo: metadados.magistradoTipo } : {}),
       }).eq("id", existente.id).eq("tenant_id", tenantId);
+    }
+    // Re-extrai audiência/prazo se os campos estiverem vazios — corrige
+    // importações antigas onde regexes não limpavam HTML do Mural.
+    if (existente.processo_id) {
+      const precisaReextrair = !existente.data_audiencia && !existente.prazo_dias;
+      if (precisaReextrair) {
+        const novaAudiencia = extrairAudienciaV2(existente.texto);
+        const novoPrazoDias = extrairPrazoDias(existente.texto);
+        const novoPrazoHoras = extrairPrazoHoras(existente.texto);
+        const dataAudienciaIso = novaAudiencia?.data_iso ?? null;
+        const dataFatal = novoPrazoDias ? calcularPrazoFatal(new Date(com.data_disponibilizacao), novoPrazoDias) : null;
+
+        if (dataAudienciaIso || novoPrazoDias) {
+          const updateCom: Record<string, unknown> = {};
+          if (dataAudienciaIso) updateCom.data_audiencia = dataAudienciaIso;
+          if (novoPrazoDias) { updateCom.prazo_dias = novoPrazoDias; updateCom.prazo_horas = novoPrazoHoras; }
+          if (dataFatal) updateCom.data_prazo_fatal = dataFatal;
+          await supabase.from("comunicacoes_mural").update(updateCom).eq("id", existente.id).eq("tenant_id", tenantId);
+
+          const updateProc: Record<string, unknown> = {};
+          if (dataAudienciaIso) updateProc.proxima_audiencia = dataAudienciaIso;
+          if (dataFatal) updateProc.prazo_proxima_resposta = dataFatal;
+          await supabase.from("processos").update(updateProc).eq("id", existente.processo_id).eq("tenant_id", tenantId);
+
+          if (dataAudienciaIso) {
+            await aplicarAudienciaEncontrada(supabase, {
+              tenantId, processoId: existente.processo_id, dataAudienciaIso,
+              fonte: "mural", fonteId: String(com.id),
+              titulo: `${com.tipoComunicacao} - ${com.siglaTribunal}`, descricao: com.nomeOrgao,
+              extracaoOrigem: "regex_reprocessada", extracaoConfianca: "alta", textoOrigem: com.texto,
+            });
+          }
+          if (novoPrazoDias) {
+            await aplicarPrazoEncontrado(supabase, {
+              tenantId, processoId: existente.processo_id, prazoDias: novoPrazoDias,
+              dataReferencia: new Date(com.data_disponibilizacao),
+              fonte: "mural", fonteId: String(com.id), descricao: com.tipoComunicacao,
+              extracaoOrigem: "regex_reprocessada", extracaoConfianca: "alta", textoOrigem: com.texto,
+            });
+          }
+          console.log(`[mural] re-extração ${com.id}: audi=${dataAudienciaIso ?? "-"} prazo=${novoPrazoDias ?? "-"}`);
+        }
+      }
     }
     return false;
   }
