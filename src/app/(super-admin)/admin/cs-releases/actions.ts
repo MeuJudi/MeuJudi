@@ -108,7 +108,7 @@ export async function createCsReleaseUploadTicket(input: {
     if (bucketIsMissing) {
       const { error: bucketError } = await service.storage.createBucket("cs-releases", {
         public: true,
-        fileSizeLimit: 500 * 1024 * 1024,
+        fileSizeLimit: "500MB",
         allowedMimeTypes: [
           "application/octet-stream",
           "application/x-msdownload",
@@ -122,6 +122,26 @@ export async function createCsReleaseUploadTicket(input: {
       ({ data, error } = await service.storage
         .from("cs-releases")
         .createSignedUploadUrl(filePath));
+    }
+
+    // O bucket pode ter sido criado anteriormente com o limite padrão de 50 MB.
+    // Atualizamos antes do upload; o limite global do plano ainda prevalece.
+    const { error: limitError } = await service.storage.updateBucket("cs-releases", {
+      public: true,
+      fileSizeLimit: "500MB",
+      allowedMimeTypes: [
+        "application/octet-stream",
+        "application/x-msdownload",
+        "application/x-executable",
+        "application/vnd.microsoft.portable-executable",
+      ],
+    });
+    if (limitError) {
+      console.error("[CS release] Limite do bucket não pode ser atualizado:", limitError);
+      return {
+        ok: false,
+        error: `Storage: ${limitError.message}. Verifique o limite global do Storage e o plano do Supabase.`,
+      };
     }
 
     if (error || !data) {
