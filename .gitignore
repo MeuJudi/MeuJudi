@@ -28,19 +28,8 @@ dev-local.cmd
 *.exe
 *.msi
 
-# MeuJudi CS source is versioned; local dependencies, builds and secrets are not.
-!meujudi-cs/
-!meujudi-cs/**/
-!meujudi-cs/**/*
-meujudi-cs/.env
-meujudi-cs/.env.*
-meujudi-cs/node_modules/
-meujudi-cs/.next/
-meujudi-cs/dist/
-meujudi-cs/release/
-meujudi-cs/**/*.tsbuildinfo
-meujudi-cs/**/*.exe
-meujudi-cs/**/*.msi
+# MeuJudi CS is maintained locally and published as GitHub Releases.
+/meujudi-cs/
 
 # Root loose assets copied into public/
 MeuJudi Icon.png
