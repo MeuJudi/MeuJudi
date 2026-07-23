@@ -1,7 +1,8 @@
 # GitHub Releases do MeuJudi CS
 
-O instalador nao fica no historico do Git. Ele e publicado como asset de uma
-GitHub Release no repositorio `MeuJudi/MeuJudi`.
+O codigo-fonte do CS nao fica no Git. Os instaladores versionados ficam em
+`meujudi-cs/release/` e tambem podem ser publicados como assets de GitHub
+Release no repositorio `MeuJudi/MeuJudi`.
 
 ## Configuracao unica
 

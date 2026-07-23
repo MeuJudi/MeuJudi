@@ -34,6 +34,12 @@ type GithubUploadTicket = {
   changelog: string | null;
 };
 
+export type TrackedCsInstaller = {
+  name: string;
+  size: number;
+  downloadUrl: string;
+};
+
 export async function getActiveCsRelease(): Promise<CsRelease | null> {
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -108,6 +114,48 @@ async function getGithubInstallationToken() {
   return { ...config, token: body.token };
 }
 
+export async function listTrackedCsInstallers(): Promise<ActionResult<TrackedCsInstaller[]>> {
+  await requireSuperAdmin();
+  try {
+    const github = await getGithubInstallationToken();
+    const response = await fetch(
+      `https://api.github.com/repos/${github.owner}/${github.repo}/contents/meujudi-cs/release?ref=main`,
+      {
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${github.token}`,
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+      },
+    );
+    if (!response.ok) {
+      const details = await response.text();
+      if (response.status === 403) {
+        throw new Error(
+          "O GitHub App precisa da permissao Contents: Read and write no repositorio MeuJudi/MeuJudi. Detalhes: " +
+            details,
+        );
+      }
+      throw new Error(`GitHub arquivos versionados: ${details}`);
+    }
+    const entries = (await response.json()) as Array<{
+      type: string;
+      name: string;
+      size: number;
+      download_url: string | null;
+    }>;
+    return {
+      ok: true,
+      data: entries
+        .filter((entry) => entry.type === "file" && /^MeuJudi-CS-Setup-v.+\.exe$/i.test(entry.name) && entry.download_url)
+        .map((entry) => ({ name: entry.name, size: entry.size, downloadUrl: entry.download_url as string })),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha ao listar arquivos do GitHub.";
+    return { ok: false, error: message };
+  }
+}
+
 /** Cria a release e devolve um token temporario para o upload direto do navegador. */
 export async function createGithubReleaseUploadTicket(input: {
   version: string;
@@ -150,7 +198,16 @@ export async function createGithubReleaseUploadTicket(input: {
         }),
       },
     );
-    if (!response.ok) throw new Error(`GitHub release: ${await response.text()}`);
+    if (!response.ok) {
+      const details = await response.text();
+      if (response.status === 403) {
+        throw new Error(
+          "O GitHub App nao tem permissao Contents: Read and write para criar releases em MeuJudi/MeuJudi. Atualize a permissao do App e reinstale-o no repositorio. Detalhes: " +
+            details,
+        );
+      }
+      throw new Error(`GitHub release: ${details}`);
+    }
     const release = (await response.json()) as { id: number; upload_url: string };
     const uploadUrl = `${release.upload_url.replace("{?name,label}", "")}?name=${encodeURIComponent(assetName)}`;
     return {
