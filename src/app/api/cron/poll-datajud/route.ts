@@ -56,6 +56,19 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServiceClient();
   const horaAtual = horaAtualBrasilia();
+  const inicioExecucao = Date.now();
+
+  // Cada execução processa só um lote pequeno por tenant, começando pelos
+  // processos há mais tempo sem sincronizar (fila giratória) — em vez de
+  // tentar dar conta de todos de uma vez e estourar o tempo da função
+  // (era o motivo do "falha timeout" no cron-job.org: a Vercel matava a
+  // função no meio do processamento). Com isso, o cron precisa rodar mais
+  // vezes por hora pra cobrir todo mundo — ajustar a frequência no
+  // cron-job.org de acordo com o volume real de processos.
+  const LIMITE_PROCESSOS_POR_TENANT = 15;
+  // Margem de segurança abaixo do maxDuration=60s — corta ANTES da Vercel
+  // matar a função no meio de um tenant, pra sempre terminar com log limpo.
+  const ORCAMENTO_TEMPO_MS = 45_000;
 
   const { data: tenants, error: tenantsError } = await supabase
     .from("tenants")
@@ -68,15 +81,22 @@ export async function POST(req: NextRequest) {
 
   const tenantsDaVez = (tenants ?? []).filter((t) => deveRodarAgora(t.sync_config as SyncConfig, horaAtual));
 
-  const resultado = { tenants_processados: 0, processos_atualizados: 0, sem_mudanca: 0, erros: 0 };
+  const resultado = { tenants_processados: 0, processos_atualizados: 0, sem_mudanca: 0, erros: 0, parou_por_orcamento_de_tempo: false, duracao_ms: 0 };
 
   for (const tenant of tenantsDaVez) {
+    if (Date.now() - inicioExecucao > ORCAMENTO_TEMPO_MS) {
+      resultado.parou_por_orcamento_de_tempo = true;
+      break;
+    }
+
     const { data: processos, error: processosError } = await supabase
       .from("processos")
       .select("id, cnj, data_ultima_movimentacao")
       .eq("tenant_id", tenant.id)
       .eq("status", "ativo")
-      .eq("nivel_sigilo", 0);
+      .eq("nivel_sigilo", 0)
+      .order("ultima_sync_datajud", { ascending: true, nullsFirst: true })
+      .limit(LIMITE_PROCESSOS_POR_TENANT);
 
     if (processosError || !processos) {
       resultado.erros++;
@@ -219,6 +239,8 @@ export async function POST(req: NextRequest) {
 
     resultado.tenants_processados++;
   }
+
+  resultado.duracao_ms = Date.now() - inicioExecucao;
 
   await supabase.from("motor_extracao_log").insert({
     tipo: "poll_datajud_finalizado",
