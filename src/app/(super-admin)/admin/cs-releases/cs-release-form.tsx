@@ -7,6 +7,7 @@ import {
   createGithubReleaseUploadTicket,
   finalizeGithubReleaseUpload,
   listTrackedCsInstallers,
+  publishTrackedCsInstaller,
   type TrackedCsInstaller,
 } from "./actions";
 
@@ -47,10 +48,19 @@ export function CsReleaseForm() {
         let file = formData.get("file");
         if (source === "git") {
           if (!selectedTracked) throw new Error("Selecione um instalador versionado no Git.");
-          const response = await fetch(selectedTracked.downloadUrl);
-          if (!response.ok) throw new Error(`GitHub arquivo versionado: HTTP ${response.status}`);
-          const blob = await response.blob();
-          file = new File([blob], selectedTracked.name, { type: "application/octet-stream" });
+          const publishResult = await publishTrackedCsInstaller({
+            version: String(formData.get("version") ?? ""),
+            fileName: selectedTracked.name,
+            fileSizeBytes: selectedTracked.size,
+            downloadUrl: selectedTracked.downloadUrl,
+            changelog: String(formData.get("changelog") ?? "") || null,
+          });
+          if (!publishResult.ok) throw new Error(publishResult.error);
+          setSuccess(true);
+          form.reset();
+          setSelectedTracked(null);
+          setTimeout(() => setSuccess(false), 3000);
+          return;
         }
         if (!(file instanceof File) || file.size === 0) throw new Error("Nenhum arquivo selecionado.");
 
@@ -152,7 +162,7 @@ export function CsReleaseForm() {
       {success && <p className="text-xs text-green-600">Versao publicada com sucesso!</p>}
       <Button type="submit" disabled={isPending} size="sm">
         {isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Upload className="mr-1.5 h-3.5 w-3.5" />}
-        Publicar versao
+        {source === "git" ? "Liberar versao para download" : "Publicar nova release"}
       </Button>
     </form>
   );

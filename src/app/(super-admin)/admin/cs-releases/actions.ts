@@ -156,6 +156,43 @@ export async function listTrackedCsInstallers(): Promise<ActionResult<TrackedCsI
   }
 }
 
+export async function publishTrackedCsInstaller(input: {
+  version: string;
+  fileName: string;
+  fileSizeBytes: number;
+  downloadUrl: string;
+  changelog: string | null;
+}): Promise<ActionResult<null>> {
+  const ctx = await requireSuperAdmin();
+  if (!input.version.trim() || !input.fileName || !input.downloadUrl) {
+    return { ok: false, error: "Arquivo versionado incompleto." };
+  }
+  const { error: deactivateError } = await ctx.supabase
+    .from("cs_releases")
+    .update({ is_active: false })
+    .eq("is_active", true);
+  if (deactivateError) return { ok: false, error: `Banco: ${deactivateError.message}` };
+
+  const { error } = await ctx.supabase.from("cs_releases").insert({
+    version: input.version.trim(),
+    file_url: input.downloadUrl,
+    file_name: input.fileName,
+    file_size_bytes: input.fileSizeBytes,
+    changelog: input.changelog,
+    uploaded_by: ctx.profile.id,
+    is_active: true,
+    github_release_id: null,
+    github_asset_id: null,
+    github_tag_name: null,
+  });
+  if (error) return { ok: false, error: `Banco: ${error.message}` };
+
+  revalidatePath("/admin/cs-releases");
+  revalidatePath("/configuracoes/meujudi-cs");
+  revalidatePath("/cs");
+  return { ok: true, data: null };
+}
+
 /** Cria a release e devolve um token temporario para o upload direto do navegador. */
 export async function createGithubReleaseUploadTicket(input: {
   version: string;
