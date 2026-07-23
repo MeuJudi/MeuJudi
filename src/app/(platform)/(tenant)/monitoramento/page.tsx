@@ -184,7 +184,7 @@ export default async function MonitoramentoPage({
         tenantId={null}
         kanbanColumns={[]}
         processes={[]}
-        metrics={{ active: 0, newMovements: 0, upcomingDeadlines: 0, muralPending: 0, closed: 0 }}
+        metrics={{ active: 0, unread: 0, upcomingDeadlines: 0, urgentToday: 0, closed: 0 }}
         muralProcessIds={[]}
         muralItems={[]}
         agendaItems={[]}
@@ -204,7 +204,7 @@ export default async function MonitoramentoPage({
       .is("kanban_column_id", null);
   }
 
-  const [processRows, { data: movementRows }, { data: muralRows }, { count: newMovementsCount }, { count: muralCount }] = await Promise.all([
+  const [processRows, { data: movementRows }, { data: muralRows }, { count: unreadCount }, { count: urgentTodayCount }] = await Promise.all([
     fetchAllProcessRows(supabase, tenantId),
     supabase
       .from("movimentacoes")
@@ -218,15 +218,20 @@ export default async function MonitoramentoPage({
       .eq("tenant_id", tenantId)
       .order("data_disponibilizacao", { ascending: false })
       .limit(20),
+    // Não lidos: is_novo=true das últimas 7 dias
     supabase
       .from("movimentacoes")
       .select("id", { count: "exact", head: true })
       .eq("tenant_id", tenantId)
-      .eq("is_novo", true),
+      .eq("is_novo", true)
+      .gte("data_movimento", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
+    // Urgentes hoje: prazo_proxima_resposta = hoje
     supabase
-      .from("comunicacoes_mural")
+      .from("processos")
       .select("id", { count: "exact", head: true })
-      .eq("tenant_id", tenantId),
+      .eq("tenant_id", tenantId)
+      .eq("status", "ativo")
+      .eq("prazo_proxima_resposta", new Date().toISOString().split("T")[0]),
   ]);
 
   const today = new Date();
@@ -299,13 +304,13 @@ export default async function MonitoramentoPage({
 
   const metrics = {
     active: processes.filter((process) => process.status === "ativo").length,
-    newMovements: newMovementsCount ?? 0,
+    unread: unreadCount ?? 0,
     upcomingDeadlines: processes.filter((process) => {
       if (!process.prazoProximaResposta) return false;
       const date = new Date(process.prazoProximaResposta);
       return date >= today && date <= nextThirtyDays;
     }).length,
-    muralPending: muralCount ?? 0,
+    urgentToday: urgentTodayCount ?? 0,
     closed: processes.filter((process) => process.status === "concluido" || process.status === "arquivado").length,
   };
 

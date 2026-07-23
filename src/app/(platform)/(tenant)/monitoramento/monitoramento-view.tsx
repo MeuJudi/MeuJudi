@@ -93,9 +93,9 @@ type MonitoramentoViewProps = {
   processes: MonitorProcess[];
   metrics: {
     active: number;
-    newMovements: number;
+    unread: number;
     upcomingDeadlines: number;
-    muralPending: number;
+    urgentToday: number;
     closed: number;
   };
   muralProcessIds: string[];
@@ -553,7 +553,7 @@ export function MonitoramentoView({
 }: MonitoramentoViewProps) {
   const [view, setView] = useState<"lista" | "kanban" | "mural">("lista");
   const [query, setQuery] = useState("");
-  const [activeMetricFilters, setActiveMetricFilters] = useState<Set<"active" | "newMovements" | "upcomingDeadlines" | "muralPending" | "closed">>(() => new Set());
+  const [activeMetricFilters, setActiveMetricFilters] = useState<Set<"active" | "unread" | "upcomingDeadlines" | "urgentToday" | "closed">>(() => new Set());
   const [page, setPage] = useState(0);
   const [localColumns, setLocalColumns] = useState(() => [...kanbanColumns].sort((a, b) => a.position - b.position));
   const [localProcesses, setLocalProcesses] = useState(processes);
@@ -582,7 +582,7 @@ export function MonitoramentoView({
     if (activeMetricFilters.has("active")) {
       result = result.filter((process) => process.status === "ativo");
     }
-    if (activeMetricFilters.has("newMovements")) {
+    if (activeMetricFilters.has("unread")) {
       result = result.filter((process) => process.unreadMovements > 0);
     }
     if (activeMetricFilters.has("upcomingDeadlines")) {
@@ -595,9 +595,12 @@ export function MonitoramentoView({
         return date >= today && date <= nextThirtyDays;
       });
     }
-    if (activeMetricFilters.has("muralPending")) {
-      const muralProcesses = new Set(muralProcessIds);
-      result = result.filter((process) => muralProcesses.has(process.id));
+    if (activeMetricFilters.has("urgentToday")) {
+      const todayStr = new Date().toISOString().split("T")[0];
+      result = result.filter((process) => {
+        if (!process.prazoProximaResposta) return false;
+        return process.prazoProximaResposta === todayStr;
+      });
     }
     if (activeMetricFilters.has("closed")) {
       result = result.filter((process) => process.status === "concluido" || process.status === "arquivado");
@@ -630,7 +633,7 @@ export function MonitoramentoView({
     return () => { active = false; };
   }, []);
 
-  function toggleMetricFilter(filter: "active" | "newMovements" | "upcomingDeadlines" | "muralPending" | "closed") {
+  function toggleMetricFilter(filter: "active" | "unread" | "upcomingDeadlines" | "urgentToday" | "closed") {
     setActiveMetricFilters((current) => {
       const next = new Set(current);
       if (next.has(filter)) next.delete(filter);
@@ -849,16 +852,16 @@ export function MonitoramentoView({
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {[
           { key: "active", label: "Processos ativos", value: metrics.active, icon: FileText },
-          { key: "newMovements", label: "Movimentacoes novas", value: metrics.newMovements, icon: Bell },
-          { key: "upcomingDeadlines", label: "Prazos proximos", value: metrics.upcomingDeadlines, icon: CalendarDays },
-          { key: "muralPending", label: "Mural pendente", value: metrics.muralPending, icon: Megaphone },
+          { key: "unread", label: "Não lidos (7d)", value: metrics.unread, icon: Bell },
+          { key: "upcomingDeadlines", label: "Prazos próximos", value: metrics.upcomingDeadlines, icon: CalendarDays },
+          { key: "urgentToday", label: "Urgentes hoje", value: metrics.urgentToday, icon: AlertTriangle },
           { key: "closed", label: "Encerrados / arquivados", value: metrics.closed, icon: Archive },
         ].map((metric) => {
           const isActive = activeMetricFilters.has(metric.key as typeof activeMetricFilters extends Set<infer T> ? T : never);
           return (
           <Card key={metric.label} className={cn("border-[var(--tenant-line)] text-[var(--tenant-surface-foreground)] transition-colors", isActive ? "border-[var(--tenant-brass)] bg-[color-mix(in_srgb,var(--tenant-brass)_15%,var(--tenant-surface))] shadow-md" : "bg-[var(--tenant-surface)]")}>
             <CardContent className="p-0">
-              <button type="button" aria-pressed={isActive} onClick={() => toggleMetricFilter(metric.key as "active" | "newMovements" | "upcomingDeadlines" | "muralPending" | "closed")} className="flex w-full items-center justify-between gap-3 p-4 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--tenant-brass)]">
+              <button type="button" aria-pressed={isActive} onClick={() => toggleMetricFilter(metric.key as "active" | "unread" | "upcomingDeadlines" | "urgentToday" | "closed")} className="flex w-full items-center justify-between gap-3 p-4 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--tenant-brass)]">
               <div>
                 <p className={cn("text-sm", isActive ? "font-semibold text-[var(--tenant-brass)]" : "text-[var(--color-muted-foreground)]")}>{metric.label}</p>
                 <p className="mt-1 text-3xl font-semibold">{metric.value}</p>
