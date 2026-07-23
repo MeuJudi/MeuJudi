@@ -198,7 +198,27 @@ export async function createGithubReleaseUploadTicket(input: {
         }),
       },
     );
-    if (!response.ok) {
+    let release: { id: number; upload_url: string; assets?: Array<{ id: number; name: string }> };
+    if (response.ok) {
+      release = (await response.json()) as typeof release;
+    } else if (response.status === 422) {
+      const details = await response.text();
+      if (!details.includes('"code":"already_exists"')) {
+        throw new Error(`GitHub release: ${details}`);
+      }
+      const existingResponse = await fetch(
+        `https://api.github.com/repos/${github.owner}/${github.repo}/releases/tags/${encodeURIComponent(tagName)}`,
+        {
+          headers: {
+            Accept: "application/vnd.github+json",
+            Authorization: `Bearer ${github.token}`,
+            "X-GitHub-Api-Version": "2022-11-28",
+          },
+        },
+      );
+      if (!existingResponse.ok) throw new Error(`GitHub release existente: ${await existingResponse.text()}`);
+      release = (await existingResponse.json()) as typeof release;
+    } else {
       const details = await response.text();
       if (response.status === 403) {
         throw new Error(
@@ -208,7 +228,21 @@ export async function createGithubReleaseUploadTicket(input: {
       }
       throw new Error(`GitHub release: ${details}`);
     }
-    const release = (await response.json()) as { id: number; upload_url: string };
+    const previousAsset = release.assets?.find((asset) => asset.name === assetName);
+    if (previousAsset) {
+      const deleteAssetResponse = await fetch(
+        `https://api.github.com/repos/${github.owner}/${github.repo}/releases/assets/${previousAsset.id}`,
+        {
+          method: "DELETE",
+          headers: {
+            Accept: "application/vnd.github+json",
+            Authorization: `Bearer ${github.token}`,
+            "X-GitHub-Api-Version": "2022-11-28",
+          },
+        },
+      );
+      if (!deleteAssetResponse.ok) throw new Error(`GitHub asset existente: ${await deleteAssetResponse.text()}`);
+    }
     const uploadUrl = `${release.upload_url.replace("{?name,label}", "")}?name=${encodeURIComponent(assetName)}`;
     return {
       ok: true,
