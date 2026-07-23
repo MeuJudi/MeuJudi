@@ -1,13 +1,12 @@
 # MeuJudi CS Builder
 
-Esta pasta guarda somente os arquivos versionados usados para empacotar o
-instalador. O codigo-fonte do CS continua fora do repositorio principal,
-conforme a decisao do projeto.
+Esta pasta guarda os arquivos versionados usados para empacotar o instalador.
+O codigo-fonte do CS tambem fica versionado no repositorio principal, para que
+o projeto possa ser reconstruido em outro computador.
 
 ## O que fica fora do Git
 
-- `meujudi-cs/` com o codigo local do Electron;
-- `node_modules/`, `.env` e credenciais;
+- `node_modules/`, `.env` e credenciais dentro de `meujudi-cs/`;
 - `dist/`, `release/` e qualquer `.exe`/`.msi`.
 
 ## Fluxo local

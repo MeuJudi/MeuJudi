@@ -55,7 +55,7 @@ export function CsReleaseActions({ releaseId, isActive }: Props) {
         ) : (
           <Check className="h-3 w-3" />
         )}
-        {isActive ? "Desativar" : "Ativar"}
+        {isActive ? "Desativar" : "Usar esta versao"}
       </Button>
       <Button
         type="button"

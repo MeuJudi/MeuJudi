@@ -16,7 +16,6 @@ next-env.d.ts
 !.env.example
 
 # Local-only project folders
-/meujudi-cs/
 local/
 instaladores/
 arquivos-antigos/
@@ -28,6 +27,20 @@ dev-local.cmd
 *.har
 *.exe
 *.msi
+
+# MeuJudi CS source is versioned; local dependencies, builds and secrets are not.
+!meujudi-cs/
+!meujudi-cs/**/
+!meujudi-cs/**/*
+meujudi-cs/.env
+meujudi-cs/.env.*
+meujudi-cs/node_modules/
+meujudi-cs/.next/
+meujudi-cs/dist/
+meujudi-cs/release/
+meujudi-cs/**/*.tsbuildinfo
+meujudi-cs/**/*.exe
+meujudi-cs/**/*.msi
 
 # Root loose assets copied into public/
 MeuJudi Icon.png
