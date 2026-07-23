@@ -99,7 +99,13 @@ export async function createCsReleaseUploadTicket(input: {
       .from("cs-releases")
       .createSignedUploadUrl(filePath);
 
-    if (error?.message?.includes("Bucket not found")) {
+    const storageErrorMessage = error?.message?.toLowerCase() ?? "";
+    const bucketIsMissing =
+      storageErrorMessage.includes("bucket not found") ||
+      storageErrorMessage.includes("related resource does not exist") ||
+      storageErrorMessage.includes("bucket does not exist");
+
+    if (bucketIsMissing) {
       const { error: bucketError } = await service.storage.createBucket("cs-releases", {
         public: true,
         fileSizeLimit: 500 * 1024 * 1024,
