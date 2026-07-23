@@ -119,7 +119,14 @@ export function CsReleaseForm({ nextVersion, savedVersions }: Props) {
           <button
             key={option}
             type="button"
-            onClick={() => setSource(option)}
+            onClick={() => {
+              setSource(option);
+              setError(null);
+              if (option === "local") {
+                setSelectedTracked(null);
+                if (versionRef.current) versionRef.current.value = nextVersion;
+              }
+            }}
             className={`rounded-md border px-3 py-2 text-left text-xs ${source === option ? "border-primary bg-primary/10" : "border-[var(--tenant-line)]"}`}
           >
             <strong className="block">{option === "local" ? "Arquivo deste computador" : "Arquivo versionado no Git"}</strong>
