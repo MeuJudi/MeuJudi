@@ -205,6 +205,40 @@ export async function finalizeCsReleaseUpload(
     return { ok: false, error: `Banco: ${insertError.message}` };
   }
 
+  // Mantém somente a versão atual e a anterior. Usa o client de serviço após
+  // validar o Super Admin para também conseguir limpar versões inativas sob RLS.
+  const service = createServiceClient();
+  const { data: releasesToKeep } = await service
+    .from("cs_releases")
+    .select("id")
+    .order("uploaded_at", { ascending: false })
+    .limit(2);
+  const keepIds = new Set((releasesToKeep ?? []).map((release) => release.id));
+
+  const { data: oldReleases } = await service
+    .from("cs_releases")
+    .select("id, file_name, version")
+    .order("uploaded_at", { ascending: false });
+  const releasesToDelete = (oldReleases ?? []).filter(
+    (release) => !keepIds.has(release.id),
+  );
+
+  if (releasesToDelete.length > 0) {
+    const filePaths = [
+      ...new Set(
+        releasesToDelete.map((release) => {
+          const fileExt = release.file_name.split(".").pop() ?? "exe";
+          return `releases/v${release.version}.${fileExt}`;
+        }),
+      ),
+    ];
+    await service.storage.from("cs-releases").remove(filePaths);
+    await service
+      .from("cs_releases")
+      .delete()
+      .in("id", releasesToDelete.map((release) => release.id));
+  }
+
   revalidatePath("/admin/cs-releases");
   revalidatePath("/configuracoes/meujudi-cs");
   revalidatePath("/cs");
