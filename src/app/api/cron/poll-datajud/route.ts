@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
 
     const { data: processos, error: processosError } = await supabase
       .from("processos")
-      .select("id, cnj, data_ultima_movimentacao")
+      .select("id, cnj, data_ultima_movimentacao, data_ultima_movimentacao_datajud")
       .eq("tenant_id", tenant.id)
       .eq("status", "ativo")
       .eq("nivel_sigilo", 0)
@@ -122,9 +122,10 @@ export async function POST(req: NextRequest) {
             const dataFreshIso = normalizarDataJudData(fresh.dataHoraUltimaAtualizacao);
             if (!dataFreshIso) throw new Error(`Data de atualização inválida retornada pelo DataJud: ${fresh.dataHoraUltimaAtualizacao}`);
             const dataFresh = new Date(dataFreshIso);
-            const dataLocal = processo.data_ultima_movimentacao
-              ? new Date(processo.data_ultima_movimentacao)
+            const dataLocal = processo.data_ultima_movimentacao_datajud
+              ? new Date(processo.data_ultima_movimentacao_datajud)
               : new Date(0);
+            const globalDate = processo.data_ultima_movimentacao ? new Date(processo.data_ultima_movimentacao) : null;
 
             const metadataUpdate = {
               classe_codigo: fresh.classe?.codigo ?? null,
@@ -147,7 +148,7 @@ export async function POST(req: NextRequest) {
               resultado.sem_mudanca++;
               const { error: metadataError } = await supabase
                 .from("processos")
-                .update(metadataUpdate)
+                .update({ ...metadataUpdate, data_ultima_movimentacao_datajud: dataFreshIso })
                 .eq("id", processo.id);
               if (metadataError) throw metadataError;
               return;
@@ -157,7 +158,8 @@ export async function POST(req: NextRequest) {
               .from("processos")
               .update({
                 ...metadataUpdate,
-                data_ultima_movimentacao: dataFreshIso,
+                data_ultima_movimentacao_datajud: dataFreshIso,
+                ...(!globalDate || dataFresh > globalDate ? { data_ultima_movimentacao: dataFreshIso } : {}),
               })
               .eq("id", processo.id);
             if (processError) throw processError;
@@ -168,7 +170,8 @@ export async function POST(req: NextRequest) {
             });
 
             for (const { movimento: mov, dataMovimentoIso } of novasMovs) {
-              const textoCompleto = `${mov.nome} ${(mov.complementosTabelados ?? []).map((c) => c.nome).join(" ")}`.trim();
+              const complementos = mov.complementosTabelados ?? [];
+              const textoCompleto = `${mov.nome} ${complementos.map((c) => c.nome ?? c.descricao ?? String(c.valor ?? "")).join(" ")}`.trim();
               const prazoDias = extrairPrazoDias(textoCompleto);
               const prazoHoras = extrairPrazoHoras(textoCompleto);
 
@@ -181,6 +184,7 @@ export async function POST(req: NextRequest) {
                   codigo: mov.codigo,
                   nome: mov.nome,
                   texto_completo: textoCompleto,
+                  complementos,
                   orgao_julgador: mov.orgaoJulgador?.nome ?? null,
                   orgao_julgador_codigo: mov.orgaoJulgador?.codigoOrgao ?? mov.orgaoJulgador?.codigo ?? null,
                   fonte: "datajud",
@@ -201,6 +205,9 @@ export async function POST(req: NextRequest) {
                   fonte: "datajud",
                   fonteId: movInserida?.id ?? null,
                   descricao: mov.nome,
+                  extracaoOrigem: "regex",
+                  extracaoConfianca: "alta",
+                  textoOrigem: textoCompleto,
                 });
               } else if (movInserida) {
                 // Regex simples não achou prazo — motor completo decide (Camada 0-6).

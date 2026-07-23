@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
 
   const { data: processes, error: processError } = await supabase
     .from("processos")
-    .select("id, cnj, data_ultima_movimentacao")
+    .select("id, cnj, data_ultima_movimentacao, data_ultima_movimentacao_datajud")
     .eq("tenant_id", job.tenant_id)
     .eq("status", "ativo")
     .eq("nivel_sigilo", 0)

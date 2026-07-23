@@ -148,9 +148,19 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
   ].filter((source) => Boolean(source.date)) : [];
   const recentItems = useMemo(() => {
     if (!details) return [];
-    const movements = details.movements.map((item) => ({ id: `movement-${item.id}`, title: item.nome, subtitle: item.texto_completo, meta: formatDateTime(item.data_movimento), source: item.fonte, warning: Boolean(item.prazo_fatal) }));
-    const events = details.agenda.map((item) => ({ id: `agenda-${item.id}`, title: item.titulo, subtitle: item.descricao, meta: formatDateTime(item.data_inicio), source: item.fonte, warning: item.tipo === "prazo" }));
-    return [...movements, ...events].slice(0, 5);
+    const items = [
+      ...details.movements.map((item) => ({ id: `movement-${item.id}`, sortDate: item.data_movimento, title: item.nome, subtitle: item.texto_completo, meta: formatDateTime(item.data_movimento), source: item.fonte, warning: Boolean(item.prazo_fatal) })),
+      ...details.agenda.map((item) => ({ id: `agenda-${item.id}`, sortDate: item.data_inicio, title: item.titulo, subtitle: item.descricao, meta: formatDateTime(item.data_inicio), source: item.fonte, warning: item.tipo === "prazo" })),
+      ...details.mural.map((item) => ({ id: `mural-${item.id}`, sortDate: item.data_disponibilizacao, title: item.tipo_comunicacao || "Comunicação do Mural", subtitle: item.texto, meta: `${formatDate(item.data_disponibilizacao)} · ${item.sigla_tribunal}`, source: "mural", warning: false })),
+    ];
+    return items
+      .sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime())
+      .slice(0, 5)
+      .map((item) => {
+        const { sortDate, ...visibleItem } = item;
+        void sortDate;
+        return visibleItem;
+      });
   }, [details]);
 
   const tabs: { id: ProcessTab; label: string }[] = [

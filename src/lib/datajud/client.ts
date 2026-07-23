@@ -11,7 +11,7 @@ export interface DataJudMovimento {
   dataHora: string;
   codigo: number;
   nome: string;
-  complementosTabelados?: Array<{ nome: string }>;
+  complementosTabelados?: Array<{ codigo?: number; descricao?: string; valor?: number | string; nome?: string }>;
   orgaoJulgador?: {
     nome?: string;
     nomeOrgao?: string;

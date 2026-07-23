@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MuralComunicacao } from "./client";
 import { converterValorMonetario, extrairAudienciaV2, extrairPrazoDias, extrairPrazoHoras, extrairValor } from "@/lib/regex/patterns";
+import { aplicarAudienciaEncontrada, aplicarPrazoEncontrado } from "@/lib/prazo/aplicar-prazo";
 import { calcularPrazoFatal } from "@/lib/prazo/calcular-prazo-fatal";
 import { extrairCampo } from "@/lib/extracao/pipeline";
 import { detectarSinalFracoDeUrgencia } from "@/lib/extracao/detectar-sinal-urgencia";
@@ -48,10 +49,9 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
   }
 
   let processoId: string;
-  let processoNovo = false;
   const { data: processo } = await supabase
     .from("processos")
-    .select("id, data_ultima_movimentacao, valor_causa, orgao_julgador, magistrado_nome")
+    .select("id, data_ultima_movimentacao, valor_causa, orgao_julgador, magistrado_nome, data_ultima_comunicacao_mural")
     .eq("tenant_id", tenantId)
     .eq("cnj", com.numero_processo)
     .maybeSingle();
@@ -69,7 +69,6 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
     }).select("id").single();
     if (error || !novoProcesso) throw new Error(`Falha ao criar processo ${com.numero_processo}: ${error?.message}`);
     processoId = novoProcesso.id;
-    processoNovo = true;
   }
 
   const prazoDias = extrairPrazoDias(com.texto);
@@ -150,14 +149,39 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
     data_ultima_movimentacao: processo?.data_ultima_movimentacao && new Date(processo.data_ultima_movimentacao) > new Date(com.data_disponibilizacao)
       ? processo.data_ultima_movimentacao
       : com.data_disponibilizacao,
+    data_ultima_comunicacao_mural: processo?.data_ultima_comunicacao_mural && new Date(processo.data_ultima_comunicacao_mural) > new Date(com.data_disponibilizacao)
+      ? processo.data_ultima_comunicacao_mural
+      : com.data_disponibilizacao,
     ultima_sync_mural: new Date().toISOString(),
   }).eq("id", processoId).eq("tenant_id", tenantId);
   if (processoError) throw new Error(`Falha ao atualizar processo ${processoId}: ${processoError.message}`);
 
-  if (dataAudienciaIso) await supabase.from("agenda_eventos").upsert({ tenant_id: tenantId, processo_id: processoId, tipo: "audiencia", titulo: `${com.tipoComunicacao} - ${com.siglaTribunal}`, descricao: com.nomeOrgao, data_inicio: dataAudienciaIso, fonte: "mural", fonte_id: String(com.id) }, { onConflict: "tenant_id,fonte,fonte_id" });
-  if (dataFatal) await supabase.from("agenda_eventos").upsert({ tenant_id: tenantId, processo_id: processoId, tipo: "prazo", titulo: `Prazo: ${prazoDias} dias`, descricao: com.tipoComunicacao, data_inicio: dataFatal, fonte: "mural", fonte_id: String(com.id) }, { onConflict: "tenant_id,fonte,fonte_id" });
+  if (dataAudienciaIso) await aplicarAudienciaEncontrada(supabase, {
+    tenantId,
+    processoId,
+    dataAudienciaIso,
+    fonte: "mural",
+    fonteId: String(com.id),
+    titulo: `${com.tipoComunicacao} - ${com.siglaTribunal}`,
+    descricao: com.nomeOrgao,
+    extracaoOrigem: "regex",
+    extracaoConfianca: "alta",
+    textoOrigem: com.texto,
+  });
+  if (prazoDias) await aplicarPrazoEncontrado(supabase, {
+    tenantId,
+    processoId,
+    prazoDias,
+    dataReferencia: new Date(com.data_disponibilizacao),
+    fonte: "mural",
+    fonteId: String(com.id),
+    descricao: com.tipoComunicacao,
+    extracaoOrigem: "regex",
+    extracaoConfianca: "alta",
+    textoOrigem: com.texto,
+  });
 
-  if (processoNovo) {
+  {
     const nomesVistos = new Set<string>();
     for (const destinatario of com.destinatarios ?? []) {
       const polo = poloParaPt(destinatario.polo);

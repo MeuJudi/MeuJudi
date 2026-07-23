@@ -279,7 +279,7 @@ export async function syncProcessDataJudNow(processId: string) {
 
     const { data: processRow, error } = await supabase
       .from("processos")
-      .select("id, cnj, data_ultima_movimentacao")
+      .select("id, cnj, data_ultima_movimentacao, data_ultima_movimentacao_datajud")
       .eq("id", processId)
       .eq("tenant_id", profile.tenant_id)
       .single();
@@ -353,7 +353,7 @@ export async function syncTenantDataJudNow() {
 
     const { data: processes, error } = await supabase
       .from("processos")
-      .select("id, cnj, data_ultima_movimentacao")
+      .select("id, cnj, data_ultima_movimentacao, data_ultima_movimentacao_datajud")
       .eq("tenant_id", profile.tenant_id)
       .eq("status", "ativo")
       .eq("nivel_sigilo", 0);
@@ -393,7 +393,7 @@ export async function syncTenantDataJudBatch(offset = 0, batchSize = 3) {
     const safeBatchSize = Math.min(5, Math.max(1, Math.floor(batchSize)));
     const { data: processes, count, error } = await supabase
       .from("processos")
-      .select("id, cnj, data_ultima_movimentacao", { count: "exact" })
+      .select("id, cnj, data_ultima_movimentacao, data_ultima_movimentacao_datajud", { count: "exact" })
       .eq("tenant_id", profile.tenant_id)
       .eq("status", "ativo")
       .eq("nivel_sigilo", 0)

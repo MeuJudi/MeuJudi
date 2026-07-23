@@ -2,12 +2,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { buscarProcessoEmTribunais, normalizarDataJudData } from "./client";
 import { extrairTribunaisCandidatos } from "./tribunal-from-cnj";
 import { extrairPrazoDias, extrairPrazoHoras } from "@/lib/regex/patterns";
-import { calcularPrazoFatal } from "@/lib/prazo/calcular-prazo-fatal";
+import { aplicarPrazoEncontrado } from "@/lib/prazo/aplicar-prazo";
 
 type ProcessoParaSincronizar = {
   id: string;
   cnj: string;
   data_ultima_movimentacao: string | null;
+  data_ultima_movimentacao_datajud?: string | null;
 };
 
 export async function sincronizarProcessoDataJud(
@@ -20,7 +21,9 @@ export async function sincronizarProcessoDataJud(
   if (!achado) return { status: "nao_encontrado" as const, movimentacoes: 0 };
 
   const { processo: fresh, tribunalUsado } = achado;
-  const dataLocal = processo.data_ultima_movimentacao ? new Date(processo.data_ultima_movimentacao) : new Date(0);
+  const dataLocal = processo.data_ultima_movimentacao_datajud
+    ? new Date(processo.data_ultima_movimentacao_datajud)
+    : new Date(0);
   const dataFreshIso = normalizarDataJudData(fresh.dataHoraUltimaAtualizacao);
   if (!dataFreshIso) throw new Error(`Data de atualização inválida retornada pelo DataJud: ${fresh.dataHoraUltimaAtualizacao}`);
   const dataFresh = new Date(dataFreshIso);
@@ -41,9 +44,12 @@ export async function sincronizarProcessoDataJud(
     ultima_sync_datajud: new Date().toISOString(),
   };
 
-  const update = dataFresh > dataLocal
-    ? { ...metadata, data_ultima_movimentacao: dataFreshIso }
-    : metadata;
+  const globalDate = processo.data_ultima_movimentacao ? new Date(processo.data_ultima_movimentacao) : null;
+  const update = {
+    ...metadata,
+    data_ultima_movimentacao_datajud: dataFreshIso,
+    ...(dataFresh > dataLocal && (!globalDate || dataFresh > globalDate) ? { data_ultima_movimentacao: dataFreshIso } : {}),
+  };
   const { error: processError } = await supabase.from("processos").update(update).eq("id", processo.id).eq("tenant_id", tenantId);
   if (processError) throw processError;
   if (dataFresh <= dataLocal) return { status: "sem_mudanca" as const, movimentacoes: 0 };
@@ -52,7 +58,8 @@ export async function sincronizarProcessoDataJud(
   for (const mov of fresh.movimentos ?? []) {
     const dataMovimentoIso = normalizarDataJudData(mov.dataHora);
     if (!dataMovimentoIso || new Date(dataMovimentoIso) <= dataLocal) continue;
-    const texto = `${mov.nome} ${(mov.complementosTabelados ?? []).map((item) => item.nome).join(" ")}`.trim();
+    const complementos = mov.complementosTabelados ?? [];
+    const texto = `${mov.nome} ${complementos.map((item) => item.nome ?? item.descricao ?? String(item.valor ?? "")).join(" ")}`.trim();
     const prazoDias = extrairPrazoDias(texto);
     const prazoHoras = extrairPrazoHoras(texto);
     const { data: inserted, error } = await supabase.from("movimentacoes").insert({
@@ -62,6 +69,7 @@ export async function sincronizarProcessoDataJud(
       codigo: mov.codigo,
       nome: mov.nome,
       texto_completo: texto,
+      complementos,
       orgao_julgador: mov.orgaoJulgador?.nomeOrgao ?? mov.orgaoJulgador?.nome ?? null,
       orgao_julgador_codigo: mov.orgaoJulgador?.codigoOrgao ?? mov.orgaoJulgador?.codigo ?? null,
       fonte: "datajud",
@@ -73,8 +81,18 @@ export async function sincronizarProcessoDataJud(
     if (!error) movimentacoes++;
 
     if (prazoDias && inserted?.id) {
-      const dataFatal = calcularPrazoFatal(new Date(dataMovimentoIso), prazoDias);
-      await supabase.from("processos").update({ prazo_proxima_resposta: dataFatal }).eq("id", processo.id).eq("tenant_id", tenantId);
+      await aplicarPrazoEncontrado(supabase, {
+        tenantId,
+        processoId: processo.id,
+        prazoDias,
+        dataReferencia: new Date(dataMovimentoIso),
+        fonte: "datajud",
+        fonteId: inserted?.id ?? null,
+        descricao: mov.nome,
+        extracaoOrigem: "regex",
+        extracaoConfianca: "alta",
+        textoOrigem: texto,
+      });
     }
   }
 

@@ -18,6 +18,9 @@ export async function aplicarPrazoEncontrado(
     fonte: string;
     fonteId?: string | null;
     descricao?: string | null;
+    extracaoOrigem?: string | null;
+    extracaoConfianca?: string | null;
+    textoOrigem?: string | null;
   },
 ): Promise<void> {
   const dataFatal = calcularPrazoFatal(params.dataReferencia, params.prazoDias);
@@ -38,6 +41,9 @@ export async function aplicarPrazoEncontrado(
       data_inicio: dataFatal,
       fonte: params.fonte,
       fonte_id: params.fonteId ?? null,
+      extracao_origem: params.extracaoOrigem ?? null,
+      extracao_confianca: params.extracaoConfianca ?? null,
+      texto_origem: params.textoOrigem ?? null,
     },
     { onConflict: "tenant_id,fonte,fonte_id" },
   );
@@ -53,6 +59,9 @@ export async function aplicarAudienciaEncontrada(
     fonteId?: string | null;
     titulo?: string | null;
     descricao?: string | null;
+    extracaoOrigem?: string | null;
+    extracaoConfianca?: string | null;
+    textoOrigem?: string | null;
   },
 ): Promise<void> {
   await supabase
@@ -71,6 +80,9 @@ export async function aplicarAudienciaEncontrada(
       data_inicio: params.dataAudienciaIso,
       fonte: params.fonte,
       fonte_id: params.fonteId ?? null,
+      extracao_origem: params.extracaoOrigem ?? null,
+      extracao_confianca: params.extracaoConfianca ?? null,
+      texto_origem: params.textoOrigem ?? null,
     },
     { onConflict: "tenant_id,fonte,fonte_id" },
   );
