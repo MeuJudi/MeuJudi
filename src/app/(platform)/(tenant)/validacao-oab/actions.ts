@@ -9,6 +9,22 @@ import { revalidatePath } from "next/cache";
 import { requireWritableAppUser, requireAppUser } from "@/lib/auth/guards";
 import { stripMask } from "@/lib/masks";
 
+/**
+ * Verifica se o tenant tem pelo menos um MeuJudi CS pareado e ativo.
+ * Usado pelo `CsPairingGate` para fazer polling a cada 5s e detectar
+ * pareamento recente. É uma query leve (count only).
+ */
+export async function checarCsPareado(tenantId: string): Promise<{ pareado: boolean; count: number }> {
+  const { supabase } = await requireAppUser();
+  const { count, error } = await supabase
+    .from("cs_devices")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .is("revoked_at", null);
+  if (error) return { pareado: false, count: 0 };
+  return { pareado: (count ?? 0) > 0, count: count ?? 0 };
+}
+
 const STATUS_ATIVOS = [
   "pendente",
   "aguardando_cs",
@@ -35,6 +51,20 @@ const COOLDOWN_MINUTOS = 30;
 export async function criarOuRetomarSolicitacaoValidacao(formData: FormData) {
   const { supabase, profile } = await requireWritableAppUser();
   if (!profile.tenant_id) throw new Error("Usuário sem escritório vinculado.");
+
+  // Defesa contra criação de solicitação órfã: se não tem CS pareado,
+  // a solicitação nunca seria processada. Bloqueamos aqui em vez de
+  // só na UI para evitar bypass via devtools.
+  const { count: dispositivosAtivos } = await supabase
+    .from("cs_devices")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", profile.tenant_id)
+    .is("revoked_at", null);
+  if (!dispositivosAtivos) {
+    throw new Error(
+      "Nenhum MeuJudi CS pareado a este escritorio. Va em Configuracoes - MeuJudi CS para parear.",
+    );
+  }
 
   const oabNumber = stripMask(String(formData.get("oab_number") ?? ""));
   const oabUf = String(formData.get("oab_uf") ?? "").trim().toUpperCase();

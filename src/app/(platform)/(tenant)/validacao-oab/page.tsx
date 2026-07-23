@@ -4,6 +4,7 @@ import { CheckCircle2, ShieldCheck } from "lucide-react";
 import { requireAppUser } from "@/lib/auth/guards";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { CsPairingGate } from "./cs-pairing-gate";
 import { ValidacaoForm } from "./validacao-form";
 import { StatusCard } from "./status-card";
 
@@ -115,6 +116,24 @@ export default async function ValidacaoOabPage() {
     );
   }
 
+  // Se não há CS pareado e não há solicitação ativa, bloqueamos com o
+  // CsPairingGate. Se há solicitação ativa, mostramos o StatusCard mesmo
+  // sem CS — o usuário pode acompanhar/cancelar, e o CS pode reconectar.
+  if (semCsPareado && !solicitacaoAtiva) {
+    return (
+      <div className="mx-auto max-w-xl space-y-4 py-12">
+        <h1 className="font-display text-2xl font-semibold text-[var(--color-card-foreground)]">
+          Valide sua identidade profissional
+        </h1>
+        <p className="text-sm text-[var(--color-muted-foreground)]">
+          Antes de sincronizar os dados do escritório, precisamos confirmar a OAB do responsável.
+          Essa verificação protege o escritório e evita que dados sejam importados para a conta errada.
+        </p>
+        <CsPairingGate tenantId={profile.tenant_id} />
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-xl space-y-4 py-12">
       <h1 className="font-display text-2xl font-semibold text-[var(--color-card-foreground)]">
@@ -124,16 +143,6 @@ export default async function ValidacaoOabPage() {
         Antes de sincronizar os dados do escritório, precisamos confirmar a OAB do responsável.
         Essa verificação protege o escritório e evita que dados sejam importados para a conta errada.
       </p>
-
-      {semCsPareado ? (
-        <div className="rounded-lg border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-4 text-sm text-[var(--color-muted-foreground)]">
-          Nenhum dispositivo MeuJudi CS pareado a este escritório ainda. A verificação pelo ConfirmADV
-          acontece por lá — você pode parear agora ou depois de preencher os dados abaixo.{" "}
-          <Link href="/configuracoes/meujudi-cs" className="font-medium text-[var(--tenant-brass)] underline">
-            Configurar MeuJudi CS
-          </Link>
-        </div>
-      ) : null}
 
       {solicitacaoAtiva ? (
         <StatusCard
