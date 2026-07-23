@@ -21,6 +21,17 @@ function formatDate(iso: string): string {
   });
 }
 
+function getNextVersion(releases: CsRelease[]): string {
+  const versions = releases
+    .map((release) => release.version.match(/^(\d+)\.(\d+)\.(\d+)$/))
+    .filter((match): match is RegExpMatchArray => Boolean(match))
+    .map((match) => [Number(match[1]), Number(match[2]), Number(match[3])] as const)
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+  if (versions.length === 0) return "0.1.0";
+  const [major, minor, patch] = versions[versions.length - 1];
+  return `${major}.${minor}.${patch + 1}`;
+}
+
 export default async function CsReleasesPage() {
   await requireSuperAdmin();
   const releases = await listCsReleases();
@@ -73,7 +84,10 @@ export default async function CsReleasesPage() {
       )}
 
       {/* Formulário de upload */}
-      <CsReleaseForm />
+      <CsReleaseForm
+        nextVersion={getNextVersion(releases)}
+        savedVersions={releases.map((release) => release.version)}
+      />
 
       {/* Lista de versões */}
       {releases.length > 0 && (

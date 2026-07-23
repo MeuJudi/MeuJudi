@@ -11,7 +11,12 @@ import {
   type TrackedCsInstaller,
 } from "./actions";
 
-export function CsReleaseForm() {
+type Props = {
+  nextVersion: string;
+  savedVersions: string[];
+};
+
+export function CsReleaseForm({ nextVersion, savedVersions }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -22,6 +27,9 @@ export function CsReleaseForm() {
   const [trackedError, setTrackedError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const versionRef = useRef<HTMLInputElement>(null);
+
+  const selectedVersion = selectedTracked?.name.match(/Setup-v(.+)\.exe$/i)?.[1] ?? nextVersion;
+  const selectedVersionAlreadySaved = savedVersions.includes(selectedVersion);
 
   useEffect(() => {
     if (source !== "git" || trackedInstallers.length > 0) return;
@@ -123,7 +131,8 @@ export function CsReleaseForm() {
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <label htmlFor="version" className="text-xs font-medium text-muted-foreground">Versao *</label>
-          <input ref={versionRef} id="version" name="version" type="text" required placeholder="0.1.9" pattern="[0-9]+\.[0-9]+[0-9a-zA-Z.\-]*" className="w-full rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-3 py-2 text-sm" />
+          <input ref={versionRef} defaultValue={nextVersion} id="version" name="version" type="text" required readOnly className="w-full rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-3 py-2 text-sm" />
+          <p className="text-[11px] text-muted-foreground">Proxima versao calculada automaticamente. Versoes ja salvas ficam bloqueadas.</p>
         </div>
 
         <div className="space-y-1.5">
@@ -145,9 +154,14 @@ export function CsReleaseForm() {
               className="w-full rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-3 py-2 text-sm"
             >
               <option value="">Selecionar arquivo do Git...</option>
-              {trackedInstallers.map((installer) => <option key={installer.name} value={installer.name}>{installer.name}</option>)}
+              {trackedInstallers.map((installer) => {
+                const version = installer.name.match(/Setup-v(.+)\.exe$/i)?.[1] ?? "";
+                const alreadySaved = savedVersions.includes(version);
+                return <option key={installer.name} value={installer.name} disabled={alreadySaved}>{installer.name}{alreadySaved ? " (ja liberada)" : ""}</option>;
+              })}
             </select>
           )}
+          {source === "git" && selectedVersionAlreadySaved && <p className="text-xs text-amber-700">Esta versao ja esta liberada. Escolha outra versao.</p>}
           {trackedError && <p className="text-xs text-destructive">{trackedError}</p>}
           <input ref={fileRef} name="file" type="file" required={source === "local"} accept=".exe,.msi,.dmg,.appimage,.tar.gz,.zip" className="hidden" onChange={(event) => setFileName(event.target.files?.[0]?.name ?? null)} />
         </div>
@@ -160,7 +174,7 @@ export function CsReleaseForm() {
 
       {error && <p className="text-xs text-destructive">{error}</p>}
       {success && <p className="text-xs text-green-600">Versao publicada com sucesso!</p>}
-      <Button type="submit" disabled={isPending} size="sm">
+      <Button type="submit" disabled={isPending || (source === "git" && (!selectedTracked || selectedVersionAlreadySaved))} size="sm">
         {isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Upload className="mr-1.5 h-3.5 w-3.5" />}
         {source === "git" ? "Liberar versao para download" : "Publicar nova release"}
       </Button>

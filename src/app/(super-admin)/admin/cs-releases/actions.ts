@@ -114,6 +114,16 @@ async function getGithubInstallationToken() {
   return { ...config, token: body.token };
 }
 
+async function versionAlreadyRegistered(version: string) {
+  const { data } = await createServiceClient()
+    .from("cs_releases")
+    .select("id")
+    .eq("version", version)
+    .limit(1)
+    .maybeSingle();
+  return Boolean(data);
+}
+
 export async function listTrackedCsInstallers(): Promise<ActionResult<TrackedCsInstaller[]>> {
   await requireSuperAdmin();
   try {
@@ -167,6 +177,9 @@ export async function publishTrackedCsInstaller(input: {
   if (!input.version.trim() || !input.fileName || !input.downloadUrl) {
     return { ok: false, error: "Arquivo versionado incompleto." };
   }
+  if (await versionAlreadyRegistered(input.version.trim())) {
+    return { ok: false, error: `A versao ${input.version.trim()} ja esta salva. Use a versao existente.` };
+  }
   const { error: deactivateError } = await ctx.supabase
     .from("cs_releases")
     .update({ is_active: false })
@@ -216,6 +229,9 @@ export async function createGithubReleaseUploadTicket(input: {
     const extension = fileName.split(".").pop()?.toLowerCase() ?? "exe";
     const assetName = `MeuJudi-CS-Setup-v${version}.${extension}`;
     const tagName = `v${version}`;
+    if (await versionAlreadyRegistered(version)) {
+      return { ok: false, error: `A versao ${version} ja esta salva. O sistema deve usar a proxima versao disponivel.` };
+    }
     const response = await fetch(
       `https://api.github.com/repos/${github.owner}/${github.repo}/releases`,
       {
