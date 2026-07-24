@@ -12,6 +12,7 @@ import { extrairComIAGeneralista } from "@/lib/ia/generalista";
 import { deveGerarRegexNovo } from "@/lib/ia/detector-padroes-repetidos";
 import { aprenderRegex } from "@/lib/ia/aprender-regex";
 import { verificarTetoCusto, registrarConsumoIA } from "@/lib/ia/guard-custo";
+import { textoSemInformacaoExtraivel } from "./detectar-texto-sem-informacao";
 import { criarItemRevisao } from "./central-revisao";
 import { classificarERegistrar, enfileirarParaLote } from "./fila-lote";
 import type { ContextoUrgencia } from "./classificador-urgencia";
@@ -25,6 +26,7 @@ export type OrigemResultado =
   | "ia_generalista"
   | "bloqueado_por_custo"
   | "enfileirado_lote"
+  | "sem_informacao_no_texto"
   | "nao_resolvido";
 
 export interface ResultadoExtracao {
@@ -76,6 +78,14 @@ export async function extrairCampo(
   }
 
   const nenhumRegexBateu = !resultadoRegex.match;
+
+  // Antes de gastar qualquer coisa (fila de lote OU IA síncrona) com um
+  // texto que nenhum regex reconheceu: se o texto não tem nem 20
+  // caracteres, nem bate com um dos templates genéricos já vistos na
+  // prática, não vale nem tentar — ver detectar-texto-sem-informacao.ts.
+  if (nenhumRegexBateu && textoSemInformacaoExtraivel(params.texto)) {
+    return { origem: "sem_informacao_no_texto", valor: null, confianca: null, precisaRevisaoHumana: false };
+  }
 
   // Gate de urgência (Sprint 2, Parte 9): decide tempo real vs fila de lote
   // ANTES de checar custo/chamar IA — se puder esperar o lote (~50% mais
