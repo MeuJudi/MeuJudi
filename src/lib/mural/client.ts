@@ -1,10 +1,12 @@
-// Cliente do Mural Eletrônico (API pública do PJe/CNJ). Ao contrário do
-// DataJud (1 chamada = 1 processo já conhecido), uma chamada aqui devolve
-// uma LISTA de comunicações — é isso que permite descobrir processo novo por
-// OAB. Não tem API key (endpoint público sem auth). Ver
-// docs/roadmap/07-edge-mural.md.
-
-const MURAL_BASE = "https://comunicaapi.pje.jus.br/api/v1/comunicacao";
+// Tipos compartilhados da comunicação do Mural Eletrônico (API pública do
+// PJe/CNJ). O cliente HTTP que buscava aqui direto da Vercel foi removido
+// em 24/07/2026 — o Mural bloqueia consulta vinda de datacenter (HTTP 403),
+// então a busca de verdade só acontece pelo MeuJudi CS (rodando no
+// computador do escritório), que devolve o resultado pra
+// `/api/cs/sync/mural` no formato `MuralComunicacao` abaixo. Ver
+// `src/app/api/cron/solicitar-mural/route.ts` (cria os pedidos que o CS
+// consome) e `meujudi-cs/src/main/mural-client.ts` (o cliente HTTP de
+// verdade, que roda do lado do CS).
 
 export interface MuralDestinatario {
   nome: string;
@@ -44,55 +46,3 @@ export interface MuralComunicacao {
   destinatarioadvogados: MuralDestinatarioAdvogado[];
 }
 
-export interface MuralResponse {
-  status: string;
-  message: string;
-  count: number;
-  items: MuralComunicacao[];
-}
-
-export class MuralClient {
-  async buscarPorOAB(
-    oab: string,
-    uf: string,
-    dataInicio?: string,
-    dataFim?: string,
-    pagina = 1,
-    itensPorPagina = 100,
-  ): Promise<MuralResponse> {
-    const params = new URLSearchParams();
-    params.set("numeroOab", oab);
-    params.set("ufOab", uf);
-    params.set("pagina", String(pagina));
-    params.set("itensPorPagina", String(itensPorPagina));
-    if (dataInicio) params.set("dataDisponibilizacaoInicio", dataInicio);
-    if (dataFim) params.set("dataDisponibilizacaoFim", dataFim);
-
-    const url = `${MURAL_BASE}?${params.toString()}`;
-    const response = await fetch(url, {
-      headers: {
-        Accept: "application/json",
-        // Sem User-Agent de navegador, o WAF do PJe devolve 403 pra
-        // requisições vindas de servidor (ex: função serverless da Vercel).
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept-Language": "pt-BR,pt;q=0.9",
-      },
-    });
-
-    if (!response.ok) {
-      // Loga um trecho do corpo (não só o status) — é a diferença entre
-      // "challenge de WAF" (HTML), "bloqueio por IP" (mensagem custom) e
-      // "rate limit" (formato JSON próprio), cada um com correção diferente.
-      const corpo = await response.text().catch(() => "");
-      if (response.status === 403) {
-        throw new Error(
-          "O Mural do PJe bloqueou esta consulta (HTTP 403). Sincronize pelo MeuJudi CS conectado ao escritório; o Web não consegue consultar este endpoint diretamente pela Vercel.",
-        );
-      }
-      throw new Error(`Mural HTTP ${response.status}: ${corpo.slice(0, 300)}`);
-    }
-
-    return (await response.json()) as MuralResponse;
-  }
-}

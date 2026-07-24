@@ -1,6 +1,6 @@
 // Cron: atualiza processos ativos consultando o DataJud (Sprint 2). Uma
 // chamada = um processo já conhecido (não descobre processo novo — isso é
-// papel do Mural, poll-mural/route.ts). Frequência configurada por tenant em
+// papel do Mural, via solicitar-mural/route.ts + MeuJudi CS). Frequência configurada por tenant em
 // `tenants.sync_config` (ajustada manualmente até existir sistema de planos).
 // Segue o mesmo padrão de auth/estrutura de
 // src/app/api/cron/processar-fila-lote/route.ts.
