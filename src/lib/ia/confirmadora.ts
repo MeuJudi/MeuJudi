@@ -28,14 +28,20 @@ export async function validarComIA(
   match: string,
   texto: string,
 ): Promise<ResultadoConfirmacao> {
+  // custoUsd fora do try: se `chamarIA` responder com sucesso, a Anthropic já
+  // cobrou os tokens — um erro de parsing DEPOIS disso não pode fazer a
+  // chamada "sumir" do rastreamento de custo (achado 07 da auditoria de
+  // 23/07/2026, docs/roadmap/auditoria-motor-extracao/07-custo-subestimado-em-falha-parsing.md).
+  let custoUsd = 0;
   try {
-    const { texto: resposta, custoUsd } = await chamarIA(
+    const resposta = await chamarIA(
       "validar_regex",
       PROMPTS.validarRegex(padrao, match, texto),
       256,
     );
+    custoUsd = resposta.custoUsd;
 
-    const parsed = extrairJSON<{ correto?: boolean; valor_correto?: string | null }>(resposta);
+    const parsed = extrairJSON<{ correto?: boolean; valor_correto?: string | null }>(resposta.texto);
 
     if (typeof parsed.correto !== "boolean") {
       // Resposta veio, mas não tem o shape esperado — trata como incerto,
@@ -50,8 +56,10 @@ export async function validarComIA(
       custoUsd,
     };
   } catch {
-    // Erro de rede, timeout, ou JSON.parse falhou: NUNCA assume correto.
-    return { correto: false, valorCorreto: null, incerto: true, custoUsd: 0 };
+    // Erro de rede/timeout (custoUsd continua 0, nada foi cobrado) ou
+    // JSON.parse falhou depois de uma chamada bem-sucedida (custoUsd já
+    // capturado acima) — nos dois casos, NUNCA assume correto.
+    return { correto: false, valorCorreto: null, incerto: true, custoUsd };
   }
 }
 

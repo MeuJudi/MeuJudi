@@ -24,7 +24,7 @@ export async function criarItemRevisao(
   // com 'alta' (precisaRevisaoHumana só é true quando a confiança NÃO é alta).
   const confiancaRevisao = confianca === "alta" ? "media" : confianca;
 
-  await supabase.from("itens_revisao").insert({
+  const { error } = await supabase.from("itens_revisao").insert({
     tenant_id: params.tenantId,
     processo_id: params.processoId,
     // Propaga o regex que gerou o palpite, se houver (ex.: regex bateu mas
@@ -41,4 +41,26 @@ export async function criarItemRevisao(
     confianca: confiancaRevisao,
     origem: params.resultado.origem,
   });
+
+  if (error) {
+    // Camada 6 é o último degrau antes do dado se perder de vez — um insert
+    // falho aqui não pode desaparecer em silêncio (achado de 24/07/2026: 22
+    // das 25 chamadas de Camada 4 de um teste real nunca apareceram na
+    // Central de Revisão, sem nenhum log do motivo). Não relança: quem chama
+    // `criarItemRevisao` já processou a extração com sucesso, e ela não deve
+    // virar "erro" só porque o registro de auditoria falhou — mas o evento
+    // fica visível no feed do Motor de Extração.
+    console.error("[central-revisao] Falha ao criar item de revisão:", error.message);
+    await supabase.from("motor_extracao_log").insert({
+      tipo: "erro",
+      tenant_id: params.tenantId,
+      tribunal_origem: params.tribunalOrigem,
+      detalhes: {
+        motivo: "itens_revisao_insert_falhou",
+        campo: params.campo,
+        processo_id: params.processoId,
+        erro: error.message,
+      },
+    });
+  }
 }

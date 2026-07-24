@@ -105,7 +105,10 @@ export async function aprenderRegex(
     tenant_id: params.tenantId,
     tribunal_origem: params.tribunalOrigem,
     regex_id: data.id,
-    detalhes: { regex: regexSugerida, texto_origem: params.texto, custo_geracao_usd: custoUsd },
+    // campo precisa estar aqui (não só nos eventos de erro) pra
+    // deveGerarRegexNovo conseguir achar a última tentativa de Camada 5
+    // (sucesso ou falha) e aplicar o cooldown corretamente.
+    detalhes: { regex: regexSugerida, texto_origem: params.texto, custo_geracao_usd: custoUsd, campo: params.campo },
   });
 
   return { sucesso: true, regexId: data.id, custoUsd };
