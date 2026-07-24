@@ -250,10 +250,18 @@ export async function POST(req: NextRequest) {
 
   resultado.duracao_ms = Date.now() - inicioExecucao;
 
-  await supabase.from("motor_extracao_log").insert({
-    tipo: "poll_datajud_finalizado",
-    detalhes: resultado,
-  });
+  // Log em try/catch: se a tabela não existir ou o insert falhar, a
+  // resposta ainda deve ser enviada. Antes dessa correção, um erro aqui
+  // impedia o NextResponse.json() de ser executado e causava timeout
+  // no cron-job.org (ver diagnóstico de 24/07/2026).
+  try {
+    await supabase.from("motor_extracao_log").insert({
+      tipo: "poll_datajud_finalizado",
+      detalhes: resultado,
+    });
+  } catch (logErr) {
+    console.error("[poll-datajud] Falha ao registrar log:", logErr instanceof Error ? logErr.message : logErr);
+  }
 
   return NextResponse.json(resultado);
 }

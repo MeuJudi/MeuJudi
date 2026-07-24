@@ -157,10 +157,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  await supabase.from("motor_extracao_log").insert({
-    tipo: "coletar_resultados_lote_finalizado",
-    detalhes: resultado,
-  });
+  try {
+    await supabase.from("motor_extracao_log").insert({
+      tipo: "coletar_resultados_lote_finalizado",
+      detalhes: resultado,
+    });
+  } catch (logErr) {
+    console.error("[coletar-resultados-lote] Falha ao registrar log:", logErr instanceof Error ? logErr.message : logErr);
+  }
 
   return NextResponse.json(resultado);
 }
