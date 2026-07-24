@@ -15,6 +15,7 @@ type AgendaRow = {
   processo_id: string | null;
   cliente_id: string | null;
   user_id: string | null;
+  link_videoconferencia: string | null;
 };
 
 type ProcessRow = {
@@ -101,7 +102,7 @@ export default async function AgendaPage({
 
   const agendaQuery = supabase
     .from("agenda_eventos")
-    .select("id, tipo, titulo, descricao, data_inicio, data_fim, status, fonte, processo_id, cliente_id, user_id")
+    .select("id, tipo, titulo, descricao, data_inicio, data_fim, status, fonte, processo_id, cliente_id, user_id, link_videoconferencia")
     .eq("tenant_id", tenantId)
     .gte("data_inicio", start.toISOString())
     .lte("data_inicio", end.toISOString())
@@ -153,6 +154,7 @@ export default async function AgendaPage({
     responsibleAvatarUrl: event.user_id ? userById.get(event.user_id)?.avatar_url ?? null : null,
     responsibleColor: colorForUser(event.user_id),
     userId: event.user_id ?? null,
+    linkVideoconferencia: event.link_videoconferencia,
   }));
 
   return <AgendaCalendar initialMonth={initialMonth} events={events} scope={scope} userId={profile.id} />;

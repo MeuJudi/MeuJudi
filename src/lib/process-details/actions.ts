@@ -57,6 +57,7 @@ export type ProcessDetails = {
     data_fim: string | null;
     status: string;
     fonte: string;
+    link_videoconferencia: string | null;
   }[];
   mural: {
     id: string;
@@ -136,7 +137,7 @@ export async function getProcessDetails(processId: string): Promise<ProcessDetai
       .limit(12),
     supabase
       .from("agenda_eventos")
-      .select("id, tipo, titulo, descricao, data_inicio, data_fim, status, fonte")
+      .select("id, tipo, titulo, descricao, data_inicio, data_fim, status, fonte, link_videoconferencia")
       .eq("processo_id", processId)
       .order("data_inicio", { ascending: true })
       .limit(12),

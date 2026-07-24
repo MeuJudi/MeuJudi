@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MuralComunicacao } from "./client";
-import { converterValorMonetario, extrairAudienciaV2, extrairPrazoDias, extrairPrazoHoras, extrairValor } from "@/lib/regex/patterns";
+import { converterValorMonetario, extrairAudienciaV2, extrairLinkVideoconferencia, extrairPrazoDias, extrairPrazoHoras, extrairValor } from "@/lib/regex/patterns";
 import { aplicarAudienciaEncontrada, aplicarPrazoEncontrado } from "@/lib/prazo/aplicar-prazo";
 import { calcularPrazoFatal } from "@/lib/prazo/calcular-prazo-fatal";
 import { extrairCampo } from "@/lib/extracao/pipeline";
@@ -18,7 +18,7 @@ function poloParaPt(polo: string): PoloParte | null {
 export async function processarComunicacao(supabase: SupabaseClient, tenantId: string, com: MuralComunicacao): Promise<boolean> {
   const { data: existente } = await supabase
     .from("comunicacoes_mural")
-    .select("id, processo_id, texto, valor_causa_extraido, data_audiencia, prazo_dias, data_prazo_fatal")
+    .select("id, processo_id, texto, valor_causa_extraido, data_audiencia, prazo_dias, data_prazo_fatal, link_videoconferencia")
     .eq("tenant_id", tenantId)
     .eq("mural_id", com.id)
     .maybeSingle();
@@ -28,6 +28,22 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
     // a comunicação nem sobrescreve valores já confirmados no processo.
     const valorCausa = converterValorMonetario(extrairValor(existente.texto));
     const metadados = extrairMetadadosMural(existente.texto);
+
+    // Link de videoconferência: extração nova (24/07/2026) — comunicações
+    // já importadas antes dela nunca tiveram chance de ter esse campo
+    // preenchido, então reprocessa independente do estado de prazo/audiência.
+    if (existente.link_videoconferencia == null) {
+      const linkExistente = extrairLinkVideoconferencia(existente.texto);
+      if (linkExistente) {
+        await supabase.from("comunicacoes_mural").update({ link_videoconferencia: linkExistente }).eq("id", existente.id).eq("tenant_id", tenantId);
+        if (existente.data_audiencia) {
+          // Já tinha audiência aplicada antes do link existir — atualiza só
+          // o link no evento de agenda correspondente, sem reabrir mais nada.
+          await supabase.from("agenda_eventos").update({ link_videoconferencia: linkExistente })
+            .eq("tenant_id", tenantId).eq("fonte", "mural").eq("fonte_id", String(com.id));
+        }
+      }
+    }
     if (valorCausa != null && existente.processo_id) {
       if (existente.valor_causa_extraido == null) {
         await supabase.from("comunicacoes_mural").update({ valor_causa_extraido: valorCausa }).eq("id", existente.id).eq("tenant_id", tenantId);
@@ -74,6 +90,7 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
               fonte: "mural", fonteId: String(com.id),
               titulo: `${com.tipoComunicacao} - ${com.siglaTribunal}`, descricao: com.nomeOrgao,
               extracaoOrigem: "regex_reprocessada", extracaoConfianca: "alta", textoOrigem: com.texto,
+              linkVideoconferencia: extrairLinkVideoconferencia(existente.texto),
             });
           }
           if (novoPrazoDias) {
@@ -117,6 +134,7 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
   const prazoDias = extrairPrazoDias(com.texto);
   const prazoHoras = extrairPrazoHoras(com.texto);
   const audiencia = extrairAudienciaV2(com.texto);
+  const linkVideoconferencia = extrairLinkVideoconferencia(com.texto);
   // O valor da causa é um dado estruturado simples: Regex determinística
   // resolve o formato explícito do Mural sem consumir IA.
   const valorCausa = converterValorMonetario(extrairValor(com.texto));
@@ -155,6 +173,7 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
     valor_causa_extraido: valorCausa,
     magistrado_nome: metadados.magistradoNome,
     magistrado_tipo: metadados.magistradoTipo,
+    link_videoconferencia: linkVideoconferencia,
   });
   if (comunicacaoError) throw new Error(`Falha ao salvar comunicacao ${com.id}: ${comunicacaoError.message}`);
 
@@ -210,6 +229,7 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
     extracaoOrigem: "regex",
     extracaoConfianca: "alta",
     textoOrigem: com.texto,
+    linkVideoconferencia,
   });
   if (prazoDias) await aplicarPrazoEncontrado(supabase, {
     tenantId,

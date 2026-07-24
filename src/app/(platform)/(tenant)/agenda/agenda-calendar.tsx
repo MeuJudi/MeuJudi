@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Clock3, GripVertical, ListChecks, Plus, Sparkles } from "lucide-react";
+import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Clock3, GripVertical, ListChecks, Plus, Sparkles, Video } from "lucide-react";
 import { createAgendaEvent, createInternalReminderFromAgendaEvent, rescheduleAgendaEvent } from "./actions";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +30,7 @@ export type AgendaItem = {
   responsibleAvatarUrl: string | null;
   responsibleColor: string;
   userId: string | null;
+  linkVideoconferencia: string | null;
 };
 
 type AgendaCalendarProps = {
@@ -521,7 +522,7 @@ function EventRow({
           {event.responsibleName ?? "Sem responsavel definido"}
         </div>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Badge className={typeClass[event.type]}>{typeLabel[event.type]}</Badge>
         <Badge variant="outline" className="gap-1 border-[var(--tenant-line)] bg-[var(--tenant-surface)] text-[var(--tenant-surface-foreground)]">
           <Clock3 className="h-3 w-3" />
@@ -531,6 +532,17 @@ function EventRow({
           <CalendarDays className="h-3 w-3" />
           {event.source}
         </Badge>
+        {event.linkVideoconferencia ? (
+          <a
+            href={event.linkVideoconferencia}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(clickEvent) => clickEvent.stopPropagation()}
+            className="inline-flex items-center gap-1 rounded border border-[var(--tenant-brass)] bg-[color-mix(in_srgb,var(--tenant-brass)_12%,var(--tenant-surface))] px-2 py-0.5 text-[11px] font-semibold text-[var(--tenant-brass)] hover:underline"
+          >
+            <Video className="h-3 w-3" /> Entrar na audiência
+          </a>
+        ) : null}
       </div>
     </div>
   );
@@ -646,6 +658,7 @@ export function AgendaCalendar({ initialMonth, events, scope, userId }: AgendaCa
           responsibleAvatarUrl: null,
           responsibleColor: "#5b5548",
           userId: null,
+          linkVideoconferencia: null,
         };
         setLocalEvents((current) => [...current, newEvent]);
         setShowCreateModal(false);

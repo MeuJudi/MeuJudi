@@ -140,6 +140,7 @@ export async function createInternalReminderFromAgendaEvent(eventId: string, dat
     responsibleAvatarUrl: null,
     responsibleColor: "#5b5548",
     userId: profile.id,
+    linkVideoconferencia: null,
   };
 }
 

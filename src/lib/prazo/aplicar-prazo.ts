@@ -31,7 +31,7 @@ export async function aplicarPrazoEncontrado(
     .eq("id", params.processoId)
     .eq("tenant_id", params.tenantId);
 
-  await supabase.from("agenda_eventos").upsert(
+  const { error } = await supabase.from("agenda_eventos").upsert(
     {
       tenant_id: params.tenantId,
       processo_id: params.processoId,
@@ -47,6 +47,11 @@ export async function aplicarPrazoEncontrado(
     },
     { onConflict: "tenant_id,fonte,fonte_id" },
   );
+  // Achado em produção (24/07/2026): esse upsert falhava 100% das vezes por
+  // incompatibilidade entre o índice único parcial e o ON CONFLICT (ver
+  // migration 20260724000002) — sem checar o erro, a falha era invisível e
+  // a Agenda nunca recebia os prazos extraídos automaticamente.
+  if (error) console.error("[aplicar-prazo] Falha ao gravar evento de prazo na agenda:", error.message);
 }
 
 export async function aplicarAudienciaEncontrada(
@@ -62,6 +67,8 @@ export async function aplicarAudienciaEncontrada(
     extracaoOrigem?: string | null;
     extracaoConfianca?: string | null;
     textoOrigem?: string | null;
+    /** Link de Zoom/Meet/Teams encontrado no texto de origem, se houver — ver detectar-texto-sem-informacao.ts irmão `extrairLinkVideoconferencia` em patterns.ts. */
+    linkVideoconferencia?: string | null;
   },
 ): Promise<void> {
   await supabase
@@ -70,7 +77,7 @@ export async function aplicarAudienciaEncontrada(
     .eq("id", params.processoId)
     .eq("tenant_id", params.tenantId);
 
-  await supabase.from("agenda_eventos").upsert(
+  const { error } = await supabase.from("agenda_eventos").upsert(
     {
       tenant_id: params.tenantId,
       processo_id: params.processoId,
@@ -83,7 +90,11 @@ export async function aplicarAudienciaEncontrada(
       extracao_origem: params.extracaoOrigem ?? null,
       extracao_confianca: params.extracaoConfianca ?? null,
       texto_origem: params.textoOrigem ?? null,
+      link_videoconferencia: params.linkVideoconferencia ?? null,
     },
     { onConflict: "tenant_id,fonte,fonte_id" },
   );
+  // Achado em produção (24/07/2026): mesmo bug do upsert de prazo acima —
+  // ver migration 20260724000002.
+  if (error) console.error("[aplicar-prazo] Falha ao gravar evento de audiência na agenda:", error.message);
 }

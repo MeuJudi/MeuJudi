@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CalendarDays, Check, Clock3, Copy, FileText, Info, LockKeyhole, RefreshCw, Scale, UserRound } from "lucide-react";
+import { AlertTriangle, CalendarDays, Check, Clock3, Copy, FileText, Info, LockKeyhole, RefreshCw, Scale, UserRound, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getProcessDetails, type ProcessDetails } from "@/lib/process-details/actions";
@@ -93,7 +93,7 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function TimelineList({ title, icon, empty, items }: { title: string; icon: React.ReactNode; empty: string; items: { id: string; title: string; subtitle: string | null; meta: string; source?: string; warning?: boolean; longText?: boolean }[] }) {
+function TimelineList({ title, icon, empty, items }: { title: string; icon: React.ReactNode; empty: string; items: { id: string; title: string; subtitle: string | null; meta: string; source?: string; warning?: boolean; longText?: boolean; link?: string | null }[] }) {
   return (
     <Panel title={title} icon={icon}>
       {items.length === 0 ? <p className="text-sm text-[var(--color-muted-foreground)]">{empty}</p> : (
@@ -108,7 +108,14 @@ function TimelineList({ title, icon, empty, items }: { title: string; icon: Reac
                 <span className="font-mono text-[11px] text-[var(--color-muted-foreground)]">{item.meta}</span>
               </div>
               <p className={"mt-1 text-xs leading-5 text-[var(--color-muted-foreground)] " + (item.longText || item.source === "mural" ? "max-h-56 overflow-y-auto whitespace-pre-line" : "line-clamp-3")}>{item.source === "mural" ? formatMuralText(item.subtitle) : item.subtitle || "Sem descrição adicional."}</p>
-              {item.source ? <span className="mt-2 inline-flex rounded border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-2 py-0.5 text-[11px] font-medium text-[var(--tenant-surface-foreground)]">{sourceLabel(item.source)}</span> : null}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {item.source ? <span className="inline-flex rounded border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-2 py-0.5 text-[11px] font-medium text-[var(--tenant-surface-foreground)]">{sourceLabel(item.source)}</span> : null}
+                {item.link ? (
+                  <a href={item.link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded border border-[var(--tenant-brass)] bg-[color-mix(in_srgb,var(--tenant-brass)_12%,var(--tenant-surface))] px-2 py-0.5 text-[11px] font-semibold text-[var(--tenant-brass)] hover:underline">
+                    <Video className="h-3 w-3" /> Entrar na audiência
+                  </a>
+                ) : null}
+              </div>
             </article>
           ))}
         </div>
@@ -150,7 +157,7 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
     if (!details) return [];
     const items = [
       ...details.movements.map((item) => ({ id: `movement-${item.id}`, sortDate: item.data_movimento, title: item.nome, subtitle: item.texto_completo, meta: formatDateTime(item.data_movimento), source: item.fonte, warning: Boolean(item.prazo_fatal) })),
-      ...details.agenda.map((item) => ({ id: `agenda-${item.id}`, sortDate: item.data_inicio, title: item.titulo, subtitle: item.descricao, meta: formatDateTime(item.data_inicio), source: item.fonte, warning: item.tipo === "prazo" })),
+      ...details.agenda.map((item) => ({ id: `agenda-${item.id}`, sortDate: item.data_inicio, title: item.titulo, subtitle: item.descricao, meta: formatDateTime(item.data_inicio), source: item.fonte, warning: item.tipo === "prazo", link: item.link_videoconferencia })),
       ...details.mural.map((item) => ({ id: `mural-${item.id}`, sortDate: item.data_disponibilizacao, title: item.tipo_comunicacao || "Comunicação do Mural", subtitle: item.texto, meta: `${formatDate(item.data_disponibilizacao)} · ${item.sigla_tribunal}`, source: "mural", warning: false })),
     ];
     return items
@@ -276,7 +283,7 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
                 <TimelineList title="Atividade recente" icon={<FileText className="h-4 w-4 text-[var(--tenant-brass)]" />} empty="Nenhuma atividade vinculada." items={recentItems} />
               </> : null}
               {activeTab === "movimentacoes" ? <TimelineList title="Movimentações do processo" icon={<FileText className="h-4 w-4 text-[var(--tenant-brass)]" />} empty="Nenhuma movimentação vinculada." items={details.movements.map((item) => ({ id: item.id, title: item.nome, subtitle: item.texto_completo, meta: formatDateTime(item.data_movimento), source: item.fonte, warning: Boolean(item.prazo_fatal) }))} /> : null}
-              {activeTab === "agenda" ? <TimelineList title="Agenda vinculada" icon={<CalendarDays className="h-4 w-4 text-[var(--tenant-brass)]" />} empty="Nenhum evento vinculado." items={details.agenda.map((item) => ({ id: item.id, title: item.titulo, subtitle: item.descricao, meta: formatDateTime(item.data_inicio), source: item.fonte, warning: item.tipo === "prazo" }))} /> : null}
+              {activeTab === "agenda" ? <TimelineList title="Agenda vinculada" icon={<CalendarDays className="h-4 w-4 text-[var(--tenant-brass)]" />} empty="Nenhum evento vinculado." items={details.agenda.map((item) => ({ id: item.id, title: item.titulo, subtitle: item.descricao, meta: formatDateTime(item.data_inicio), source: item.fonte, warning: item.tipo === "prazo", link: item.link_videoconferencia }))} /> : null}
               {activeTab === "mural" ? <TimelineList title="Comunicações do Mural" icon={<FileText className="h-4 w-4 text-[var(--tenant-brass)]" />} empty="Nenhuma comunicação vinculada." items={details.mural.map((item) => ({ id: item.id, title: item.tipo_comunicacao, subtitle: item.texto, meta: `${formatDate(item.data_disponibilizacao)} · ${item.sigla_tribunal}`, source: "mural" }))} /> : null}
               {activeTab === "documentos" ? <Panel title="Documentos" icon={<FileText className="h-4 w-4 text-[var(--tenant-brass)]" />}><div className="rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-8 text-center"><FileText className="mx-auto h-7 w-7 text-[var(--color-muted-foreground)]" /><p className="mt-2 text-sm font-medium">Nenhum documento vinculado</p><p className="mt-1 text-xs text-[var(--color-muted-foreground)]">O espaço para documentos será conectado ao processo nesta etapa.</p></div></Panel> : null}
             </div>
