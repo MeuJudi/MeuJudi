@@ -14,7 +14,7 @@ export default async function MeuJudiCsPage() {
 
   const { data: devices } = await supabase
     .from("cs_devices")
-    .select("id, device_name, created_at, last_seen_at")
+    .select("id, device_name, created_at, last_seen_at, status, last_heartbeat, last_activity, pending_tasks, app_version")
     .eq("tenant_id", profile.tenant_id)
     .is("revoked_at", null)
     .order("created_at", { ascending: false });

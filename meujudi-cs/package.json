@@ -1,6 +1,6 @@
 {
   "name": "meujudi-cs",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "MeuJudi CS — Cert Service. App desktop (Electron) que conecta o MeuJudi Web ao PJe via cert. A1 ou gov.br.",
   "main": "dist/main/index.js",
   "author": "Caio",

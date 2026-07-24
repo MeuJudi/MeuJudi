@@ -4,6 +4,7 @@ import { requireAppUser } from "@/lib/auth/guards";
 import type { PaletteId } from "@/lib/themes/palettes";
 import { getRelevantMaintenance } from "@/lib/maintenance";
 import { displayUserName } from "@/lib/auth/display-name";
+import { CsStatusBanner } from "@/components/tenant/cs-status-banner";
 
 const VALID_PALETTE_IDS = new Set<string>([
   "padrao", "escuro", "rosa", "lavanda", "esmeralda", "oceano", "ambar",
@@ -32,6 +33,7 @@ export default async function TenantLayout({
       initialPaletteId={paletteId}
       upcomingMaintenance={upcomingMaintenance}
     >
+      <CsStatusBanner />
       {children}
     </TenantShell>
   );

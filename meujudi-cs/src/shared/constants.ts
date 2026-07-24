@@ -114,6 +114,7 @@ export const TIMEOUTS = {
  * Intervalos de polling (em ms).
  */
 export const INTERVALS = {
+  heartbeat: 5 * 60 * 1000,         // 5min para indicar que o CS continua online
   polling: 60 * 60 * 1000,        // 1h entre polls
   keepalive: 30 * 60 * 1000,      // 30min entre keepalives
   downloadAll: 24 * 60 * 60 * 1000, // 1x por dia

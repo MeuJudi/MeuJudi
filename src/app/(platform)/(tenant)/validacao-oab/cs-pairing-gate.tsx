@@ -19,6 +19,7 @@ export function CsPairingGate({ tenantId }: CsPairingGateProps) {
   const router = useRouter();
   const [verificando, setVerificando] = useState(true);
   const [pareado, setPareado] = useState(false);
+  const [online, setOnline] = useState(false);
   const [, startTransition] = useTransition();
   const tentativasRef = useRef(0);
 
@@ -39,6 +40,7 @@ export function CsPairingGate({ tenantId }: CsPairingGateProps) {
           return;
         }
         setPareado(result.pareado);
+        setOnline(result.online);
       } catch {
         // Falha de rede — tenta de novo no próximo tick.
       } finally {
@@ -137,10 +139,15 @@ export function CsPairingGate({ tenantId }: CsPairingGateProps) {
               <Loader2 className="h-3 w-3 animate-spin" />
               Verificando conexão com o MeuJudi CS...
             </>
-          ) : pareado ? (
+          ) : pareado && online ? (
             <>
               <RefreshCw className="h-3 w-3 animate-spin" />
               Conexão detectada, recarregando...
+            </>
+          ) : pareado ? (
+            <>
+              <RefreshCw className="h-3 w-3" />
+              MeuJudi CS pareado, mas offline. Abra o aplicativo no computador do escritorio.
             </>
           ) : (
             <>

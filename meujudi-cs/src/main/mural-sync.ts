@@ -65,7 +65,8 @@ export class MuralSync {
 
   constructor(private readonly pairing: Pairing) {}
 
-  start() {
+  /** Compatibilidade interna; o agendamento oficial agora pertence ao Scheduler. */
+  startLegacy() {
     if (this.timer) return;
     this.timer = cron.schedule(INTERVALS.muralSync, () => {
       this.tick().catch((error) => logger.error('Erro no Mural automatico:', error));
@@ -77,7 +78,7 @@ export class MuralSync {
     logger.info('MuralSync agendado:', INTERVALS.muralSync);
   }
 
-  private async processPendingRequests() {
+  async processPendingRequests() {
     if (this.requestPolling) return;
     const token = this.pairing.getDeviceToken();
     if (!token) return;

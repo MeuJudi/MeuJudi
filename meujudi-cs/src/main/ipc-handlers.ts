@@ -14,18 +14,18 @@ import { enviarRelatorioSupabase } from './supabase-reporter';
 import { Pairing } from './pairing';
 import { MuralSync } from './mural-sync';
 import { ConfirmADVService } from './confirmadv';
+import type { StatusReporter } from './status-reporter';
 import type { PJeStatus, PublicSession, LogEntry, DiagnosticReport, ConfirmADVValidation } from '../shared/types';
 
 /**
  * Registra todos os IPC handlers. Deve ser chamado uma vez no app.whenReady().
  */
-export function registerIPCHandlers() {
+export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: StatusReporter) {
   const auth = new PJeAuth();
-  const pairing = new Pairing();
   const muralSync = new MuralSync(pairing);
   const confirmAdv = new ConfirmADVService(pairing);
-  const scheduler = new Scheduler(pairing, muralSync);
-  muralSync.start();
+  const scheduler = new Scheduler(pairing, muralSync, statusReporter);
+  scheduler.start();
   confirmAdv.start();
   const diagnostic = new Diagnostic();
 
@@ -174,4 +174,9 @@ export function registerIPCHandlers() {
     const logsPath = `${app.getPath('userData')}\\logs`;
     await shell.openPath(logsPath);
   });
+
+  return () => {
+    scheduler.stop();
+    confirmAdv.stop();
+  };
 }

@@ -14,15 +14,17 @@ import { stripMask } from "@/lib/masks";
  * Usado pelo `CsPairingGate` para fazer polling a cada 5s e detectar
  * pareamento recente. É uma query leve (count only).
  */
-export async function checarCsPareado(tenantId: string): Promise<{ pareado: boolean; count: number }> {
+export async function checarCsPareado(tenantId: string): Promise<{ pareado: boolean; online: boolean; count: number }> {
   const { supabase } = await requireAppUser();
-  const { count, error } = await supabase
+  const { data, error } = await supabase
     .from("cs_devices")
-    .select("id", { count: "exact", head: true })
+    .select("id, status, last_heartbeat")
     .eq("tenant_id", tenantId)
     .is("revoked_at", null);
-  if (error) return { pareado: false, count: 0 };
-  return { pareado: (count ?? 0) > 0, count: count ?? 0 };
+  if (error) return { pareado: false, online: false, count: 0 };
+  const now = Date.now();
+  const online = (data ?? []).some((device) => device.status === "online" && device.last_heartbeat && now - new Date(device.last_heartbeat).getTime() <= 10 * 60 * 1000);
+  return { pareado: (data ?? []).length > 0, online, count: data?.length ?? 0 };
 }
 
 const STATUS_ATIVOS = [
