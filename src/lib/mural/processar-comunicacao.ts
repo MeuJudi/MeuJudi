@@ -8,6 +8,7 @@ import { detectarSinalFracoDeUrgencia } from "@/lib/extracao/detectar-sinal-urge
 import { sugerirVinculoCliente, type PoloParte } from "@/lib/clientes/sugestao-vinculo";
 import { registrarAdvogadosDoMural } from "./advogados-diretorio";
 import { extrairMetadadosMural } from "./extrair-metadados";
+import { normalizarTribunalSigla } from "@/lib/tribunais/normalizar";
 
 function poloParaPt(polo: string): PoloParte | null {
   if (polo === "A") return "autor";
@@ -121,7 +122,7 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
     const { data: novoProcesso, error } = await supabase.from("processos").insert({
       tenant_id: tenantId,
       cnj: com.numero_processo,
-      tribunal: com.siglaTribunal?.toLowerCase() ?? null,
+      tribunal: normalizarTribunalSigla(com.siglaTribunal),
       classe_codigo: com.codigoClasse ? parseInt(com.codigoClasse) : null,
       classe_nome: com.nomeClasse ?? null,
       status: "ativo",
@@ -158,7 +159,7 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
   const dataFatal = prazoDias ? calcularPrazoFatal(new Date(com.data_disponibilizacao), prazoDias) : null;
   const { error: comunicacaoError } = await supabase.from("comunicacoes_mural").insert({
     tenant_id: tenantId, processo_id: processoId, mural_id: com.id, data_disponibilizacao: com.data_disponibilizacao,
-    sigla_tribunal: com.siglaTribunal, tipo_comunicacao: com.tipoComunicacao, nome_orgao: com.nomeOrgao, texto: com.texto,
+    sigla_tribunal: normalizarTribunalSigla(com.siglaTribunal) ?? com.siglaTribunal, tipo_comunicacao: com.tipoComunicacao, nome_orgao: com.nomeOrgao, texto: com.texto,
     meio: com.meio, link_processo: com.link, destinatarios: com.destinatarios,
     advogados: com.destinatarioadvogados?.map((d) => ({
       nome: d.advogado.nome,
@@ -196,7 +197,7 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
       ...(d.advogado.representante_principal !== undefined ? { representante_principal: d.advogado.representante_principal } : {}),
       ...(d.advogado.tipo ? { tipo: d.advogado.tipo } : {}),
     })),
-    ...(com.siglaTribunal ? { tribunal: com.siglaTribunal.toLowerCase() } : {}),
+    ...(com.siglaTribunal ? { tribunal: normalizarTribunalSigla(com.siglaTribunal) } : {}),
     ...(com.codigoClasse ? { classe_codigo: parseInt(com.codigoClasse) } : {}),
     ...(com.nomeClasse ? { classe_nome: com.nomeClasse } : {}),
     ...(orgaoJulgador && processo?.orgao_julgador == null ? { orgao_julgador: orgaoJulgador } : {}),

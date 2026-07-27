@@ -3,6 +3,8 @@ import { buscarProcessoEmTribunais, normalizarDataJudData } from "./client";
 import { extrairTribunaisCandidatos } from "./tribunal-from-cnj";
 import { extrairPrazoDias, extrairPrazoHoras } from "@/lib/regex/patterns";
 import { aplicarPrazoEncontrado } from "@/lib/prazo/aplicar-prazo";
+import { normalizarTribunalSigla } from "@/lib/tribunais/normalizar";
+import { normalizarSistemaNome } from "@/lib/sistemas/normalizar";
 
 type ProcessoParaSincronizar = {
   id: string;
@@ -34,9 +36,9 @@ export async function sincronizarProcessoDataJud(
     orgao_julgador: fresh.orgaoJulgador?.nome ?? null,
     orgao_julgador_codigo: fresh.orgaoJulgador?.codigo ?? null,
     orgao_julgador_municipio_ibge: fresh.orgaoJulgador?.codigoMunicipioIBGE ?? null,
-    tribunal: fresh.tribunal ?? tribunalUsado,
+    tribunal: normalizarTribunalSigla(fresh.tribunal) ?? normalizarTribunalSigla(tribunalUsado),
     grau: fresh.grau ?? null,
-    sistema: fresh.sistema?.nome ?? null,
+    sistema: normalizarSistemaNome(fresh.sistema?.nome),
     nivel_sigilo: fresh.nivelSigilo ?? 0,
     data_ajuizamento: normalizarDataJudData(fresh.dataAjuizamento),
     formato_codigo: fresh.formato?.codigo ?? null,

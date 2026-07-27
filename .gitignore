@@ -17,6 +17,7 @@ next-env.d.ts
 
 # Local-only project folders
 local/
+local-backups/
 instaladores/
 arquivos-antigos/
 release/

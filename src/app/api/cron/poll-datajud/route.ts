@@ -13,6 +13,8 @@ import { extrairPrazoDias, extrairPrazoHoras } from "@/lib/regex/patterns";
 import { aplicarPrazoEncontrado } from "@/lib/prazo/aplicar-prazo";
 import { extrairCampo } from "@/lib/extracao/pipeline";
 import { detectarSinalFracoDeUrgencia } from "@/lib/extracao/detectar-sinal-urgencia";
+import { normalizarTribunalSigla } from "@/lib/tribunais/normalizar";
+import { normalizarSistemaNome } from "@/lib/sistemas/normalizar";
 
 // Sem isso, a Vercel usa o timeout padrão (bem curto no plano Hobby) e mata a
 // função no meio do processamento — o cron-job.org marca como "falha
@@ -135,9 +137,9 @@ export async function POST(req: NextRequest) {
               orgao_julgador: fresh.orgaoJulgador?.nome ?? null,
               orgao_julgador_codigo: fresh.orgaoJulgador?.codigo ?? null,
               orgao_julgador_municipio_ibge: fresh.orgaoJulgador?.codigoMunicipioIBGE ?? null,
-              tribunal: fresh.tribunal ?? tribunalUsado,
+              tribunal: normalizarTribunalSigla(fresh.tribunal) ?? normalizarTribunalSigla(tribunalUsado),
               grau: fresh.grau ?? null,
-              sistema: fresh.sistema?.nome ?? null,
+              sistema: normalizarSistemaNome(fresh.sistema?.nome),
               nivel_sigilo: fresh.nivelSigilo ?? 0,
               data_ajuizamento: normalizarDataJudData(fresh.dataAjuizamento),
               formato_codigo: fresh.formato?.codigo ?? null,

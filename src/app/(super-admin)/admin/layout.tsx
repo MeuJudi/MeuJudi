@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { BarChart3, Building2, CalendarClock, ClipboardList, FileDown, MonitorCog, Shield, ShieldCheck } from "lucide-react";
+import { BarChart3, Building2, CalendarClock, ClipboardList, FileDown, Map, MonitorCog, Shield, ShieldCheck } from "lucide-react";
 import { requireSuperAdmin } from "@/lib/auth/guards";
 import { adminSignOut } from "@/app/(auth)/actions";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ const adminLinks = [
   { href: "/admin/oab-stats", label: "OAB Métricas", icon: ShieldCheck },
   { href: "/admin/cs-releases", label: "CS Versões", icon: FileDown },
   { href: "/admin/cs-diagnostics", label: "CS Diagnósticos", icon: MonitorCog },
+  { href: "/admin/cobertura", label: "Cobertura nacional", icon: Map },
   { href: "/admin/audit", label: "Auditoria", icon: ClipboardList },
   { href: "/admin/maintenance", label: "Manutenção", icon: CalendarClock },
 ];
