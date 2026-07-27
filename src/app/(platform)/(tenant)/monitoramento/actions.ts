@@ -442,6 +442,61 @@ export async function syncTenantDataJudNow() {
 }
 
 /** Sincroniza um lote curto para evitar timeout de Server Action em escritórios grandes. */
+export async function startTenantMuralSyncNow() {
+  try {
+    const { supabase, profile } = await requireAppUser();
+    if (!profile.tenant_id) return { ok: false as const, message: "Usuario sem escritorio vinculado." };
+
+    const { data: oabs, error: oabsError } = await supabase
+      .from("escritorio_oabs")
+      .select("oab_number, oab_uf")
+      .eq("tenant_id", profile.tenant_id)
+      .eq("is_active", true);
+    if (oabsError) throw new Error(`Falha ao listar OABs: ${oabsError.message}`);
+
+    const end = new Date();
+    const start = new Date(end);
+    start.setMonth(start.getMonth() - 12);
+    let criados = 0;
+    let pulados = 0;
+
+    for (const oab of oabs ?? []) {
+      const { data: existente, error: existingError } = await supabase
+        .from("cs_mural_requests")
+        .select("id")
+        .eq("tenant_id", profile.tenant_id)
+        .eq("oab_number", oab.oab_number)
+        .eq("oab_uf", oab.oab_uf)
+        .in("status", ["pending", "processing"])
+        .limit(1)
+        .maybeSingle();
+      if (existingError) throw new Error(`Falha ao verificar pedido do Mural: ${existingError.message}`);
+      if (existente) {
+        pulados++;
+        continue;
+      }
+
+      const { error: insertError } = await supabase.from("cs_mural_requests").insert({
+        tenant_id: profile.tenant_id,
+        oab_number: oab.oab_number,
+        oab_uf: oab.oab_uf,
+        requested_by: profile.id,
+        data_inicio: start.toISOString().slice(0, 10),
+        data_fim: end.toISOString().slice(0, 10),
+        status: "pending",
+      });
+      if (insertError) throw new Error(`Falha ao enfileirar OAB ${oab.oab_number}/${oab.oab_uf}: ${insertError.message}`);
+      criados++;
+    }
+
+    revalidatePath("/monitoramento");
+    return { ok: true as const, criados, pulados, oabs: oabs?.length ?? 0 };
+  } catch (error) {
+    console.error("[monitoramento] nao foi possivel enfileirar sincronizacao do Mural:", error);
+    return { ok: false as const, message: syncErrorMessage(error) };
+  }
+}
+
 export async function syncTenantDataJudBatch(offset = 0, batchSize = 3) {
   try {
     const apiKey = process.env.DATAJUD_API_KEY;

@@ -57,6 +57,7 @@ import {
   reorderKanbanColumns,
   getTenantDataJudSyncJob,
   startTenantDataJudSyncJob,
+  startTenantMuralSyncNow,
   getMuralSyncStatus,
   type MuralSyncStatus,
 } from "./actions";
@@ -588,6 +589,7 @@ export function MonitoramentoView({
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [muralStatus, setMuralStatus] = useState<MuralSyncStatus>({ status: "never" });
   const [isPending, startTransition] = useTransition();
+  const watchDataJudJobRef = useRef<(jobId: string) => void>(() => undefined);
   const boardScrollRef = useRef<HTMLDivElement | null>(null);
   const panStateRef = useRef<{ pointerId: number; startX: number; startScrollLeft: number; active: boolean } | null>(null);
   const sensors = useSensors(
@@ -650,7 +652,7 @@ export function MonitoramentoView({
   useEffect(() => {
     let active = true;
     getTenantDataJudSyncJob().then((result) => {
-      if (active && result.ok && result.job) watchDataJudJob(result.job.id);
+      if (active && result.ok && result.job) watchDataJudJobRef.current(result.job.id);
     }).catch(() => undefined);
     return () => { active = false; };
   }, []);
@@ -789,7 +791,7 @@ export function MonitoramentoView({
     });
   }
 
-  function syncNow() {
+  function syncDataJudOnly() {
     setSyncMessage(null);
     startTransition(async () => {
       try {
@@ -800,6 +802,33 @@ export function MonitoramentoView({
       } catch (error) {
         setSyncMessage(error instanceof Error ? error.message : "Nao foi possivel sincronizar o DataJud.");
       }
+    });
+  }
+
+  function syncNow() {
+    setSyncMessage(null);
+    startTransition(async () => {
+      const [dataJudResult, muralResult] = await Promise.all([
+        startTenantDataJudSyncJob(),
+        startTenantMuralSyncNow(),
+      ]);
+      const messages: string[] = [];
+
+      if (dataJudResult.ok) {
+        messages.push(dataJudResult.resumed ? "DataJud ja estava em andamento" : "DataJud iniciado");
+        watchDataJudJob(dataJudResult.jobId);
+      } else {
+        messages.push(`DataJud: ${dataJudResult.message}`);
+      }
+
+      if (muralResult.ok) {
+        messages.push(`Mural enfileirado (${muralResult.criados} OABs${muralResult.pulados ? `, ${muralResult.pulados} ja em andamento` : ""})`);
+        setMuralStatus({ status: muralResult.criados > 0 ? "syncing" : "idle" });
+      } else {
+        messages.push(`Mural: ${muralResult.message}`);
+      }
+
+      setSyncMessage(messages.join(" · "));
     });
   }
 
@@ -818,6 +847,8 @@ export function MonitoramentoView({
       await new Promise((resolve) => window.setTimeout(resolve, 3000));
     }
   }
+
+  watchDataJudJobRef.current = watchDataJudJob;
 
   function addNewColumn() {
     const cleanName = newColumnName.trim();
