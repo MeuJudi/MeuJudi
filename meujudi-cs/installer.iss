@@ -5,7 +5,7 @@
 
 [Setup]
 AppName=MeuJudi CS
-AppVersion=0.1.0
+AppVersion=0.2.5
 AppPublisher=MeuJudi
 AppPublisherURL=https://meujudi.com.br
 AppSupportURL=https://meujudi.com.br/suporte
@@ -24,11 +24,11 @@ OutputDir=release
 SetupIconFile=assets\icon.ico
 UninstallDisplayIcon={app}\MeuJudi-CS.exe
 UninstallDisplayName=MeuJudi CS
-VersionInfoVersion=0.1.0
+VersionInfoVersion=0.2.5
 VersionInfoCompany=MeuJudi
 VersionInfoDescription=MeuJudi Cert Service
 VersionInfoProductName=MeuJudi CS
-VersionInfoProductVersion=0.1.0
+VersionInfoProductVersion=0.2.5
 
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"

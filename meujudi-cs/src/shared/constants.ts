@@ -5,7 +5,7 @@
 
 export const APP_NAME = 'MeuJudi CS';
 export const APP_FULL_NAME = 'MeuJudi Cert Service';
-export const APP_VERSION = '0.2.4';
+export const APP_VERSION = '0.2.5';
 export const USER_AGENT = 'MeuJudi-CS/1.0 (compatible; Electron)';
 export const MEUJUDI_WEB_URL = process.env.MEUJUDI_WEB_URL || 'https://www.meujudi.com.br';
 
