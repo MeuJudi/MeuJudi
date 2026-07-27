@@ -7,6 +7,18 @@ export async function GET(request: NextRequest) {
   const device = await autenticarDevice(supabase, request);
   if (!device) return NextResponse.json({ error: "device_nao_autorizado" }, { status: 401 });
 
+  // O CS consulta este modo para exibir o histórico sem reservar novas solicitações.
+  if (request.nextUrl.searchParams.get("mode") === "status") {
+    const { data: requests, error } = await supabase
+      .from("cs_mural_requests")
+      .select("id, oab_number, oab_uf, data_inicio, data_fim, status, created_at, claimed_at, completed_at, result, error_message")
+      .eq("tenant_id", device.tenantId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (error) return NextResponse.json({ error: "solicitacoes_nao_carregadas" }, { status: 500 });
+    return NextResponse.json({ requests: requests ?? [] });
+  }
+
   // Busca até 5 pedidos pendentes para as OABs deste tenant
   const { data: requests, error } = await supabase
     .from("cs_mural_requests")
