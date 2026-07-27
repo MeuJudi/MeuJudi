@@ -15,6 +15,7 @@ import { extrairCampo } from "@/lib/extracao/pipeline";
 import { detectarSinalFracoDeUrgencia } from "@/lib/extracao/detectar-sinal-urgencia";
 import { normalizarTribunalSigla } from "@/lib/tribunais/normalizar";
 import { normalizarSistemaNome } from "@/lib/sistemas/normalizar";
+import { finalizarExecucaoFonte, iniciarExecucaoFonte, reconciliarCoberturaPorSiglas } from "@/lib/tribunais/reconciliar-cobertura";
 
 // Sem isso, a Vercel usa o timeout padrão (bem curto no plano Hobby) e mata a
 // função no meio do processamento — o cron-job.org marca como "falha
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest) {
   const supabase = createServiceClient();
   const horaAtual = horaAtualBrasilia();
   const inicioExecucao = Date.now();
+  const auditRun = await iniciarExecucaoFonte(supabase, "datajud", { metadata: { origem: "cron_poll_datajud" } });
 
   // Cada execução processa só um lote pequeno por tenant, começando pelos
   // processos há mais tempo sem sincronizar (fila giratória) — em vez de
@@ -79,12 +81,17 @@ export async function POST(req: NextRequest) {
     .eq("access_status", "liberado");
 
   if (tenantsError) {
+    await finalizarExecucaoFonte(supabase, auditRun?.id ?? null, {
+      status: "failed", itemsRead: 0, itemsCreated: 0, lastError: tenantsError.message,
+      metadata: { origem: "cron_poll_datajud" },
+    }, inicioExecucao);
     return NextResponse.json({ error: tenantsError.message }, { status: 500 });
   }
 
   const tenantsDaVez = (tenants ?? []).filter((t) => deveRodarAgora(t.sync_config as SyncConfig, horaAtual));
 
   const resultado = { tenants_processados: 0, processos_atualizados: 0, sem_mudanca: 0, erros: 0, parou_por_orcamento_de_tempo: false, duracao_ms: 0 };
+  const tribunaisSincronizados = new Set<string>();
 
   for (const tenant of tenantsDaVez) {
     if (Date.now() - inicioExecucao > ORCAMENTO_TEMPO_MS) {
@@ -146,6 +153,7 @@ export async function POST(req: NextRequest) {
               formato_nome: fresh.formato?.nome ?? null,
               ultima_sync_datajud: new Date().toISOString(),
             };
+            if (metadataUpdate.tribunal) tribunaisSincronizados.add(metadataUpdate.tribunal);
 
             if (dataFresh <= dataLocal) {
               resultado.sem_mudanca++;
@@ -252,6 +260,14 @@ export async function POST(req: NextRequest) {
 
   resultado.duracao_ms = Date.now() - inicioExecucao;
 
+  let coberturaAtualizada = true;
+  try {
+    await reconciliarCoberturaPorSiglas(supabase, tribunaisSincronizados, "datajud");
+  } catch (error) {
+    coberturaAtualizada = false;
+    console.error("[poll-datajud] cobertura nao atualizada:", error);
+  }
+
   // Log em try/catch: se a tabela não existir ou o insert falhar, a
   // resposta ainda deve ser enviada. Antes dessa correção, um erro aqui
   // impedia o NextResponse.json() de ser executado e causava timeout
@@ -265,5 +281,13 @@ export async function POST(req: NextRequest) {
     console.error("[poll-datajud] Falha ao registrar log:", logErr instanceof Error ? logErr.message : logErr);
   }
 
-  return NextResponse.json(resultado);
+  await finalizarExecucaoFonte(supabase, auditRun?.id ?? null, {
+    status: resultado.erros > 0 || !coberturaAtualizada ? "partial" : "completed",
+    itemsRead: resultado.tenants_processados,
+    itemsCreated: 0,
+    itemsUpdated: resultado.processos_atualizados,
+    metadata: { ...resultado, cobertura_atualizada: coberturaAtualizada },
+  }, inicioExecucao);
+
+  return NextResponse.json({ ...resultado, cobertura_atualizada: coberturaAtualizada });
 }

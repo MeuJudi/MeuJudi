@@ -35,6 +35,11 @@ dev-local.cmd
 # ignores inside the CS folder (node_modules, dist, etc.) via the local
 # .gitignore in MeuJudi-CS/.
 !/meujudi-cs/release/MeuJudi-CS-Setup-v*.exe
+# Chaves privadas e credenciais locais nunca entram no Git.
+meujudi-cs/*.private-key.pem
+meujudi-cs/*.pem
+meujudi-cs/.env*
+!meujudi-cs/.env.example
 
 # Root loose assets copied into public/
 MeuJudi Icon.png
@@ -42,6 +47,7 @@ MeuJudi Logo *.png
 
 # Generated investigation outputs
 tests/data/
+outputs/
 
 # Vercel / tooling
 .vercel/

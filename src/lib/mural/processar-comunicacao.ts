@@ -9,6 +9,7 @@ import { sugerirVinculoCliente, type PoloParte } from "@/lib/clientes/sugestao-v
 import { registrarAdvogadosDoMural } from "./advogados-diretorio";
 import { extrairMetadadosMural } from "./extrair-metadados";
 import { normalizarTribunalSigla } from "@/lib/tribunais/normalizar";
+import { vincularProcessoAoCatalogo } from "@/lib/tribunais/reconciliar-cobertura";
 
 function poloParaPt(polo: string): PoloParte | null {
   if (polo === "A") return "autor";
@@ -62,6 +63,7 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
         ...(metadados.magistradoNome ? { magistrado_nome: metadados.magistradoNome, magistrado_tipo: metadados.magistradoTipo } : {}),
       }).eq("id", existente.id).eq("tenant_id", tenantId);
     }
+    if (existente.processo_id) await vincularProcessoAoCatalogo(supabase, existente.processo_id, com.siglaTribunal, "mural");
     // Re-extrai audiência/prazo se os campos estiverem vazios — corrige
     // importações antigas onde regexes não limpavam HTML do Mural.
     if (existente.processo_id) {
@@ -218,6 +220,7 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
     ultima_sync_mural: new Date().toISOString(),
   }).eq("id", processoId).eq("tenant_id", tenantId);
   if (processoError) throw new Error(`Falha ao atualizar processo ${processoId}: ${processoError.message}`);
+  await vincularProcessoAoCatalogo(supabase, processoId, com.siglaTribunal, "mural");
 
   if (dataAudienciaIso) await aplicarAudienciaEncontrada(supabase, {
     tenantId,

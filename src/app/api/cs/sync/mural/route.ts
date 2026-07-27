@@ -3,6 +3,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { autenticarDevice } from "@/lib/cs/device-auth";
 import { processarComunicacao } from "@/lib/mural/processar-comunicacao";
 import type { MuralComunicacao } from "@/lib/mural/client";
+import { finalizarExecucaoFonte, iniciarExecucaoFonte, reconciliarCoberturaPorSiglas } from "@/lib/tribunais/reconciliar-cobertura";
 
 export async function POST(request: NextRequest) {
   const supabase = createServiceClient();
@@ -17,8 +18,12 @@ export async function POST(request: NextRequest) {
     let novas = 0;
     let puladas = 0;
     let erros = 0;
+    const siglas = new Set<string>();
+    const auditStartedAt = Date.now();
+    const run = await iniciarExecucaoFonte(supabase, "mural", { tenantId: device.tenantId, metadata: { origem: "cs_sync_mural" } });
     for (const item of body.comunicacoes as MuralComunicacao[]) {
       try {
+        if (item.siglaTribunal) siglas.add(item.siglaTribunal);
         const nova = await processarComunicacao(supabase, device.tenantId, item);
         if (nova) novas++;
         else puladas++;
@@ -27,7 +32,18 @@ export async function POST(request: NextRequest) {
         console.error("[cs/sync/mural] item rejeitado:", error);
       }
     }
-    return NextResponse.json({ recebidas: body.comunicacoes.length, novas, puladas, erros });
+    let coberturaAtualizada = true;
+    try {
+      await reconciliarCoberturaPorSiglas(supabase, siglas, "mural");
+    } catch (error) {
+      coberturaAtualizada = false;
+      console.error("[cs/sync/mural] cobertura nao atualizada:", error);
+    }
+    await finalizarExecucaoFonte(supabase, run?.id ?? null, {
+      status: erros > 0 || !coberturaAtualizada ? "partial" : "completed", itemsRead: body.comunicacoes.length,
+      itemsCreated: novas, itemsUpdated: puladas, metadata: { siglas: [...siglas], erros },
+    }, auditStartedAt);
+    return NextResponse.json({ recebidas: body.comunicacoes.length, novas, puladas, erros, cobertura_atualizada: coberturaAtualizada });
   } catch (error) {
     console.error("[cs/sync/mural] erro:", error);
     return NextResponse.json({ error: "payload_invalido" }, { status: 400 });

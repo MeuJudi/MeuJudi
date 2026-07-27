@@ -5,6 +5,7 @@ import { extrairPrazoDias, extrairPrazoHoras } from "@/lib/regex/patterns";
 import { aplicarPrazoEncontrado } from "@/lib/prazo/aplicar-prazo";
 import { normalizarTribunalSigla } from "@/lib/tribunais/normalizar";
 import { normalizarSistemaNome } from "@/lib/sistemas/normalizar";
+import { vincularProcessoAoCatalogo } from "@/lib/tribunais/reconciliar-cobertura";
 
 type ProcessoParaSincronizar = {
   id: string;
@@ -54,6 +55,7 @@ export async function sincronizarProcessoDataJud(
   };
   const { error: processError } = await supabase.from("processos").update(update).eq("id", processo.id).eq("tenant_id", tenantId);
   if (processError) throw processError;
+  await vincularProcessoAoCatalogo(supabase, processo.id, metadata.tribunal, "datajud");
   if (dataFresh <= dataLocal) return { status: "sem_mudanca" as const, movimentacoes: 0 };
 
   let movimentacoes = 0;
