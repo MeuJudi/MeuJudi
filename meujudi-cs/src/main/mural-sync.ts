@@ -5,6 +5,7 @@ import { decryptObject, encryptObject } from '../shared/crypto';
 import { logger, recordDiagnosticEvent } from './logger';
 import { MuralClient, type MuralComunicacao } from './mural-client';
 import { Pairing } from './pairing';
+import type { MuralProgressSnapshot, MuralRemoteRequest, MuralRequestProgress } from '../shared/types';
 
 type Oab = { oab_number: string; oab_uf: string };
 type SyncCounters = { oabs: number; recebidas: number; novas: number; puladas: number; erros: number };
@@ -21,6 +22,7 @@ type HistoricalCheckpoint = {
 
 type HistoricalStore = { payload: string | null };
 type MuralRequest = { id: string; oab_number: string; oab_uf: string; data_inicio: string; data_fim: string };
+type ProgressStore = { recent: MuralRequestProgress[] };
 
 const HISTORICAL_MONTHS = 12;
 const CHUNK_DAYS = 7;
@@ -58,10 +60,12 @@ function sumCounters(a: SyncCounters, b: SyncCounters): SyncCounters {
 export class MuralSync {
   private readonly mural = new MuralClient();
   private readonly checkpointStore = new Store<HistoricalStore>({ name: 'cs-mural-history', defaults: { payload: null } });
+  private readonly progressStore = new Store<ProgressStore>({ name: 'cs-mural-progress', defaults: { recent: [] } });
   private timer: cron.ScheduledTask | null = null;
   private requestTimer: NodeJS.Timeout | null = null;
   private requestPolling = false;
   private historicalRunning = false;
+  private currentRequest: MuralRequestProgress | null = null;
 
   constructor(private readonly pairing: Pairing) {}
 
@@ -94,10 +98,51 @@ export class MuralSync {
     }
   }
 
+  getProgress(): MuralProgressSnapshot {
+    return {
+      running: this.currentRequest?.status === 'processing',
+      current: this.currentRequest,
+      recent: this.progressStore.get('recent'),
+    };
+  }
+
+  async getRemoteStatus(): Promise<MuralRemoteRequest[]> {
+    const token = this.pairing.getDeviceToken();
+    if (!token) return [];
+    const response = await fetch(`${MEUJUDI_WEB_URL}/api/cs/mural-requests?mode=status`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await response.json() as { requests?: MuralRemoteRequest[]; error?: string };
+    if (!response.ok) throw new Error(data.error || `Status das solicitações HTTP ${response.status}`);
+    return data.requests ?? [];
+  }
+
+  private saveProgress(progress: MuralRequestProgress) {
+    const recent = this.progressStore.get('recent').filter((item) => item.requestId !== progress.requestId);
+    this.progressStore.set('recent', [progress, ...recent].slice(0, 30));
+  }
+
   private async processPendingRequest(headers: Record<string, string>, request: MuralRequest) {
     const startedAt = Date.now();
+    const startedAtIso = new Date(startedAt).toISOString();
+    const oabLabel = `${request.oab_number}/${request.oab_uf}`;
+    const progress: MuralRequestProgress = {
+      requestId: request.id,
+      oab: request.oab_number,
+      uf: request.oab_uf,
+      dataInicio: request.data_inicio,
+      dataFim: request.data_fim,
+      status: 'processing',
+      page: 0,
+      recebidas: 0,
+      encontradas: 0,
+      novas: 0,
+      erros: 0,
+      startedAt: startedAtIso,
+      updatedAt: startedAtIso,
+    };
+    this.currentRequest = progress;
     try {
-      const oabLabel = `${request.oab_number}/${request.oab_uf}`;
       const seen = new Set<number>();
       let recebidas = 0;
       let novas = 0;
@@ -112,15 +157,45 @@ export class MuralSync {
         const result = await this.sendBatch(headers, fresh);
         novas += result.novas;
         erros += result.erros;
+        this.currentRequest = {
+          ...progress,
+          page,
+          recebidas,
+          encontradas: seen.size,
+          novas,
+          erros,
+          updatedAt: new Date().toISOString(),
+        };
         if (items.length < 100) break;
         await sleep(REQUEST_DELAY_MS);
       }
 
       await this.completeRequest(headers, request.id, true, { recebidas, encontradas: seen.size, novas, erros });
+      const completed: MuralRequestProgress = {
+        ...this.currentRequest ?? progress,
+        status: erros > 0 ? 'completed' : 'completed',
+        recebidas,
+        encontradas: seen.size,
+        novas,
+        erros,
+        updatedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+      };
+      this.saveProgress(completed);
+      this.currentRequest = null;
       recordDiagnosticEvent('cs_mural_process_request_finished', erros ? 'warning' : 'success', `Consulta pontual concluída: OAB ${oabLabel}`, { requestId: request.id, oab: oabLabel, recebidas, encontradas: seen.size, novas }, Date.now() - startedAt);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Falha na consulta pontual do Mural.';
       await this.completeRequest(headers, request.id, false, undefined, message);
+      const failed: MuralRequestProgress = {
+        ...this.currentRequest ?? progress,
+        status: 'failed',
+        message,
+        updatedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+      };
+      this.saveProgress(failed);
+      this.currentRequest = null;
       recordDiagnosticEvent('cs_mural_process_request_failed', 'error', message, { requestId: request.id, oab: `${request.oab_number}/${request.oab_uf}` }, Date.now() - startedAt);
     }
   }

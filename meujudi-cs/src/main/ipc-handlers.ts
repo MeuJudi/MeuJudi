@@ -9,7 +9,7 @@ import { ipcMain, app, shell } from 'electron';
 import { PJeAuth } from './pje-auth';
 import { Scheduler } from './scheduler';
 import { Diagnostic } from './diagnostic';
-import { logger } from './logger';
+import { logger, getRecentLogs } from './logger';
 import { enviarRelatorioSupabase } from './supabase-reporter';
 import { Pairing } from './pairing';
 import { MuralSync } from './mural-sync';
@@ -28,35 +28,6 @@ export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: St
   scheduler.start();
   confirmAdv.start();
   const diagnostic = new Diagnostic();
-
-  // Buffer de logs em memória (últimos 200)
-  const logs: LogEntry[] = [];
-  const MAX_LOGS = 200;
-
-  // Hook no logger pra capturar tudo
-  function addLog(level: LogEntry['level'], args: any[]) {
-    logs.push({
-      timestamp: new Date().toISOString(),
-      level,
-      message: args
-        .map((a) => (typeof a === 'string' ? a : JSON.stringify(a)))
-        .join(' '),
-    });
-    if (logs.length > MAX_LOGS) logs.shift();
-  }
-
-  // Wrap dos métodos do logger
-  const wrapMethod = (level: LogEntry['level'], original: (...args: any[]) => void) => {
-    return (...args: any[]) => {
-      addLog(level, args);
-      original(...args);
-    };
-  };
-
-  (logger as any).info = wrapMethod('info', logger.info);
-  (logger as any).warn = wrapMethod('warn', logger.warn);
-  (logger as any).error = wrapMethod('error', logger.error);
-  (logger as any).debug = wrapMethod('debug', logger.debug);
 
   // ============================================================
   //  IPC: PJe
@@ -92,7 +63,7 @@ export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: St
   });
 
   ipcMain.handle('pje:get-logs', async (_event, limit: number = 100): Promise<LogEntry[]> => {
-    return logs.slice(-limit).reverse();
+    return getRecentLogs(limit).slice().reverse();
   });
 
   ipcMain.handle('pairing:submit-code', async (_event, codigo: string) => pairing.pair(codigo));
@@ -108,6 +79,14 @@ export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: St
     running: muralSync.isHistoricalRunning(),
     checkpoint: muralSync.getHistoricalCheckpoint(),
   }));
+
+  ipcMain.handle('mural:poll-now', async () => {
+    logger.info('IPC: mural:poll-now');
+    await muralSync.processPendingRequests();
+  });
+
+  ipcMain.handle('mural:progress', async () => muralSync.getProgress());
+  ipcMain.handle('mural:remote-status', async () => muralSync.getRemoteStatus());
 
   // ============================================================
   //  IPC: ConfirmADV (validacao de OAB)

@@ -35,6 +35,9 @@ const api: ElectronAPI = {
   mural: {
     syncHistorical: () => ipcRenderer.invoke('mural:sync-historical'),
     getHistoricalStatus: () => ipcRenderer.invoke('mural:history-status'),
+    pollNow: () => ipcRenderer.invoke('mural:poll-now'),
+    getProgress: () => ipcRenderer.invoke('mural:progress'),
+    getRemoteStatus: () => ipcRenderer.invoke('mural:remote-status'),
   },
   oab: {
     getCurrent: () => ipcRenderer.invoke('oab:get-current'),

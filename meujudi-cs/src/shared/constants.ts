@@ -5,7 +5,7 @@
 
 export const APP_NAME = 'MeuJudi CS';
 export const APP_FULL_NAME = 'MeuJudi Cert Service';
-export const APP_VERSION = '0.2.0';
+export const APP_VERSION = '0.2.4';
 export const USER_AGENT = 'MeuJudi-CS/1.0 (compatible; Electron)';
 export const MEUJUDI_WEB_URL = process.env.MEUJUDI_WEB_URL || 'https://www.meujudi.com.br';
 
@@ -67,33 +67,21 @@ export const PJE_ENDPOINTS = {
 } as const;
 
 /**
- * Keycloak SSO do PJe (CNJ).
- * client_id varia por tribunal — TRT9 = "pje-trt9-1g".
- */
-export const KEYCLOAK_BASE_URL = 'https://sso.cloud.pje.jus.br';
-export const KEYCLOAK_CLIENT_IDS = {
-  trt9: 'pje-trt9-1g',
-  trf4: 'pje-trf4-1g',
-  // adicionar conforme for implementando
-} as const;
-
-/**
- * URL inicial do login SSO do PJe (Keycloak/PDPJ).
+ * URL inicial do login — via PDPJ (Jus.br), não mais via Keycloak direto.
  *
- * Abrir /pjekz/login diretamente cai em "Acesso Negado" porque essa rota espera
- * um code/token criado pelo SSO. O fluxo correto começa no endpoint OIDC abaixo
- * e volta para o PJe com os parâmetros de autenticação.
+ * Histórico: antes, montávamos a URL do OIDC do Keycloak na mão (client_id +
+ * redirect_uri pro /pjekz/ do tribunal). Isso funcionou por um tempo, mas
+ * desde que o acesso de usuário externo passou a ser exclusivamente via
+ * PDPJ-Br (abr/2025) e o MFA por e-mail virou obrigatório (nov/2025, com
+ * enforcement mais amplo a partir de abr/2026), esse atalho direto passou a
+ * cair em "/pjekz/acesso-negado" mesmo com o certificado e o SSO
+ * funcionando (confirmado nos logs em 27/07/2026 — ver
+ * docs/roadmap/raspador-pdpj.md no repo do Web). A porta de entrada real
+ * agora é o jus.br — o próprio site cuida do redirecionamento (incluindo
+ * MFA quando exigido) e devolve o usuário pro PJe do tribunal já
+ * autorizado.
  */
-export const PJE_LOGIN_URL = (tribunal: PJETribunal = DEFAULT_TRIBUNAL) => {
-  const params = new URLSearchParams({
-    client_id: KEYCLOAK_CLIENT_IDS[tribunal],
-    redirect_uri: `${PJE_BASE_URLS[tribunal]}/pjekz/`,
-    response_type: 'code',
-    scope: 'openid',
-  });
-
-  return `${KEYCLOAK_BASE_URL}/auth/realms/pje/protocol/openid-connect/auth?${params.toString()}`;
-};
+export const PDPJ_LOGIN_URL = 'https://www.jus.br';
 
 /**
  * URL que indica login completo (did-navigate target).

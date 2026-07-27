@@ -171,6 +171,9 @@ export interface ElectronAPI {
   mural: {
     syncHistorical: () => Promise<HistoricalSyncResult | null>;
     getHistoricalStatus: () => Promise<HistoricalSyncStatus>;
+    pollNow: () => Promise<void>;
+    getProgress: () => Promise<MuralProgressSnapshot>;
+    getRemoteStatus: () => Promise<MuralRemoteRequest[]>;
   };
   oab: {
     getCurrent: () => Promise<ConfirmADVValidation | null>;
@@ -199,6 +202,46 @@ export interface HistoricalSyncResult {
 export interface HistoricalSyncStatus {
   running: boolean;
   checkpoint: { taskIndex: number; counters: Omit<HistoricalSyncResult, 'semanas' | 'retomada'>; startedAt: string; completedAt?: string; current?: { oab: string; uf: string; from: string; to: string; page: number; totalTasks: number } } | null;
+}
+
+export type MuralRequestStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
+export interface MuralRequestProgress {
+  requestId: string;
+  oab: string;
+  uf: string;
+  dataInicio: string;
+  dataFim: string;
+  status: MuralRequestStatus;
+  page: number;
+  recebidas: number;
+  encontradas: number;
+  novas: number;
+  erros: number;
+  startedAt: string;
+  updatedAt: string;
+  completedAt?: string;
+  message?: string;
+}
+
+export interface MuralProgressSnapshot {
+  running: boolean;
+  current: MuralRequestProgress | null;
+  recent: MuralRequestProgress[];
+}
+
+export interface MuralRemoteRequest {
+  id: string;
+  oab_number: string;
+  oab_uf: string;
+  data_inicio: string;
+  data_fim: string;
+  status: MuralRequestStatus;
+  created_at: string;
+  claimed_at?: string | null;
+  completed_at?: string | null;
+  result?: Record<string, unknown> | null;
+  error_message?: string | null;
 }
 
 export interface PairingInfo {
