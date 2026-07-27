@@ -46,7 +46,7 @@ const COOKIE_WAIT_MS = 1500; // espera Angular setar cookies HttpOnly
 const COOKIE_CAPTURE_TIMEOUT_MS = 30_000;
 const COOKIE_CAPTURE_RETRY_MS = 1000;
 
-export class PJeAuth {
+export class PdpjAuth {
   private authWindow: BrowserWindow | null = null;
   private store: CookieStore;
   private urlPollInterval: NodeJS.Timeout | null = null;

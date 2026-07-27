@@ -82,6 +82,8 @@ export const PJE_ENDPOINTS = {
  * autorizado.
  */
 export const PDPJ_LOGIN_URL = 'https://www.jus.br';
+export const PDPJ_PORTAL_URL = 'https://portaldeservicos.pdpj.jus.br';
+export const PDPJ_API_BASE_URL = `${PDPJ_PORTAL_URL}/api/v2`;
 
 /**
  * URL que indica login completo (did-navigate target).

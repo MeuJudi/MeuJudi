@@ -41,8 +41,8 @@ if (!gotLock) {
 } else {
   app.on('second-instance', () => {
     logger.info('Segunda instância detectada, abrindo janela de login...');
-    import('./pje-auth').then(({ PJeAuth }) => {
-      new PJeAuth().showLoginWindow().catch((err) => {
+    import('./pje-auth').then(({ PdpjAuth }) => {
+      new PdpjAuth().showLoginWindow().catch((err) => {
         logger.error('Erro ao abrir janela de login:', err);
       });
     });
@@ -79,8 +79,8 @@ if (!gotLock) {
     openAppWindow();
 
     // Status inicial: verifica se já tem sessão salva
-    import('./pje-auth').then(({ PJeAuth }) => {
-      const auth = new PJeAuth();
+    import('./pje-auth').then(({ PdpjAuth }) => {
+      const auth = new PdpjAuth();
       auth.getStatus().then((status) => {
         if (status.state === 'connected') {
           logger.info('Sessão PJe já existe, marcando como conectado');
@@ -149,8 +149,8 @@ if (!gotLock) {
 async function openLoginWindow(): Promise<void> {
   updateTrayStatus('connecting');
   try {
-    const { PJeAuth } = await import('./pje-auth');
-    const auth = new PJeAuth();
+    const { PdpjAuth } = await import('./pje-auth');
+    const auth = new PdpjAuth();
     const session = await auth.showLoginWindow();
     logger.info('Login PJe realizado com sucesso', { userId: session.userId });
     updateTrayStatus('connected');

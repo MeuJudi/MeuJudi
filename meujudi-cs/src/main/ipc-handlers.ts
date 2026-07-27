@@ -6,7 +6,7 @@
  */
 
 import { ipcMain, app, shell } from 'electron';
-import { PJeAuth } from './pje-auth';
+import { PdpjAuth } from './pje-auth';
 import { Scheduler } from './scheduler';
 import { Diagnostic } from './diagnostic';
 import { logger, getRecentLogs } from './logger';
@@ -21,7 +21,7 @@ import type { PJeStatus, PublicSession, LogEntry, DiagnosticReport, ConfirmADVVa
  * Registra todos os IPC handlers. Deve ser chamado uma vez no app.whenReady().
  */
 export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: StatusReporter) {
-  const auth = new PJeAuth();
+  const auth = new PdpjAuth();
   const muralSync = new MuralSync(pairing);
   const confirmAdv = new ConfirmADVService(pairing);
   const scheduler = new Scheduler(pairing, muralSync, statusReporter);

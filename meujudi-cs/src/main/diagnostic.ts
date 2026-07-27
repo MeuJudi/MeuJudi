@@ -16,8 +16,7 @@ import os from 'os';
 import { getRecentDiagnosticEvents, getRecentLogs, logger, recordDiagnosticEvent } from './logger';
 import { detectarCertA1 } from './cert-detector';
 import { CookieStore } from './cookie-store';
-import { PJeAPI } from './pje-api';
-import { APP_NAME, APP_VERSION, PJE_BASE_URLS, TIMEOUTS } from '../shared/constants';
+import { APP_NAME, APP_VERSION, PDPJ_LOGIN_URL, PDPJ_PORTAL_URL, TIMEOUTS } from '../shared/constants';
 import { enviarRelatorioSupabase } from './supabase-reporter';
 import type {
   DiagnosticReport,
@@ -30,11 +29,9 @@ import { randomUUID } from 'crypto';
 
 export class Diagnostic {
   private cookieStore: CookieStore;
-  private pjeApi: PJeAPI;
 
   constructor() {
     this.cookieStore = new CookieStore();
-    this.pjeApi = new PJeAPI(() => this.cookieStore.getValidSession());
   }
 
   /**
@@ -89,16 +86,16 @@ export class Diagnostic {
 
     // ======== Teste 2: Conectividade com PJe ========
     try {
-      logger.info('[2/5] Testando conexão com PJe...');
+      logger.info('[2/5] Testando conexão com PDPJ...');
       report.pjeConnection = await this.testPJeConnection();
       if (!report.pjeConnection.reachable) {
-        report.errors.push('PJe não está acessível');
+        report.errors.push('PDPJ não está acessível');
         report.recommendations.push('Verifique conexão com a internet e firewall');
       }
     } catch (err: any) {
       logger.error('Erro no teste 2:', err);
       report.pjeConnection = { reachable: false, error: err.message };
-      report.errors.push(`Erro ao conectar PJe: ${err.message}`);
+      report.errors.push(`Erro ao conectar PDPJ: ${err.message}`);
     }
 
     // ======== Teste 3: Popup do cert. A1 (só se cert. disponível) ========
@@ -205,7 +202,7 @@ export class Diagnostic {
     report.technicalSummary = {
       triggerReason,
       appPackaged: app.isPackaged,
-      pjeBaseUrl: PJE_BASE_URLS.trt9,
+      pdpjPortalUrl: PDPJ_PORTAL_URL,
       certFound: report.certA1.found,
       certExpired: report.certA1.expired,
       certHasPrivateKey: report.certA1.hasPrivateKey,
@@ -262,7 +259,7 @@ export class Diagnostic {
   private async testPJeConnection(): Promise<PJeConnectionTest> {
     const start = Date.now();
     try {
-      const url = `${PJE_BASE_URLS.trt9}/pje-comum-api/api/fusohorario`;
+      const url = PDPJ_PORTAL_URL;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), TIMEOUTS.request);
 
@@ -318,7 +315,7 @@ export class Diagnostic {
     try {
       // Tenta fazer 1 request autenticado (vai falhar sem sessão)
       // Apenas mede se o TLS handshake funciona
-      const url = `${PJE_BASE_URLS.trt9}/pje-seguranca/api/token/perfis`;
+      const url = PDPJ_LOGIN_URL;
       const response = await fetch(url, {
         method: 'GET',
         headers: { 'User-Agent': `MeuJudi-CS/${APP_VERSION} (diagnostic)` },
