@@ -124,6 +124,62 @@ function TimelineList({ title, icon, empty, items }: { title: string; icon: Reac
   );
 }
 
+function extracaoResumo(extracao: Record<string, unknown> | null): string[] {
+  if (!extracao) return [];
+  const resumo: string[] = [];
+  const prazos = Array.isArray(extracao.prazos) ? extracao.prazos : [];
+  const primeiroPrazo = prazos[0] as { dias?: number; unidade?: string } | undefined;
+  if (primeiroPrazo?.dias) resumo.push(`Prazo: ${primeiroPrazo.dias} ${primeiroPrazo.unidade === "horas" ? "horas" : "dias"}`);
+  const audiencias = Array.isArray(extracao.audiencias) ? extracao.audiencias : [];
+  if (audiencias.length > 0) resumo.push("Menciona audiência");
+  if (typeof extracao.valorCausa === "string" && extracao.valorCausa) resumo.push(`Valor: ${extracao.valorCausa}`);
+  if (typeof extracao.orgaoJulgador === "string" && extracao.orgaoJulgador) resumo.push(`Órgão: ${extracao.orgaoJulgador}`);
+  if (typeof extracao.magistrado === "string" && extracao.magistrado) resumo.push(`Magistrado: ${extracao.magistrado}`);
+  return resumo;
+}
+
+function DocumentosList({ items }: { items: ProcessDetails["documentos"] }) {
+  return (
+    <Panel title="Documentos" icon={<FileText className="h-4 w-4 text-[var(--tenant-brass)]" />}>
+      {items.length === 0 ? (
+        <div className="rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-8 text-center">
+          <FileText className="mx-auto h-7 w-7 text-[var(--color-muted-foreground)]" />
+          <p className="mt-2 text-sm font-medium">Nenhum documento encontrado</p>
+          <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">Documentos aparecem aqui conforme o MeuJudi Sync varre o processo pelo PDPJ.</p>
+        </div>
+      ) : (
+        <ul className="space-y-3">
+          {items.map((doc) => {
+            const resumo = extracaoResumo(doc.extracao);
+            return (
+              <li key={doc.id} className="rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-[var(--tenant-surface-foreground)]">{doc.nome ?? "Documento sem nome"}</p>
+                    <p className="mt-0.5 text-xs text-[var(--color-muted-foreground)]">
+                      {[doc.tipo, formatDate(doc.data_juntada ?? doc.descoberto_em)].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                  <a href={doc.url} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded border border-[var(--tenant-brass)] bg-[color-mix(in_srgb,var(--tenant-brass)_12%,var(--tenant-surface))] px-2 py-0.5 text-[11px] font-semibold text-[var(--tenant-brass)] hover:underline">
+                    Abrir no PDPJ
+                  </a>
+                </div>
+                {resumo.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {resumo.map((item) => (
+                      <span key={item} className="rounded border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-2 py-0.5 text-[11px] text-[var(--tenant-surface-foreground)]">{item}</span>
+                    ))}
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
 export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalProps) {
   const [activeTab, setActiveTab] = useState<ProcessTab>("resumo");
   const [copied, setCopied] = useState(false);
@@ -285,7 +341,7 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
               {activeTab === "movimentacoes" ? <TimelineList title="Movimentações do processo" icon={<FileText className="h-4 w-4 text-[var(--tenant-brass)]" />} empty="Nenhuma movimentação vinculada." items={details.movements.map((item) => ({ id: item.id, title: item.nome, subtitle: item.texto_completo, meta: formatDateTime(item.data_movimento), source: item.fonte, warning: Boolean(item.prazo_fatal) }))} /> : null}
               {activeTab === "agenda" ? <TimelineList title="Agenda vinculada" icon={<CalendarDays className="h-4 w-4 text-[var(--tenant-brass)]" />} empty="Nenhum evento vinculado." items={details.agenda.map((item) => ({ id: item.id, title: item.titulo, subtitle: item.descricao, meta: formatDateTime(item.data_inicio), source: item.fonte, warning: item.tipo === "prazo", link: item.link_videoconferencia }))} /> : null}
               {activeTab === "mural" ? <TimelineList title="Comunicações do Mural" icon={<FileText className="h-4 w-4 text-[var(--tenant-brass)]" />} empty="Nenhuma comunicação vinculada." items={details.mural.map((item) => ({ id: item.id, title: item.tipo_comunicacao, subtitle: item.texto, meta: `${formatDate(item.data_disponibilizacao)} · ${item.sigla_tribunal}`, source: "mural" }))} /> : null}
-              {activeTab === "documentos" ? <Panel title="Documentos" icon={<FileText className="h-4 w-4 text-[var(--tenant-brass)]" />}><div className="rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] p-8 text-center"><FileText className="mx-auto h-7 w-7 text-[var(--color-muted-foreground)]" /><p className="mt-2 text-sm font-medium">Nenhum documento vinculado</p><p className="mt-1 text-xs text-[var(--color-muted-foreground)]">O espaço para documentos será conectado ao processo nesta etapa.</p></div></Panel> : null}
+              {activeTab === "documentos" ? <DocumentosList items={details.documentos} /> : null}
             </div>
           </> : null}
         </div>

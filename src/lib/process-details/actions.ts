@@ -67,6 +67,15 @@ export type ProcessDetails = {
     nome_orgao: string | null;
     texto: string;
   }[];
+  documentos: {
+    id: string;
+    nome: string | null;
+    tipo: string | null;
+    data_juntada: string | null;
+    url: string;
+    descoberto_em: string;
+    extracao: Record<string, unknown> | null;
+  }[];
 };
 
 export async function getProcessDetails(processId: string): Promise<ProcessDetails> {
@@ -128,7 +137,7 @@ export async function getProcessDetails(processId: string): Promise<ProcessDetai
   // Todas as partes do modal são independentes depois que o processo foi
   // autorizado. Executá-las juntas evita que avatar -> movimentações ->
   // agenda -> Mural virem uma fila de esperas.
-  const [{ data: movements }, { data: agenda }, { data: mural }, enrichedAttorneys] = await Promise.all([
+  const [{ data: movements }, { data: agenda }, { data: mural }, { data: documentos }, enrichedAttorneys] = await Promise.all([
     supabase
       .from("movimentacoes")
       .select("id, data_movimento, nome, texto_completo, fonte, prazo_fatal, is_novo")
@@ -147,6 +156,12 @@ export async function getProcessDetails(processId: string): Promise<ProcessDetai
       .eq("processo_id", processId)
       .order("data_disponibilizacao", { ascending: false })
       .limit(6),
+    supabase
+      .from("processo_documentos")
+      .select("id, nome, tipo, data_juntada, url, descoberto_em, extracao")
+      .eq("processo_id", processId)
+      .order("data_juntada", { ascending: false, nullsFirst: false })
+      .limit(20),
     resolveAttorneyAvatars(uniqueAttorneyKeys, attorneys),
   ]);
 
@@ -155,6 +170,7 @@ export async function getProcessDetails(processId: string): Promise<ProcessDetai
     movements: (movements ?? []) as ProcessDetails["movements"],
     agenda: (agenda ?? []) as ProcessDetails["agenda"],
     mural: (mural ?? []) as ProcessDetails["mural"],
+    documentos: (documentos ?? []) as ProcessDetails["documentos"],
   };
 }
 

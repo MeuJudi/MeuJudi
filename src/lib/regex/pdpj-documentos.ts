@@ -7,7 +7,9 @@
  * atual, historico ou apenas referencia legal.
  */
 
-export type TipoDocumentoPdpj = "despacho" | "decisao" | "sentenca" | "acordao" | "peticao" | "outro";
+import { converterDataPtParaIso } from "./patterns";
+
+export type TipoDocumentoPdpj = "despacho" | "decisao" | "sentenca" | "acordao" | "peticao" | "ata_audiencia" | "outro";
 
 export type EvidenciaPdpj = {
   valor: string;
@@ -22,6 +24,10 @@ export type PrazoPdpj = EvidenciaPdpj & {
   sujeito: string | null;
 };
 
+export type AudienciaPdpj = EvidenciaPdpj & {
+  dataIso: string | null;
+};
+
 export type DocumentoPdpjExtraido = {
   tipo: TipoDocumentoPdpj;
   processo: string | null;
@@ -32,9 +38,21 @@ export type DocumentoPdpjExtraido = {
   magistrado: string | null;
   partes: { polo: "ativo" | "passivo"; nome: string }[];
   prazos: PrazoPdpj[];
-  audiencias: EvidenciaPdpj[];
+  audiencias: AudienciaPdpj[];
   evidencias: Record<string, EvidenciaPdpj | null>;
 };
+
+/** Normaliza o `tipo.nome` que o PDPJ já entrega pronto (ver `PdpjDocumentoRef` no CS) — evita adivinhar por regex quando o dado oficial já chegou. */
+function normalizarTipoOficial(tipoOficial: string): TipoDocumentoPdpj | null {
+  const chave = semAcentos(tipoOficial).toLowerCase().trim();
+  if (chave.includes("acordao")) return "acordao";
+  if (chave.includes("sentenca")) return "sentenca";
+  if (chave.includes("peticao")) return "peticao";
+  if (chave.includes("ata") && chave.includes("audiencia")) return "ata_audiencia";
+  if (chave.includes("despacho")) return "despacho";
+  if (chave.includes("decisao")) return "decisao";
+  return null;
+}
 
 function semAcentos(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -93,16 +111,34 @@ function extrairPrazos(texto: string): PrazoPdpj[] {
   return encontrados;
 }
 
-function extrairAudiencias(texto: string): EvidenciaPdpj[] {
-  const encontrados: EvidenciaPdpj[] = [];
+/** Procura uma data (DD/MM/AAAA ou "DD de mês de AAAA") dentro do trecho de evidência da audiência. */
+function extrairDataAudiencia(contexto: string): string | null {
+  const dataBarra = /\b(\d{2})\/(\d{2})\/(\d{4})\b/.exec(contexto);
+  if (dataBarra) return `${dataBarra[3]}-${dataBarra[2]}-${dataBarra[1]}`;
+  const dataExtenso = /\b(\d{1,2})\s+de\s+([a-zç]+)\s+de\s+(\d{4})\b/i.exec(contexto);
+  if (dataExtenso) return converterDataPtParaIso(dataExtenso[1], dataExtenso[2], dataExtenso[3]);
+  return null;
+}
+
+function extrairAudiencias(texto: string): AudienciaPdpj[] {
+  const encontrados: AudienciaPdpj[] = [];
   const regex = /(?:(?:audiencia|sessao de julgamento|pauta de julgamento)[\s\S]{0,180}?(?:designada|redesignada|agendada|paute-se|retire-se de pauta|realizada|compareceram)[\s\S]{0,100}|(?:paute-se|retire-se de pauta)[\s\S]{0,100}(?:audiencia|sessao de julgamento|pauta de julgamento)[\s\S]{0,100})/gi;
   let match: RegExpExecArray | null;
-  while ((match = regex.exec(texto))) encontrados.push(evidencia(texto, match, match[0]));
+  while ((match = regex.exec(texto))) {
+    const item = evidencia(texto, match, match[0]);
+    encontrados.push({ ...item, dataIso: extrairDataAudiencia(item.contexto) });
+  }
   return encontrados;
 }
 
-export function extrairDocumentoPdpj(textoOriginal: string): DocumentoPdpjExtraido {
+/**
+ * `tipoOficial`, quando informado (ex.: `doc.tipo` do PDPJ — "Despacho",
+ * "Sentença", "Ata da Audiência"), tem prioridade sobre `classificarDocumento`
+ * (que só adivinha pelo cabeçalho do texto e vira fallback).
+ */
+export function extrairDocumentoPdpj(textoOriginal: string, tipoOficial?: string | null): DocumentoPdpjExtraido {
   const texto = normalizarTextoPdpj(textoOriginal);
+  const tipo = (tipoOficial ? normalizarTipoOficial(tipoOficial) : null) ?? classificarDocumento(texto);
   const processo = primeiro(texto, /\bProcesso\s*:\s*([0-9]{7,}-?[0-9.\-]{8,})/i);
   const classe = primeiro(texto, /Classe Processual\s*:\s*([^\n]{3,160}?)(?=\s+Assunto Principal\s*:|\s+Valor da Causa\s*:)/i);
   const assunto = primeiro(texto, /Assunto Principal\s*:\s*([^\n]{3,160}?)(?=\s+Valor da Causa\s*:|\s+Exequente|\s+Autor|\s+Requerente)/i);
@@ -119,5 +155,5 @@ export function extrairDocumentoPdpj(textoOriginal: string): DocumentoPdpjExtrai
   }
 
   const evidencias: DocumentoPdpjExtraido["evidencias"] = { processo, classeProcessual: classe, assuntoPrincipal: assunto, valorCausa: valor, orgaoJulgador: orgao, magistrado };
-  return { tipo: classificarDocumento(texto), processo: processo?.valor ?? null, classeProcessual: classe?.valor ?? null, assuntoPrincipal: assunto?.valor ?? null, valorCausa: valor?.valor ?? null, orgaoJulgador: orgao?.valor ?? null, magistrado: magistrado?.valor ?? null, partes, prazos: extrairPrazos(texto), audiencias: extrairAudiencias(texto), evidencias };
+  return { tipo, processo: processo?.valor ?? null, classeProcessual: classe?.valor ?? null, assuntoPrincipal: assunto?.valor ?? null, valorCausa: valor?.valor ?? null, orgaoJulgador: orgao?.valor ?? null, magistrado: magistrado?.valor ?? null, partes, prazos: extrairPrazos(texto), audiencias: extrairAudiencias(texto), evidencias };
 }

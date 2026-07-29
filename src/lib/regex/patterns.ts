@@ -256,7 +256,7 @@ const MESES_PT: Record<string, string> = {
 };
 
 /** Converte "DD de mês de AAAA" para ISO (YYYY-MM-DD). */
-function converterDataPtParaIso(dia: string, mes: string, ano: string): string | null {
+export function converterDataPtParaIso(dia: string, mes: string, ano: string): string | null {
   const mesNum = MESES_PT[mes.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")];
   if (!mesNum) return null;
   return `${ano}-${mesNum}-${dia.padStart(2, "0")}`;
