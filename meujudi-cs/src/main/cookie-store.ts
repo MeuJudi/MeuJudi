@@ -1,5 +1,5 @@
 /**
- * MeuJudi CS — CookieStore
+ * MeuJudi Sync — CookieStore
  *
  * Armazena a sessão PJe (cookies + CSRF) criptografada em disco.
  * Usa electron-store com encryptionKey (AES-256-GCM por baixo dos panos).
@@ -10,7 +10,7 @@ import Store from 'electron-store';
 import { machineIdSync } from 'node-machine-id';
 import crypto from 'crypto';
 import { logger } from './logger';
-import type { PJeSession, PublicSession } from '../shared/types';
+import type { PdpjSession } from '../shared/types';
 
 // Sessao antiga do PJe nao e reutilizada. O PDPJ possui armazenamento proprio.
 const STORE_NAME = 'pdpj-session';
@@ -18,7 +18,7 @@ const SALT = 'meujudi-cs-cookies-v1-salt-do-not-change';
 
 export class CookieStore {
   private store: Store<{ session: string | null }>;
-  private cachedSession: PJeSession | null = null;
+  private cachedSession: PdpjSession | null = null;
   private cachedAt: number = 0;
   private readonly CACHE_TTL_MS = 30_000; // 30s
 
@@ -43,7 +43,7 @@ export class CookieStore {
   /**
    * Salva a sessão criptografada em disco.
    */
-  saveSession(session: PJeSession): void {
+  saveSession(session: PdpjSession): void {
     this.store.set('session', JSON.stringify(session));
     this.cachedSession = session;
     this.cachedAt = Date.now();
@@ -53,7 +53,7 @@ export class CookieStore {
   /**
    * Retorna a sessão válida (não expirada), ou null.
    */
-  getValidSession(): PJeSession | null {
+  getValidSession(): PdpjSession | null {
     // Cache
     if (this.cachedSession && Date.now() - this.cachedAt < this.CACHE_TTL_MS) {
       if (this.cachedSession.expiresAt > new Date()) {
@@ -70,7 +70,7 @@ export class CookieStore {
     }
 
     try {
-      const session: PJeSession = JSON.parse(raw);
+      const session: PdpjSession = JSON.parse(raw);
       // Revalida datas (JSON perde o tipo Date)
       session.expiresAt = new Date(session.expiresAt);
       session.createdAt = new Date(session.createdAt);

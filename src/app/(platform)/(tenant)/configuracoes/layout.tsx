@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 const tabs = [
   { href: "/configuracoes/perfil", label: "Meu perfil" },
   { href: "/configuracoes/escritorio", label: "Escritório" },
-  { href: "/configuracoes/meujudi-cs", label: "MeuJudi CS" },
+  { href: "/configuracoes/meujudi-cs", label: "MeuJudi Sync" },
   { href: "/configuracoes/oabs", label: "OABs" },
   { href: "/configuracoes/honorarios", label: "Honorários" },
   { href: "/configuracoes/equipe", label: "Equipe" },

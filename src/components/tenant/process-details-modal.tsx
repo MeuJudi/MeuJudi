@@ -63,7 +63,7 @@ function attorneyDetails(value: unknown) {
 }
 
 function sourceLabel(value: string) {
-  const labels: Record<string, string> = { datajud: "DataJud", mural: "Mural", pje: "PJe/CS", manual: "Manual", tenant: "Escritório", public: "Público" };
+  const labels: Record<string, string> = { datajud: "DataJud", mural: "Mural", pje: "PDPJ/CS", manual: "Manual", tenant: "Escritório", public: "Público" };
   return labels[value.toLowerCase()] ?? value;
 }
 
@@ -151,7 +151,7 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
   const sourceBadges = process ? [
     { label: "Mural", date: process.ultima_sync_mural },
     { label: "DataJud", date: process.ultima_sync_datajud },
-    { label: "PJe/CS", date: process.ultima_sync_pje },
+    { label: "PDPJ/CS", date: process.ultima_sync_pje },
   ].filter((source) => Boolean(source.date)) : [];
   const recentItems = useMemo(() => {
     if (!details) return [];
@@ -198,7 +198,7 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
         const result = await syncProcessMuralNow(processId);
         if (!result.ok) throw new Error(result.message);
         if (!result.queued) throw new Error("Solicitação do Mural não foi colocada na fila.");
-        setSyncMessage("Solicitação enviada ao MeuJudi CS. Aguardando consulta local...");
+        setSyncMessage("Solicitação enviada ao MeuJudi Sync. Aguardando consulta local...");
         for (let attempt = 0; attempt < 30; attempt += 1) {
           await new Promise((resolve) => window.setTimeout(resolve, 2000));
           const status = await getMuralSyncRequest(result.requestId);
@@ -208,8 +208,8 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
             setSyncMessage(`${payload.novas ?? 0} novas comunicações do Mural encontradas pelo CS.`);
             break;
           }
-          if (status.status === "failed") throw new Error(status.errorMessage || "O MeuJudi CS não conseguiu consultar o Mural.");
-          setSyncMessage(`MeuJudi CS consultando o Mural... (${attempt + 1}/30)`);
+          if (status.status === "failed") throw new Error(status.errorMessage || "O MeuJudi Sync não conseguiu consultar o Mural.");
+          setSyncMessage(`MeuJudi Sync consultando o Mural... (${attempt + 1}/30)`);
         }
       }
       const refreshed = await getProcessDetails(processId);

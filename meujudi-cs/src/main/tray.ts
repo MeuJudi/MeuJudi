@@ -1,5 +1,5 @@
 /**
- * MeuJudi CS — Tray icon (bandeja do Windows)
+ * MeuJudi Sync — Tray icon (bandeja do Windows)
  *
  * Ícone fica na bandeja do sistema com menu de contexto:
  * - Conectar ao PJe
@@ -13,6 +13,7 @@ import { Tray, Menu, nativeImage, app, NativeImage, BrowserWindow } from 'electr
 import path from 'path';
 import fs from 'fs';
 import { logger } from './logger';
+import { loadAppIcon } from './app-icon';
 import { APP_NAME, TRAY_STATUS } from '../shared/constants';
 import type { TrayStatus } from '../shared/constants';
 
@@ -49,7 +50,7 @@ function loadTrayIcon(): NativeImage {
   const trayPath = path.join(__dirname, '..', '..', 'assets', 'tray-icon.png');
   const iconPath = path.join(__dirname, '..', '..', 'assets', 'icon.png');
 
-  let imagePath = fs.existsSync(trayPath) ? trayPath : iconPath;
+  const imagePath = fs.existsSync(trayPath) ? trayPath : iconPath;
 
   if (!fs.existsSync(imagePath)) {
     logger.warn('Ícone do tray não encontrado, usando placeholder');
@@ -116,7 +117,7 @@ function rebuildMenu(
     { type: 'separator' },
     {
       id: 'open-app',
-      label: 'Abrir MeuJudi CS',
+      label: 'Abrir MeuJudi Sync',
       click: onOpenApp,
     },
     {
@@ -148,6 +149,7 @@ function rebuildMenu(
           width: 400,
           height: 300,
           title: `Sobre ${APP_NAME}`,
+          icon: loadAppIcon(),
           autoHideMenuBar: true,
         });
         about.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
@@ -160,7 +162,7 @@ function rebuildMenu(
               <p>Node: ${process.versions.node}</p>
               <hr>
               <p style="color: #6b7280; font-size: 12px;">
-                MeuJudi CS — Cert Service<br>
+                MeuJudi Sync — Sincronização do escritório<br>
                 © 2026 Caio
               </p>
             </body>

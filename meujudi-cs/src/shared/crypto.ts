@@ -1,5 +1,5 @@
 /**
- * MeuJudi CS — Criptografia AES-256-GCM
+ * MeuJudi Sync — Criptografia AES-256-GCM
  *
  * Usado pra criptografar cookies da sessão PJe antes de salvar em disco.
  * Chave única por máquina (baseada em node-machine-id).

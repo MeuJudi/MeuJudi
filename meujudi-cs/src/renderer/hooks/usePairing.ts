@@ -8,7 +8,7 @@ export function usePairing() {
 
   const refresh = useCallback(async () => {
     if (!window.meujudi) {
-      setError('A ponte do MeuJudi CS nao foi carregada. Feche e abra o aplicativo novamente.');
+      setError('A ponte do MeuJudi Sync nao foi carregada. Feche e abra o aplicativo novamente.');
       setIsLoading(false);
       return;
     }

@@ -1,5 +1,5 @@
 // Fase 3 (módulo CS) — reporta progresso/resultado de uma validação de OAB
-// em andamento no MeuJudi CS. Uma rota genérica pro ciclo de vida inteiro
+// em andamento no MeuJudi Sync. Uma rota genérica pro ciclo de vida inteiro
 // (diferente de mural-requests/[requestId], que só tem "completou ou
 // falhou") porque o fluxo do ConfirmADV tem vários passos intermediários
 // visíveis pro usuário (recaptcha, aguardando código, validando).

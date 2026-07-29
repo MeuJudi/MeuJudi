@@ -42,10 +42,10 @@ export default async function CsReleasesPage() {
       <header>
         <p className="text-sm font-medium text-primary">Super Admin</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">
-          MeuJudi CS — Versões
+          MeuJudi Sync — Versões
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Gerencie o instalador do MeuJudi CS disponível para download pelos
+          Gerencie o instalador do MeuJudi Sync disponível para download pelos
           escritórios.
         </p>
       </header>

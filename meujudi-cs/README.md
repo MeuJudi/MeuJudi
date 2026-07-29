@@ -1,4 +1,4 @@
-# MeuJudi CS (Cert Service)
+# MeuJudi Sync
 
 > App desktop (Electron) que conecta o **MeuJudi Web** ao **PJe** via cert. A1 ou gov.br.
 
@@ -10,7 +10,7 @@
 
 ## 🎯 O que é
 
-O **MeuJudi CS** é um tray app (fica na bandeja do Windows, perto do relógio) que:
+O **MeuJudi Sync** é um tray app (fica na bandeja do Windows, perto do relógio) que:
 
 1. Faz login no PJe via cert. A1 ou gov.br (OAuth-like window)
 2. Guarda os cookies criptografados localmente
@@ -52,7 +52,7 @@ npm run dev
 
 ### 4. Testar fluxo de login
 
-1. Clique 2x no ícone da bandeja do MeuJudi CS
+1. Clique 2x no ícone da bandeja do MeuJudi Sync
 2. Ou clique direito → "Conectar ao PJe"
 3. Janela do PJe abre
 4. Faça login (gov.br OU cert. A1)
@@ -86,7 +86,7 @@ release\MeuJudi-CS-Setup.exe --first-run
 ┌─────────────────────────────────────────────────────────────┐
 │  Windows do Advogado                                         │
 │                                                              │
-│  [Bandeja] MeuJudi CS (tray icon, fica ali 100% do tempo)  │
+│  [Bandeja] MeuJudi Sync (tray icon, fica ali 100% do tempo)  │
 │     ↓                                                        │
 │  [OAuth Window] (abre 30s, usuário loga, fecha)             │
 │     ↓                                                        │
@@ -195,7 +195,7 @@ meujudi-cs/
 
 ### Cenário 1: gov.br (mais fácil, sem cert. A1)
 
-1. Abra o MeuJudi CS
+1. Abra o MeuJudi Sync
 2. Clique "🔌 Conectar ao PJe"
 3. Na janela do PJe, clique "gov.br"
 4. Faça login com CPF + senha
@@ -204,7 +204,7 @@ meujudi-cs/
 ### Cenário 2: cert. A1 (precisa do cert instalado)
 
 1. Instale o cert. A1 no Windows (clique 2x no .pfx)
-2. Abra o MeuJudi CS
+2. Abra o MeuJudi Sync
 3. Clique "🔌 Conectar ao PJe"
 4. Na janela do PJe, clique "Certificado A1"
 5. **Popup do Windows aparece** pedindo o cert
@@ -214,7 +214,7 @@ meujudi-cs/
 
 ### Cenário 3: Diagnóstico automático (1ª execução)
 
-1. Instale o MeuJudi CS com `--first-run`
+1. Instale o MeuJudi Sync com `--first-run`
 2. App abre e roda diagnóstico automaticamente após 3s
 3. Notificação: "Diagnóstico concluído!"
 4. Relatório vai pro Supabase (se configurado)
@@ -269,7 +269,7 @@ node tests/validate-pre-build.js
 
 ---
 
-## 🏢 MeuJudi CS é uma vertical
+## 🏢 MeuJudi Sync é uma vertical
 
 ```
 verticals (MeuJudi, Game, ...)

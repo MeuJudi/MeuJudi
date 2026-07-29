@@ -10,7 +10,7 @@ import { requireWritableAppUser, requireAppUser } from "@/lib/auth/guards";
 import { stripMask } from "@/lib/masks";
 
 /**
- * Verifica se o tenant tem pelo menos um MeuJudi CS pareado e ativo.
+ * Verifica se o tenant tem pelo menos um MeuJudi Sync pareado e ativo.
  * Usado pelo `CsPairingGate` para fazer polling a cada 5s e detectar
  * pareamento recente. É uma query leve (count only).
  */
@@ -64,7 +64,7 @@ export async function criarOuRetomarSolicitacaoValidacao(formData: FormData) {
     .is("revoked_at", null);
   if (!dispositivosAtivos) {
     throw new Error(
-      "Nenhum MeuJudi CS pareado a este escritorio. Va em Configuracoes - MeuJudi CS para parear.",
+      "Nenhum MeuJudi Sync pareado a este escritorio. Va em Configuracoes - MeuJudi Sync para parear.",
     );
   }
 

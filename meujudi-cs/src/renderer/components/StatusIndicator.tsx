@@ -2,14 +2,14 @@
  * StatusIndicator — bolinha colorida com label do status de conexão.
  */
 
-import type { PJeStatus } from '@shared/types';
+import type { PdpjStatus } from '@shared/types';
 
 interface StatusIndicatorProps {
-  status: PJeStatus;
+  status: PdpjStatus;
   size?: 'sm' | 'md' | 'lg';
 }
 
-const STATUS_CONFIG: Record<PJeStatus['state'], { color: string; label: string; icon: string; pulse: boolean }> = {
+const STATUS_CONFIG: Record<PdpjStatus['state'], { color: string; label: string; icon: string; pulse: boolean }> = {
   disconnected: { color: 'bg-status-disconnected', label: 'Desconectado', icon: '⚪', pulse: false },
   connecting:   { color: 'bg-status-connecting',   label: 'Conectando...', icon: '🟡', pulse: true },
   connected:    { color: 'bg-status-connected',    label: 'Conectado',     icon: '🟢', pulse: false },

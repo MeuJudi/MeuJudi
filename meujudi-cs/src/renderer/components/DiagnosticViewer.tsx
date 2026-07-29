@@ -1,5 +1,5 @@
 /**
- * DiagnosticViewer — mostra o último relatório de diagnóstico do MeuJudi CS.
+ * DiagnosticViewer — mostra o último relatório de diagnóstico do MeuJudi Sync.
  * Usado na página de configurações / status.
  */
 
@@ -178,7 +178,7 @@ function DiagnosticDetails({ report }: { report: DiagnosticReport }) {
       <h3 className="text-lg font-semibold mb-3">📋 Detalhes técnicos</h3>
       <div className="space-y-2 text-sm font-mono">
         <div className="flex justify-between">
-          <span className="text-gray-500">Versão MeuJudi CS:</span>
+          <span className="text-gray-500">Versão MeuJudi Sync:</span>
           <span>{report.meuJudiVersion}</span>
         </div>
         <div className="flex justify-between">

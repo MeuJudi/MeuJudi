@@ -7,9 +7,9 @@ export default function CertServicePage() {
     <main className="min-h-screen bg-background px-6 py-8">
       <div className="mx-auto max-w-3xl space-y-6">
         <div>
-          <p className="text-sm font-medium text-primary">MeuJudi CS</p>
+          <p className="text-sm font-medium text-primary">MeuJudi Sync</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-            Conectar PJe pelo aplicativo local
+            Conectar ao PDPJ/Jus.br pelo aplicativo local
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
             O instalador sera publicado aqui quando a integracao Web estiver ativa.
@@ -22,8 +22,8 @@ export default function CertServicePage() {
           </CardHeader>
           <CardContent className="space-y-4 text-sm leading-6 text-muted-foreground">
             <p>
-              O advogado instala o MeuJudi CS no Windows, conecta o PJe em uma janela segura e o
-              app envia dados autorizados para o Supabase do escritorio.
+              O advogado instala o MeuJudi Sync no Windows, conecta ao PDPJ/Jus.br em uma janela
+              segura e o app envia dados autorizados para o Supabase do escritorio.
             </p>
             <Button disabled>
               <Download className="h-4 w-4" />

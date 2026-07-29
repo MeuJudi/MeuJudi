@@ -29,6 +29,20 @@ type DiagnosticReportJson = {
   technicalSummary?: Record<string, unknown>;
 };
 
+type SyncTaskFailureRow = {
+  id: string;
+  tenant_id: string;
+  source: string;
+  type: string;
+  status: string;
+  attempt: number;
+  error_code: string | null;
+  error_message: string | null;
+  last_activity_at: string | null;
+  created_at: string;
+  tenants: { name: string | null } | null;
+};
+
 type DiagnosticReportRow = {
   id: string;
   created_at: string;
@@ -65,6 +79,13 @@ function boolLabel(value: boolean | null) {
   return "-";
 }
 
+function taskStatusLabel(status: string): string {
+  if (status === "failed") return "Falhou";
+  if (status === "paused_login_required") return "Pausada — login";
+  if (status === "paused_rate_limit") return "Pausada — limite";
+  return status;
+}
+
 export default async function CsDiagnosticsPage() {
   const { supabase } = await requireSuperAdmin();
   const { data, error } = await supabase
@@ -79,6 +100,17 @@ export default async function CsDiagnosticsPage() {
     throw new Error(error.message);
   }
 
+  // Fase 9 (docs/roadmap/23-meujudi-cs-v0.3.0-refatoracao.md): observabilidade
+  // da fila unificada (sync_tasks) — falhas/pausas recentes de qualquer
+  // tenant, pra triagem de suporte sem precisar entrar em cada escritório.
+  const { data: taskFailures } = await supabase
+    .from("sync_tasks")
+    .select("id, tenant_id, source, type, status, attempt, error_code, error_message, last_activity_at, created_at, tenants(name)")
+    .in("status", ["failed", "paused_login_required", "paused_rate_limit"])
+    .order("last_activity_at", { ascending: false, nullsFirst: false })
+    .limit(30)
+    .returns<SyncTaskFailureRow[]>();
+
   const reports = (data ?? []) as DiagnosticReportRow[];
   const latest = reports[0];
   const latestEvents = latest?.report_json?.recentEvents?.slice(-24).reverse() ?? [];
@@ -91,7 +123,7 @@ export default async function CsDiagnosticsPage() {
         <p className="text-sm font-medium text-primary">Super Admin</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Diagnosticos do CS</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Relatorios enviados pelo MeuJudi CS durante testes, falhas de login e diagnosticos manuais.
+          Relatorios enviados pelo MeuJudi Sync durante testes, falhas de login e diagnosticos manuais.
         </p>
       </header>
 
@@ -132,6 +164,48 @@ export default async function CsDiagnosticsPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Fila unificada — falhas e pausas recentes</CardTitle>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          {!taskFailures || taskFailures.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhuma tarefa falhada ou pausada nos ultimos registros.</p>
+          ) : (
+            <table className="w-full min-w-[1000px] text-sm">
+              <thead className="border-b text-left text-muted-foreground">
+                <tr>
+                  <th className="py-3 pr-4 font-medium">Quando</th>
+                  <th className="py-3 pr-4 font-medium">Escritorio</th>
+                  <th className="py-3 pr-4 font-medium">Fonte / tipo</th>
+                  <th className="py-3 pr-4 font-medium">Status</th>
+                  <th className="py-3 pr-4 font-medium">Tentativa</th>
+                  <th className="py-3 pr-4 font-medium">Erro</th>
+                  <th className="py-3 pr-4 font-medium">ID (suporte)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {taskFailures.map((task) => (
+                  <tr key={task.id} className="border-b align-top last:border-0">
+                    <td className="py-3 pr-4 text-muted-foreground">
+                      {task.last_activity_at ? new Date(task.last_activity_at).toLocaleString("pt-BR") : new Date(task.created_at).toLocaleString("pt-BR")}
+                    </td>
+                    <td className="py-3 pr-4">{task.tenants?.name ?? "-"}</td>
+                    <td className="py-3 pr-4 font-mono text-xs">{task.source}:{task.type}</td>
+                    <td className="py-3 pr-4">
+                      <Badge variant={task.status === "failed" ? "destructive" : "secondary"}>{taskStatusLabel(task.status)}</Badge>
+                    </td>
+                    <td className="py-3 pr-4">{task.attempt}</td>
+                    <td className="max-w-md py-3 pr-4 text-xs text-muted-foreground">{task.error_message ?? task.error_code ?? "-"}</td>
+                    <td className="py-3 pr-4 font-mono text-xs text-muted-foreground">{task.id.slice(0, 8)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Relatorios recebidos</CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
@@ -143,7 +217,7 @@ export default async function CsDiagnosticsPage() {
                 <th className="py-3 pr-4 font-medium">Motivo</th>
                 <th className="py-3 pr-4 font-medium">Status</th>
                 <th className="py-3 pr-4 font-medium">A1</th>
-                <th className="py-3 pr-4 font-medium">PJe</th>
+                <th className="py-3 pr-4 font-medium">PDPJ</th>
                 <th className="py-3 pr-4 font-medium">Login</th>
                 <th className="py-3 pr-4 font-medium">XSRF</th>
                 <th className="py-3 pr-4 font-medium">Logs</th>

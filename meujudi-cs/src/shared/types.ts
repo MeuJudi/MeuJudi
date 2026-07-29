@@ -1,5 +1,5 @@
 ﻿/**
- * MeuJudi CS â€” Types compartilhados
+ * MeuJudi Sync â€” Types compartilhados
  * Interfaces usadas entre main process, preload e renderer.
  */
 
@@ -9,7 +9,7 @@ import type { PJETribunal } from './constants';
  * SessÃ£o autenticada no PJe (cookies + CSRF token + expiraÃ§Ã£o).
  * Persistida criptografada em disco via electron-store.
  */
-export interface PJeSession {
+export interface PdpjSession {
   tribunal: PJETribunal;
   userId: number;              // id do advogado logado (185531 no caso do LuÃ­s Fellype)
   cookies: SerializedCookie[];
@@ -17,6 +17,17 @@ export interface PJeSession {
   expiresAt: Date;              // quando a sessÃ£o expira
   createdAt: Date;
   lastUsedAt: Date;
+  /** Sessao PDPJ capturada no portal. Mantido opcional por compatibilidade. */
+  provider?: 'pdpj';
+  accessToken?: string;
+  tokenType?: 'Bearer';
+  tokenExpiresAt?: Date;
+  apiValidated?: boolean;
+}
+
+export interface LinkedOab {
+  oabNumber: string;
+  oabUf: string;
 }
 
 export interface SerializedCookie {
@@ -34,7 +45,7 @@ export interface SerializedCookie {
  * Status atual da conexÃ£o com o PJe.
  * Retornado pro renderer via IPC.
  */
-export type PJeStatus =
+export type PdpjStatus =
   | { state: 'disconnected' }
   | { state: 'connecting' }
   | { state: 'connected'; session: PublicSession }
@@ -51,6 +62,8 @@ export interface PublicSession {
   createdAt: Date;
   lastUsedAt: Date;
   timeRemainingMs: number;      // expiresAt - now
+  apiValidated?: boolean;
+  apiStatus?: 'pending' | 'validated' | 'unavailable';
 }
 
 /**
@@ -147,17 +160,21 @@ export interface PJeError {
  * IPC API exposta pro renderer via preload.
  */
 export interface ElectronAPI {
-  pje: {
+  pdpj: {
     showLoginWindow: () => Promise<PublicSession>;
-    getStatus: () => Promise<PJeStatus>;
+    getStatus: () => Promise<PdpjStatus>;
     disconnect: () => Promise<void>;
-    syncNow: () => Promise<{ processos: number; pecas: number; durationMs: number }>;
-    getLogs: (limit?: number) => Promise<LogEntry[]>;
+    openJus: () => Promise<void>;
+    validateApi: () => Promise<boolean>;
+    getLinkedOabs: () => Promise<LinkedOab[]>;
+    enqueueOabSync: (oabNumber: string, oabUf: string) => Promise<{ created: boolean; taskId?: string }>;
+    fetchProcessDetails: (cnj: string) => Promise<Record<string, unknown>>;
   };
   diagnostic: {
     run: () => Promise<DiagnosticReport>;
     sendToSupabase: (report: DiagnosticReport) => Promise<{ sent: boolean; id?: string; error?: string }>;
     getLast: () => Promise<DiagnosticReport | null>;
+    getLogs: (limit?: number) => Promise<LogEntry[]>;
   };
   app: {
     getVersion: () => Promise<string>;
@@ -167,6 +184,16 @@ export interface ElectronAPI {
     submitCode: (codigo: string) => Promise<PairingInfo>;
     getStatus: () => Promise<PairingInfo | null>;
     unpair: () => Promise<void>;
+  };
+  connection: {
+    getStatus: () => Promise<ConnectionStatus>;
+  };
+  queue: {
+    listTasks: () => Promise<SyncTask[]>;
+  };
+  sync: {
+    now: () => Promise<UnifiedSyncProgress>;
+    getProgress: () => Promise<UnifiedSyncProgress | null>;
   };
   mural: {
     syncHistorical: () => Promise<HistoricalSyncResult | null>;
@@ -242,6 +269,66 @@ export interface MuralRemoteRequest {
   completed_at?: string | null;
   result?: Record<string, unknown> | null;
   error_message?: string | null;
+}
+
+/**
+ * Fila persistente unificada (Supabase, tabela sync_tasks) — Fase 3 de
+ * docs/roadmap/23-meujudi-cs-v0.3.0-refatoracao.md.
+ */
+export type SyncTaskSource = 'datajud' | 'mural' | 'pdpj';
+export type SyncTaskStatus =
+  | 'pending' | 'claimed' | 'running' | 'waiting_external'
+  | 'paused_login_required' | 'paused_rate_limit'
+  | 'completed' | 'completed_with_warnings' | 'failed' | 'cancelled';
+export type SyncTaskFinalStatus = Extract<
+  SyncTaskStatus,
+  'completed' | 'completed_with_warnings' | 'failed' | 'cancelled' | 'paused_login_required' | 'paused_rate_limit'
+>;
+
+export interface SyncTask {
+  id: string;
+  parent_task_id: string | null;
+  source: SyncTaskSource;
+  type: string;
+  cnj: string | null;
+  status: SyncTaskStatus;
+  priority: number;
+  attempt: number;
+  cursor: unknown;
+  error_message: string | null;
+  started_at: string | null;
+  last_activity_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+/**
+ * Progresso agregado de um ciclo de sincronização unificada (worker,
+ * Fase 4). Uma execução de "Sincronizar agora" pode reservar várias
+ * tarefas internas (DataJud/Mural/PDPJ) — isso resume tudo numa visão só.
+ */
+export interface UnifiedSyncProgress {
+  runId: string;
+  startedAt: string;
+  finishedAt: string | null;
+  tasksTotal: number;
+  tasksCompleted: number;
+  tasksFailed: number;
+  tasksPaused: number;
+  bySource: Record<SyncTaskSource, { total: number; done: number }>;
+}
+
+/**
+ * Status de conexão com o MeuJudi Web — separado do status de login na
+ * fonte (PDPJ/Jus, ver PdpjStatus) e da sessão da API. Reflete o resultado
+ * do último heartbeat enviado pelo StatusReporter.
+ */
+export interface ConnectionStatus {
+  paired: boolean;
+  online: boolean;
+  lastHeartbeatAt: string | null;
+  lastError: string | null;
+  revoked: boolean;
 }
 
 export interface PairingInfo {

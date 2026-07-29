@@ -1,5 +1,5 @@
 /**
- * MeuJudi CS — helpers puros do fluxo ConfirmADV.
+ * MeuJudi Sync — helpers puros do fluxo ConfirmADV.
  *
  * Separados do módulo principal para que sejam testáveis sem precisar
  * instanciar o BrowserWindow, a Pairing ou o electron-store.

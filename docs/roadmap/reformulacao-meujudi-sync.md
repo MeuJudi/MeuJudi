@@ -1,20 +1,52 @@
 # Reformulação do MeuJudi CS → MeuJudi Sync
 
-> **Status:** Planejamento — nada implementado ainda
-> **Autor:** Caio + Claude
-> **Data:** 24/07/2026
-> **Depende de:** `arquitetura-sincronizacao-mural.md` (heartbeat, `cs_devices`, task queue) — este documento assume que a Fase 1 daquele doc (heartbeat) já está no ar, e reaproveita o mesmo mecanismo pra entregar a permissão de acesso avançado.
+> **Status:** ⚠️ **SUPERSEDIDO** em 27/07/2026 — o plano oficial a seguir agora é
+> [`23-meujudi-cs-v0.3.0-refatoracao.md`](23-meujudi-cs-v0.3.0-refatoracao.md),
+> que cobre (e vai bem além d)o que este documento planejava (shell de
+> navegação, rename, seção avançado/diagnóstico). Mantido aqui só como
+> histórico/referência das decisões de UX que já tinham sido tomadas — várias
+> delas continuam válidas dentro do escopo do doc 23 (ex.: permissão
+> avançada por heartbeat, campo "Pareado por {nome}" sempre visível).
+>
+> **Data original:** 24/07/2026 (escopo revisado e reorganizado em fases em 27/07/2026)
+> **Depende de:** `arquitetura-sincronizacao-mural.md` (heartbeat, `cs_devices`, task queue) — **já está pronto e em produção**, ver Raio-X abaixo.
+
+---
+
+## Raio-X (27/07/2026): o que já existe hoje
+
+Conferido direto no código do `meujudi-cs/` nesta data, depois de várias
+rodadas de trabalho no app (pareamento, sync do Mural, ConfirmADV, correção
+do login PDPJ — ver [`cs-pdpj-login-fix.md`](cs-pdpj-login-fix.md) e
+[`19-cs-sync-multitenant.md`](19-cs-sync-multitenant.md)).
+
+| Peça | Status |
+|---|---|
+| Heartbeat (`arquitetura-sincronizacao-mural.md` Fase 1) | ✅ Pronto — `status-reporter.ts` envia a cada `INTERVALS.heartbeat`, integrado ao `Scheduler` |
+| Pareamento por código (`cs_devices`) | ✅ Pronto — `src/main/pairing.ts` + tela `settings/pairing.tsx` |
+| Sync real do Mural via CS | ✅ Pronto — `src/main/mural-sync.ts` (361 linhas), `scheduler.ts` com task queue de verdade (não é mais stub) |
+| Validação de OAB via ConfirmADV | ✅ Pronto — `src/main/confirmadv.ts` (441 linhas), tela `settings/oab-validation.tsx` — feature que nem existia quando este doc foi escrito |
+| Login PJe via PDPJ/Jus.br | 🚧 Em andamento — `pje-auth.ts` v4 aponta pro jus.br, SSO com cert. A1 já confirmado funcionando; falta achar a rota certa dentro do jus.br que leva ao painel do PJe (ver `cs-pdpj-login-fix.md`) |
+
+A fundação técnica está pronta. Este documento trata da reformulação de
+navegação, organização de telas, rename **e** migração visual pro design
+system do Web — tudo organizado em fases sequenciais (seção abaixo), pra
+poder ser implementado aos poucos sem depender de fazer tudo de uma vez.
 
 ---
 
 ## 1. Problema
 
-O app hoje se chama **"MeuJudi CS"**, com subtítulo **"Cert Service"** — nome herdado de quando ele só existia pra gerenciar o Certificado A1. Hoje ele faz muito mais: autentica no PJe, sincroniza o Mural (empurra novidades e atende pedidos do servidor), reporta heartbeat, conduz a validação de OAB via ConfirmADV. O nome não corresponde mais ao que o app é.
+O app hoje se chama **"MeuJudi CS"**, com subtítulo **"Cert Service"** —
+nome herdado de quando ele só existia pra gerenciar o Certificado A1. Hoje
+ele faz muito mais: autentica no PJe (via PDPJ/Jus.br), sincroniza o Mural,
+reporta heartbeat, conduz a validação de OAB via ConfirmADV. O nome não
+corresponde mais ao que o app é.
 
-A interface tem três problemas concretos, achados revisando o código:
+Três problemas concretos, achados revisando o código:
 
-1. **Navegação inconsistente** — `pairing.tsx` usa `<a href="../../index.html">` (link cru, recarrega a página), `pje-connection.tsx` usa `next/link` (roteamento client-side). Cada tela tem seu próprio jeito de "voltar".
-2. **Informação técnica/pessoal solta nas telas comuns** — a tela de Conexão PJe mistura status (que todo mundo precisa) com um bloco de diagnóstico completo (versão do Electron, hostname da máquina, CPF do certificado, latência do PJe, contagem de cookies) e um botão pra mostrar logs brutos. Isso fica visível pra qualquer pessoa que abra o CS, numa máquina de escritório que pode ser vista por qualquer um.
+1. **Navegação inconsistente** — `pairing.tsx` usa `<a href="../../index.html">` (link cru, recarrega a página), `pje-connection.tsx` usa `next/link` (roteamento client-side). Cada tela tem seu próprio jeito de "voltar", sem componente compartilhado.
+2. **Informação técnica/pessoal solta nas telas comuns** — a tela de Conexão PJe mistura status (que todo mundo precisa) com um bloco de diagnóstico completo (versão do Electron, hostname da máquina, CPF do certificado, latência do PJe, contagem de cookies) e um botão pra mostrar logs brutos. Isso fica visível pra qualquer pessoa que abra o CS numa máquina de escritório.
 3. **Visual desconectado do resto do MeuJudi** — o CS usa Tailwind genérico (`btn-primary`, cinza padrão, ícones em emoji), sem nenhuma relação com o design system do Web (`DESIGN.md`: IBM Plex Sans, Fraunces, paleta `brass`/`paper`/`ink`, componentes Radix já padronizados).
 
 ---
@@ -24,20 +56,20 @@ A interface tem três problemas concretos, achados revisando o código:
 | Tópico | Decisão |
 |---|---|
 | Nome novo | **MeuJudi Sync** (era "MeuJudi CS" / "Cert Service") |
-| Sistema visual | Migrar pro mesmo design system do Web (tokens de `DESIGN.md`, componentes de `src/components/ui/`) em vez do Tailwind genérico atual |
+| Sistema visual | **Migrar pro mesmo design system do Web** (tokens de `DESIGN.md`, componentes de `src/components/ui/`) em vez do Tailwind genérico atual — ver Fase 7 |
 | Layout de navegação | **Centralizado**, como é hoje (logo + card + lista de botões) — **não** vira menu lateral. A mudança é tornar esse padrão consistente entre todas as telas, não trocar o layout |
 | Escopo da reformulação | Tudo: Home/Status, Conexão PJe, Pareamento, Validação de OAB, Diagnóstico/Logs, Sobre, menu da bandeja |
 | Visibilidade por padrão | **Visível pra todo mundo:** Status, Conexão PJe, Pareamento, Validação de OAB, Sobre (simplificada) |
 | Visibilidade restrita | **Só aparece se o Super Admin autorizar:** Logs, Diagnóstico (relatório completo), Detalhes técnicos (versão, Electron, Windows, hostname, CPF do certificado, latência do PJe, cookies) |
 | Campo "Pareado por {nome}" | **Sempre visível** (nos dois casos — padrão e avançado) — é operacional (quem conectou este PC), não entra no bloco restrito |
-| Mecanismo de permissão | **Opção B:** a permissão "pega carona" no heartbeat que o CS já envia a cada 5 min (`arquitetura-sincronizacao-mural.md`) — o servidor devolve o status de autorização em toda resposta de heartbeat, sem precisar de uma consulta extra. Funciona com o CS offline (usa o último valor salvo em cache local) |
-| Granularidade da permissão | **As duas ao mesmo tempo** — o Super Admin pode liberar o **escritório inteiro** (todos os dispositivos daquele tenant) ou **um dispositivo específico** sem abrir pro resto da equipe. Detalhado na seção 4 |
+| Mecanismo de permissão | **Opção B:** a permissão "pega carona" no heartbeat que o CS já envia — o servidor devolve o status de autorização em toda resposta, sem consulta extra. Funciona com o CS offline (usa o último valor salvo em cache local) |
+| Granularidade da permissão | **As duas ao mesmo tempo** — o Super Admin pode liberar o **escritório inteiro** (todos os dispositivos daquele tenant) ou **um dispositivo específico**. Detalhado na Fase 1 |
 | Ícone do app | Mantém o atual por enquanto — troca fica pra depois, decisão separada |
 | Rename no Web | Sim — precisa propagar pra todo lugar no Web que hoje fala "MeuJudi CS" |
 
 ### Decisão registrada, não reabrir
 
-- **Pasta `meujudi-cs/`**: o nome da pasta/repositório do app Electron não muda neste plano (é interno, não aparece pro usuário) — só strings visíveis, título da janela e nome do instalador. Renomear a pasta é possível depois, mas mexe em scripts de build/empacotamento sem nenhum ganho visível; recomendo não fazer isso agora.
+- **Pasta `meujudi-cs/`**: o nome da pasta/repositório do app Electron não muda neste plano (é interno, não aparece pro usuário) — só strings visíveis, título da janela e nome do instalador.
 
 ---
 
@@ -48,12 +80,13 @@ MeuJudi Sync (Home)
 ├─ Status                     [sempre visível] — card central: pareado?, PJe
 │                                conectado?, última sync do Mural, tudo num
 │                                relance. Ponto de entrada único.
-├─ Conexão PJe                [sempre visível] — conectar/desconectar,
-│                                sincronizar agora, tempo restante de sessão
+├─ Conexão PJe                [sempre visível] — conectar/desconectar (via
+│                                PDPJ/Jus.br), sincronizar agora, tempo
+│                                restante de sessão
 ├─ Pareamento                 [sempre visível] — código/QR, "Pareado por
 │                                {nome}", importação histórica, desconectar
 ├─ Validação de OAB           [sempre visível] — verificar agora, estágio
-│                                atual (as 4 etapas), status do ConfirmADV
+│                                atual, status do ConfirmADV (já existe)
 ├─ Sobre                      [sempre visível] — nome, versão, link de
 │                                suporte. NÃO mostra hostname/Electron/etc.
 │
@@ -65,17 +98,42 @@ MeuJudi Sync (Home)
    └─ Logs                    — o que já existe em LogsViewer hoje
 ```
 
-O menu continua centralizado (card com lista de botões, como a `index.tsx` de hoje) — a diferença é que **todas as telas passam a usar o mesmo componente de shell/cabeçalho** (voltar consistente, mesmo padding, mesmo estilo de card), e a seção **Avançado** só aparece na lista de botões quando o CS souber (via heartbeat) que está autorizado.
+O menu continua centralizado (card com lista de botões, como a `index.tsx`
+de hoje) — a diferença é que **todas as telas passam a usar o mesmo
+componente de shell/cabeçalho** (voltar consistente, mesmo padding, mesmo
+estilo de card), e a seção **Avançado** só aparece na lista de botões
+quando o CS souber (via heartbeat) que está autorizado.
 
 ---
 
-## 4. Parte 1 — Permissão avançada (Web)
+## 4. Fases de implementação
 
-Duas camadas independentes, qualquer uma das duas libera: **escritório inteiro** (todos os dispositivos daquele tenant) ou **um dispositivo específico** (só aquele PC, mesmo que o resto do escritório não tenha acesso).
+Cada fase é independente o suficiente pra ser feita e testada isoladamente.
+A ordem abaixo é a recomendada (algumas podem rodar em paralelo, indicado
+na coluna "Depende de").
 
-### 4.1 Migration: colunas de permissão
+| Fase | Nome | Onde | Depende de |
+|---|---|---|---|
+| 1 | Permissão avançada (migration + heartbeat + UI Super Admin) | Web | Heartbeat já pronto ✅ |
+| 2 | CS: cache local da permissão | CS | Fase 1 |
+| 3 | CS: `AppShell` compartilhado | CS | — |
+| 4 | CS: Home/Status reformulada + tela "Sobre" | CS | Fase 3 |
+| 5 | CS: seção "Avançado" (Diagnóstico/Detalhes técnicos/Logs) | CS | Fases 2, 3 |
+| 6 | Rename "MeuJudi CS" → "MeuJudi Sync" (CS + Web) | CS + Web | Pode rodar em paralelo com 3-5 |
+| 7 | Sistema visual — migrar pro design system do Web | CS | Por último, depois de tudo estrutural (3-6) |
 
-**Arquivo:** `supabase/migrations/20260726000001_cs_advanced_access.sql` (novo)
+---
+
+### Fase 1 — Permissão avançada (Web)
+
+Duas camadas independentes, qualquer uma das duas libera: **escritório
+inteiro** (todos os dispositivos daquele tenant) ou **um dispositivo
+específico** (só aquele PC, mesmo que o resto do escritório não tenha
+acesso).
+
+**1.1 Migration: colunas de permissão**
+
+`supabase/migrations/YYYYMMDD_cs_advanced_access.sql` (novo):
 
 ```sql
 -- Escritório inteiro
@@ -93,22 +151,21 @@ comment on column public.cs_devices.advanced_access is
   'Libera Logs/Diagnóstico/Detalhes técnicos só neste dispositivo pareado, mesmo que o escritório (tenants.cs_advanced_access) não esteja liberado.';
 ```
 
-### 4.2 Heartbeat devolve a permissão efetiva
+**1.2 Heartbeat devolve a permissão efetiva**
 
-**Arquivo:** `src/app/api/cs/heartbeat/route.ts` (já existe, per `arquitetura-sincronizacao-mural.md` Fase 1 — só adicionar o campo na resposta)
-
-Permissão efetiva = `tenants.cs_advanced_access OR cs_devices.advanced_access` (qualquer um dos dois libera):
+`src/app/api/cs/heartbeat/route.ts` (já existe — só adicionar o campo na
+resposta). Permissão efetiva = `tenants.cs_advanced_access OR
+cs_devices.advanced_access`:
 
 ```ts
-// Depois de autenticar o device e atualizar last_heartbeat/status:
 const { data: tenant } = await supabase
   .from("tenants")
   .select("cs_advanced_access")
   .eq("id", device.tenantId)
   .maybeSingle();
 
-// device já veio de autenticarDevice — se ainda não trouxer advanced_access,
-// adicionar ao select dessa função (src/lib/cs/device-auth.ts)
+// device já vem de autenticarDevice — adicionar advanced_access ao select
+// dessa função (src/lib/cs/device-auth.ts) se ainda não trouxer
 const advancedAccess = Boolean(tenant?.cs_advanced_access) || Boolean(device.advancedAccess);
 
 return NextResponse.json({
@@ -118,59 +175,60 @@ return NextResponse.json({
 });
 ```
 
-### 4.3 UI pro Super Admin autorizar
+**1.3 UI pro Super Admin autorizar**
 
-**Arquivo:** provavelmente dentro de `src/app/(super-admin)/admin/` — reaproveitar a tela que já lista tenants/`cs-releases`, ou criar uma seção nova (`admin/cs-devices`) ou um card dentro da página de detalhe do tenant.
+Dentro de `src/app/(super-admin)/admin/` — reaproveitar a tela que já
+lista tenants/`cs-releases`, ou criar `admin/cs-devices`, ou um card na
+página de detalhe do tenant. Dois controles:
+- Toggle do escritório → `update tenants set cs_advanced_access = ...`.
+- Lista de dispositivos pareados, cada um com seu toggle → `update
+  cs_devices set advanced_access = ...`.
 
-Dois controles, um pra cada camada:
-- **Toggle do escritório**: "Acesso avançado pra todo o escritório: Ligado/Desligado" → `update tenants set cs_advanced_access = ... where id = ...`.
-- **Lista de dispositivos pareados daquele tenant**, cada um com seu próprio toggle: "Acesso avançado neste dispositivo" → `update cs_devices set advanced_access = ... where id = ...`. Útil pra liberar só o PC de quem precisa diagnosticar, sem abrir pro escritório inteiro.
-
-Ambos Server Actions diretas, sem RPC, mesmo padrão de outras ações do Super Admin já existentes.
+Server Actions diretas, sem RPC, mesmo padrão de outras ações do Super
+Admin já existentes.
 
 ---
 
-## 5. Parte 2 — CS: cache local da permissão
+### Fase 2 — CS: cache local da permissão
 
-### 5.1 `StatusReporter` guarda o valor recebido
+**2.1 `StatusReporter` guarda o valor recebido**
 
-**Arquivo:** `meujudi-cs/src/main/status-reporter.ts` (já existe, per `arquitetura-sincronizacao-mural.md`)
-
-A cada heartbeat bem-sucedido, salvar `advancedAccess` num `electron-store` (mesmo padrão já usado por `Pairing`/`MuralSync` pra persistir estado local):
+`meujudi-cs/src/main/status-reporter.ts` (já existe). A cada heartbeat
+bem-sucedido, salva `advancedAccess` num `electron-store` (mesmo padrão já
+usado por `Pairing`/`MuralSync`):
 
 ```ts
 interface AccessStore { advancedAccess: boolean }
 const accessStore = new Store<AccessStore>({ name: "cs-access", defaults: { advancedAccess: false } });
 
-// Dentro do método que envia o heartbeat, ao receber a resposta:
+// Ao receber a resposta do heartbeat:
 accessStore.set("advancedAccess", response.advancedAccess ?? false);
 ```
 
-**Comportamento offline:** se o heartbeat falhar (sem internet, servidor fora), mantém o último valor salvo — nunca reseta pra `false` só por falha de rede. Só muda quando um heartbeat responde com sucesso.
+**Comportamento offline:** se o heartbeat falhar, mantém o último valor
+salvo — nunca reseta pra `false` só por falha de rede.
 
-### 5.2 IPC novo pro renderer consultar
+**2.2 IPC novo pro renderer consultar**
 
-**Arquivo:** `meujudi-cs/src/main/ipc-handlers.ts` (adicionar handler)
-
+`meujudi-cs/src/main/ipc-handlers.ts`:
 ```ts
 ipcMain.handle('access:get-advanced', async () => accessStore.get('advancedAccess'));
 ```
 
-**Arquivo:** `meujudi-cs/src/preload/index.ts` (expor no bridge)
-
+`meujudi-cs/src/preload/index.ts`:
 ```ts
 access: { getAdvanced: () => ipcRenderer.invoke('access:get-advanced') },
 ```
 
-**Arquivo:** `meujudi-cs/src/shared/types.ts` (adicionar ao `ElectronAPI`)
-
+`meujudi-cs/src/shared/types.ts`:
 ```ts
 access: { getAdvanced: () => Promise<boolean> };
 ```
 
-### 5.3 Hook no renderer
+**2.3 Hook no renderer**
 
-**Arquivo:** `meujudi-cs/src/renderer/hooks/useAdvancedAccess.ts` (novo, mesmo molde de `usePairing`/`usePJeStatus`)
+`meujudi-cs/src/renderer/hooks/useAdvancedAccess.ts` (novo, mesmo molde de
+`usePairing`/`usePJeStatus`):
 
 ```ts
 export function useAdvancedAccess() {
@@ -178,7 +236,7 @@ export function useAdvancedAccess() {
   useEffect(() => {
     const refresh = () => window.meujudi.access.getAdvanced().then(setAdvanced).catch(() => undefined);
     refresh();
-    const timer = setInterval(refresh, 30_000); // reflete mudança de heartbeat sem precisar reabrir o app
+    const timer = setInterval(refresh, 30_000);
     return () => clearInterval(timer);
   }, []);
   return advanced;
@@ -187,16 +245,11 @@ export function useAdvancedAccess() {
 
 ---
 
-## 6. Parte 3 — CS: shell de navegação único
+### Fase 3 — CS: shell de navegação único
 
-### 6.1 Componente de layout compartilhado
-
-**Arquivo:** `meujudi-cs/src/renderer/components/AppShell.tsx` (novo)
-
-Substitui o padrão atual de cada página desenhar seu próprio `<header>`/link de voltar. Um único componente:
-- Cabeçalho com botão "Voltar" consistente (usa `next/link`, nunca `<a href="../../index.html">` de novo)
-- Título da página
-- Slot pro conteúdo
+`meujudi-cs/src/renderer/components/AppShell.tsx` (novo). Substitui o
+padrão atual de cada página desenhar seu próprio `<header>`/link de
+voltar:
 
 ```tsx
 export function AppShell({ title, children }: { title: string; children: React.ReactNode }) {
@@ -214,34 +267,44 @@ export function AppShell({ title, children }: { title: string; children: React.R
 }
 ```
 
-Todas as páginas (`pje-connection.tsx`, `pairing.tsx`, `oab-validation.tsx`, as novas `sobre.tsx` e `avancado/*.tsx`) passam a usar esse componente.
-
-### 6.2 Home/Status reformulada
-
-**Arquivo:** `meujudi-cs/src/renderer/pages/index.tsx` (reescrever)
-
-- Card de status único: pareado (sim/não) → PJe conectado (sim/não) → última sync do Mural (há quanto tempo).
-- Lista de botões centralizados pras seções, na mesma estrutura de hoje — **adiciona** um botão "Avançado" só quando `useAdvancedAccess()` retornar `true`.
-- Remove a menção "Cert Service" — passa a dizer só "MeuJudi Sync" com uma linha curta (ex.: "Sincronização do escritório com o MeuJudi").
-
-### 6.3 Tela "Sobre" nova
-
-**Arquivo:** `meujudi-cs/src/renderer/pages/sobre.tsx` (novo)
-
-Nome, versão (`window.meujudi.app.getVersion()`, já existe), link de suporte/changelog. **Não** mostra hostname, versão do Electron/Windows nem nada técnico — isso migra pra dentro de Avançado → Detalhes técnicos.
-
-### 6.4 Seção "Avançado"
-
-**Arquivo:** `meujudi-cs/src/renderer/pages/avancado/index.tsx` (novo) + reaproveita `DiagnosticViewer.tsx` e `LogsViewer.tsx` como estão hoje (o conteúdo interno não muda, só a organização/local de acesso).
-
-- Guard no topo da página: se `useAdvancedAccess()` for `false`, redireciona pra Home (defesa em profundidade — o botão já não aparece na Home, mas a rota não deve funcionar mesmo se alguém tentar acessar direto).
-- Lista centralizada de 3 botões: Diagnóstico, Detalhes técnicos, Logs — cada um leva pra sua própria tela (ou vira `<details>` expansível numa página só, à sua escolha na hora da implementação).
+Nesta fase o `AppShell` reaproveita o visual atual (classes já existentes,
+tipo `card`) — a troca de estilo em si é a Fase 7. Todas as páginas
+(`pje-connection.tsx`, `pairing.tsx`, `oab-validation.tsx`, as novas
+`sobre.tsx` e `avancado/*.tsx`) passam a usar esse componente.
 
 ---
 
-## 7. Parte 4 — Rename "MeuJudi CS" → "MeuJudi Sync"
+### Fase 4 — CS: Home/Status reformulada + tela "Sobre"
 
-### 7.1 Dentro do CS (Electron)
+**4.1 Home** — `meujudi-cs/src/renderer/pages/index.tsx` (reescrever):
+- Card de status único: pareado (sim/não) → PJe conectado (sim/não) →
+  última sync do Mural (há quanto tempo) → validação de OAB.
+- Lista de botões centralizados pras seções — **adiciona** um botão
+  "Avançado" só quando `useAdvancedAccess()` retornar `true`.
+- Remove a menção "Cert Service" — passa a dizer só "MeuJudi Sync".
+
+**4.2 Tela "Sobre"** — `meujudi-cs/src/renderer/pages/sobre.tsx` (novo):
+nome, versão (`window.meujudi.app.getVersion()`, já existe), link de
+suporte/changelog. **Não** mostra nada técnico — isso migra pra Avançado.
+
+---
+
+### Fase 5 — CS: seção "Avançado"
+
+`meujudi-cs/src/renderer/pages/avancado/index.tsx` (novo) + reaproveita
+`DiagnosticViewer.tsx` e `LogsViewer.tsx` como estão hoje (conteúdo interno
+não muda, só a organização/local de acesso).
+
+- Guard no topo: se `useAdvancedAccess()` for `false`, redireciona pra Home
+  (defesa em profundidade — o botão já não aparece na Home, mas a rota não
+  deve funcionar mesmo se alguém tentar acessar direto).
+- Lista centralizada de 3 botões: Diagnóstico, Detalhes técnicos, Logs.
+
+---
+
+### Fase 6 — Rename "MeuJudi CS" → "MeuJudi Sync"
+
+**6.1 Dentro do CS (Electron)**
 
 | Arquivo | O que mudar |
 |---|---|
@@ -250,10 +313,10 @@ Nome, versão (`window.meujudi.app.getVersion()`, já existe), link de suporte/c
 | `meujudi-cs/src/shared/constants.ts` | `APP_NAME`, `APP_FULL_NAME` |
 | `meujudi-cs/src/main/tray.ts` | Tooltip/menu da bandeja |
 | `meujudi-cs/src/renderer/pages/_document.tsx` | `<title>` |
-| `meujudi-cs/src/renderer/pages/index.tsx` | Remove "Cert Service", já coberto na seção 6.2 |
-| Ícone do app | Se quiser trocar visualmente também — fora do escopo deste doc, decisão separada |
+| `meujudi-cs/src/renderer/pages/index.tsx` | Já coberto na Fase 4.1 |
+| Ícone do app | Fora do escopo deste doc — decisão separada |
 
-### 7.2 No Web
+**6.2 No Web**
 
 | Arquivo | O que mudar |
 |---|---|
@@ -261,52 +324,55 @@ Nome, versão (`window.meujudi.app.getVersion()`, já existe), link de suporte/c
 | `src/app/(platform)/(tenant)/configuracoes/meujudi-cs/cs-pairing-gate.tsx` | "Conecte o MeuJudi CS" → "Conecte o MeuJudi Sync" |
 | `src/app/(platform)/(tenant)/configuracoes/meujudi-cs/cs-download-section.tsx` | Copy do botão de download |
 | `src/app/(platform)/(tenant)/validacao-oab/cs-pairing-gate.tsx` | Mesma copy, outra tela |
-| `src/app/(super-admin)/admin/cs-releases/*` | Nome exibido nas releases (o nome técnico da tabela/rota pode continuar `cs-releases`, é interno) |
-| Qualquer outro texto visível com "MeuJudi CS" | Buscar `grep -ri "meujudi cs"` no repo antes de implementar, pra não esquecer nenhum |
+| `src/app/(super-admin)/admin/cs-releases/*` | Nome exibido nas releases (nome técnico da tabela/rota pode continuar `cs-releases`) |
+| Qualquer outro texto visível com "MeuJudi CS" | `grep -ri "meujudi cs"` no repo antes de considerar concluído |
 
-**Não precisa mudar:** nomes de tabelas (`cs_devices`, `cs_mural_requests`, `cs_pairing_codes`, `cs_releases`), rotas de API (`/api/cs/*`), nem a pasta `meujudi-cs/` — tudo isso é interno/técnico, não aparece pro usuário.
-
----
-
-## 8. Parte 5 — Sistema visual
-
-Migrar o CS pro mesmo design system do Web:
-- Trocar o `tailwind.config.js` do CS pra importar/replicar os tokens de `DESIGN.md` (cores, fonte IBM Plex Sans, radius, etc.) em vez das classes genéricas atuais (`btn-primary`, `card`).
-- Trocar os componentes ad hoc (`HelpModal` customizado, `ConnectedCard`/`DisconnectedCard` inline) pelos componentes já existentes em `src/components/ui/` do Web (`Dialog`, `Card`, `Button`, `Badge`) — como o CS é um app Next.js separado, isso significa copiar os componentes (mesmo padrão já usado pra `MuralClient`/tipos compartilhados) ou extrair pra um pacote compartilhado, dependendo do apetite por refactor nessa hora.
-- Trocar ícones de emoji por um set consistente (o Web já usa `lucide-react` — reaproveitar).
-
-Esta parte é a mais "de gosto" — recomendo fazer por último, depois que a estrutura (nome, navegação, permissão) já estiver certa, pra não misturar mudança estrutural com polimento visual no mesmo PR.
+**Não precisa mudar:** nomes de tabelas (`cs_devices`, `cs_mural_requests`,
+`cs_pairing_codes`, `cs_releases`), rotas de API (`/api/cs/*`), nem a pasta
+`meujudi-cs/`.
 
 ---
 
-## 9. Ordem de implementação sugerida
+### Fase 7 — Sistema visual (migrar pro design system do Web)
 
-| Fase | O que | Depende de |
-|---|---|---|
-| **A** | Migration `cs_advanced_access` + heartbeat devolve a flag + UI Super Admin pro toggle | Heartbeat (Fase 1 de `arquitetura-sincronizacao-mural.md`) já aplicado |
-| **B** | CS: cache local da permissão (`status-reporter.ts`, IPC, hook) | Fase A |
-| **C** | CS: `AppShell` compartilhado + todas as páginas migradas pra ele | — |
-| **D** | CS: Home/Status reformulada + tela Sobre nova | Fase C |
-| **E** | CS: seção Avançado (Diagnóstico/Detalhes técnicos/Logs reagrupados, com guard) | Fases B, C |
-| **F** | Rename completo (CS + Web) | Pode ser feito em paralelo com C-E |
-| **G** | Sistema visual (tokens + componentes do Web) | Por último, depois de tudo estrutural |
+Última fase, depois que a estrutura (nome, navegação, permissão) já
+estiver pronta — evita misturar mudança estrutural com polimento visual no
+mesmo PR.
+
+- Trocar `tailwind.config.js` do CS pra importar/replicar os tokens de
+  `DESIGN.md` (cores `brass`/`paper`/`ink`, fonte IBM Plex Sans/Fraunces,
+  radius, etc.) em vez das classes genéricas atuais (`btn-primary`,
+  `card`).
+- Trocar os componentes ad hoc (`HelpModal` customizado,
+  `ConnectedCard`/`DisconnectedCard` inline) pelos componentes já
+  existentes em `src/components/ui/` do Web (`Dialog`, `Card`, `Button`,
+  `Badge`) — como o CS é um app Next.js separado, isso significa copiar os
+  componentes (mesmo padrão já usado pra `MuralClient`/tipos
+  compartilhados) ou extrair pra um pacote compartilhado, dependendo do
+  apetite por refactor nessa hora.
+- Trocar ícones de emoji por um set consistente (o Web já usa
+  `lucide-react` — reaproveitar).
+
+Como o `AppShell` (Fase 3) já centraliza a estrutura de cada tela, essa
+troca de visual fica concentrada em poucos arquivos (o `AppShell` em si +
+os componentes reaproveitados), em vez de espalhada por cada página.
 
 ---
 
-## 10. Riscos
+## 5. Riscos
 
 | Risco | Mitigação |
 |---|---|
-| Super Admin revoga acesso avançado, mas CS demora até 5 min pra refletir (só no próximo heartbeat) | Aceitável — não é um controle de segurança crítico, é organização de UI. Documentar esse atraso se alguém perguntar |
-| CS fica muito tempo offline (sem heartbeat) e usuário achava que tinha acesso avançado | Mantém o último valor em cache — se já tinha sido autorizado antes, continua aparecendo até o próximo heartbeat dizer o contrário |
-| Esquecer algum lugar no Web que ainda fala "MeuJudi CS" | `grep -ri "meujudi cs"` no repo inteiro antes de considerar a Fase F concluída |
-| Migrar visual (Fase G) introduzir regressão de layout | Fazer por último, isolado, com o app já funcionalmente pronto — mais fácil de revisar sozinho |
+| Super Admin revoga acesso avançado, mas CS demora até o próximo heartbeat pra refletir | Aceitável — não é um controle de segurança crítico, é organização de UI |
+| CS fica muito tempo offline (sem heartbeat) e usuário achava que tinha acesso avançado | Mantém o último valor em cache — continua aparecendo até o próximo heartbeat dizer o contrário |
+| Esquecer algum lugar no Web que ainda fala "MeuJudi CS" | `grep -ri "meujudi cs"` no repo inteiro antes de considerar a Fase 6 concluída |
+| Migrar visual (Fase 7) introduzir regressão de layout | Fazer por último, isolado, com o app já funcionalmente pronto — mais fácil de revisar sozinho, e o `AppShell` da Fase 3 concentra o blast radius |
 
 ---
 
-## 11. Perguntas em aberto
+## 6. Perguntas em aberto
 
-Nenhuma. As 3 pendências desta rodada foram resolvidas e já estão refletidas
-na seção 2 (Decisões tomadas) e na seção 4 (permissão de escritório + de
-dispositivo). Documento pronto pra virar implementação quando o Caio der
-o sinal.
+Nenhuma. Documento reorganizado em fases (seção 4) em 27/07/2026 — mesmo
+conteúdo da versão original de 24/07, só estruturado pra permitir
+implementação incremental, fase por fase. Pronto pra virar implementação
+quando o Caio der o sinal.

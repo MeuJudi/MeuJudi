@@ -1,7 +1,7 @@
 // Tipos compartilhados da comunicação do Mural Eletrônico (API pública do
 // PJe/CNJ). O cliente HTTP que buscava aqui direto da Vercel foi removido
 // em 24/07/2026 — o Mural bloqueia consulta vinda de datacenter (HTTP 403),
-// então a busca de verdade só acontece pelo MeuJudi CS (rodando no
+// então a busca de verdade só acontece pelo MeuJudi Sync (rodando no
 // computador do escritório), que devolve o resultado pra
 // `/api/cs/sync/mural` no formato `MuralComunicacao` abaixo. Ver
 // `src/app/api/cron/solicitar-mural/route.ts` (cria os pedidos que o CS

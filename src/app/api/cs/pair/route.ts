@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
 
     const token = randomBytes(32).toString("hex");
     const tokenHash = createHash("sha256").update(token).digest("hex");
-    const deviceName = request.headers.get("x-device-name")?.slice(0, 120) || "MeuJudi CS";
+    const deviceName = request.headers.get("x-device-name")?.slice(0, 120) || "MeuJudi Sync";
     const { data: device, error: deviceError } = await supabase
       .from("cs_devices")
       .insert({ tenant_id: pairing.tenant_id, user_id: pairing.user_id, device_name: deviceName, token_hash: tokenHash })

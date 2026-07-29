@@ -554,7 +554,7 @@ function EmptyState() {
         Nenhum processo monitorado ainda
       </h2>
       <p className="mx-auto mt-2 max-w-lg text-sm text-[var(--color-muted-foreground)]">
-        Quando processos forem cadastrados, capturados pelo CS/PJe ou vinculados pelo DataJud/Mural, eles aparecerao aqui com status, prazos e movimentacoes.
+        Quando processos forem cadastrados, capturados pelo CS/PDPJ ou vinculados pelo DataJud/Mural, eles aparecerao aqui com status, prazos e movimentacoes.
       </p>
     </div>
   );

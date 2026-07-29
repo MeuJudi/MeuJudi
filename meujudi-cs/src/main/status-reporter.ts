@@ -1,5 +1,5 @@
 /**
- * MeuJudi CS — Status Reporter (Heartbeat)
+ * MeuJudi Sync — Status Reporter (Heartbeat)
  *
  * Envia um "estou vivo" pro servidor a cada 5 minutos.
  * O servidor usa esse heartbeat pra saber se o CS está online.
@@ -9,6 +9,9 @@
 import { MEUJUDI_WEB_URL, APP_VERSION, INTERVALS } from '../shared/constants';
 import { logger, recordDiagnosticEvent } from './logger';
 import { Pairing } from './pairing';
+import type { ConnectionStatus } from '../shared/types';
+
+export type { ConnectionStatus };
 
 const TIMEOUT_MS = 10_000;
 
@@ -24,8 +27,25 @@ export class StatusReporter {
   private lastActivity: string | null = null;
   private pendingTasks = 0;
   private running = false;
+  private lastHeartbeatAt: string | null = null;
+  private lastError: string | null = null;
+  private revoked = false;
 
   constructor(private readonly pairing: Pairing) {}
+
+  /**
+   * Status de conexão atual, pra exibir na Home sem precisar de outra
+   * consulta ao servidor — reflete o resultado do último heartbeat.
+   */
+  getConnectionStatus(): ConnectionStatus {
+    return {
+      paired: this.pairing.isPaired(),
+      online: this.lastError === null && this.lastHeartbeatAt !== null,
+      lastHeartbeatAt: this.lastHeartbeatAt,
+      lastError: this.lastError,
+      revoked: this.revoked,
+    };
+  }
 
   /**
    * Inicia o heartbeat periódico.
@@ -124,17 +144,33 @@ export class StatusReporter {
 
       clearTimeout(timeout);
 
+      if (response.status === 401) {
+        // Device token revogado pelo escritório (Configurações > MeuJudi Sync)
+        // ou expirado — não adianta continuar tentando, o CS precisa parear
+        // de novo. Ver Fase 2 do doc 23.
+        this.revoked = true;
+        this.lastError = 'Pareamento revogado';
+        await this.pairing.unpair();
+        logger.warn('[StatusReporter] Device token revogado — pareamento removido localmente');
+        recordDiagnosticEvent('cs_device_revoked', 'warning', 'Device token revogado pelo servidor');
+        return;
+      }
+
       if (!response.ok) {
         const text = await response.text().catch(() => '');
         throw new Error(`HTTP ${response.status}: ${text.slice(0, 200)}`);
       }
 
       const durationMs = Date.now() - startedAt;
+      this.lastHeartbeatAt = new Date().toISOString();
+      this.lastError = null;
+      this.revoked = false;
       logger.debug(`[StatusReporter] Heartbeat enviado (${durationMs}ms)`);
       recordDiagnosticEvent('cs_heartbeat_sent', 'success', `Heartbeat OK`, { lastActivity: this.lastActivity }, durationMs);
     } catch (err) {
       const durationMs = Date.now() - startedAt;
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      this.lastError = message;
 
       if (err instanceof Error && err.name === 'AbortError') {
         logger.warn(`[StatusReporter] Heartbeat timeout (${TIMEOUT_MS}ms)`);

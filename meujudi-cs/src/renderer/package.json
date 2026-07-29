@@ -1,5 +1,5 @@
 {
-  "name": "MeuJudi CS",
+  "name": "MeuJudi Sync",
   "version": "0.1.0",
   "description": "Tray app (Electron) que conecta o MeuJudi Web ao PJe via cert. A1 ou gov.br",
   "main": "src/main/index.ts",

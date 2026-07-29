@@ -4,12 +4,25 @@
  * Priority:
  * 1. Existing process.env values
  * 2. .env next to the installed executable / current working directory
- * 3. .env in Electron userData (%APPDATA%/MeuJudi CS/.env)
+ * 3. .env in Electron userData (%APPDATA%/MeuJudi Sync/.env)
  */
 
 import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
+
+/**
+ * Compatibilidade de dados na Fase 11 (rename "MeuJudi CS" → "MeuJudi
+ * Sync", docs/roadmap/23-meujudi-cs-v0.3.0-refatoracao.md): o Electron
+ * deriva a pasta de userData do `productName` do instalador
+ * (%APPDATA%/<productName>). Sem isso, instalar 0.3.0 por cima de uma
+ * versão 0.2.x faria o app procurar dados numa pasta nova
+ * ("MeuJudi Sync") e não achar nada — perdendo pareamento, sessão do
+ * PDPJ, logs e diagnóstico de quem já tinha o app instalado. Fixamos a
+ * pasta física no nome antigo pra ninguém perder nada na atualização; só
+ * o nome visível (janelas, bandeja, instalador) mudou.
+ */
+app.setPath('userData', path.join(app.getPath('appData'), 'MeuJudi CS'));
 
 function parseEnvLine(line: string): [string, string] | null {
   const trimmed = line.trim();

@@ -127,7 +127,10 @@ export function MuralProgressPanel() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Sincronizações do Mural</h2>
-          <p className="mt-1 text-sm text-gray-500">Acompanhe solicitações, páginas consultadas e resultados enviados ao Web.</p>
+          <p className="mt-1 text-sm text-gray-500">
+            Importação histórica e verificação manual (abaixo). Consultas individuais e periódicas
+            por OAB agora aparecem em <a href="/queue/" className="text-blue-700 underline">Fila de tarefas</a>.
+          </p>
         </div>
         <div className="flex shrink-0 gap-2">
           <button type="button" className="btn-secondary px-3 py-1.5 text-sm" onClick={() => void refresh()} disabled={refreshing || polling}>

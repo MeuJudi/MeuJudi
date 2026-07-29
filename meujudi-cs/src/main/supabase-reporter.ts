@@ -1,5 +1,5 @@
 /**
- * MeuJudi CS - Supabase Reporter
+ * MeuJudi Sync - Supabase Reporter
  *
  * Sends sanitized DiagnosticReport payloads to public.diagnostic_reports.
  * Prefer SUPABASE_ANON_KEY/publishable key. Do not ship service_role in desktop builds.

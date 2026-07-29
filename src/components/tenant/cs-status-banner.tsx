@@ -28,7 +28,7 @@ export function CsStatusBanner() {
   if (!show) return null;
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-      <p><strong>MeuJudi CS está offline.</strong> As consultas do Mural aguardando este escritório ficarão pendentes.</p>
+      <p><strong>MeuJudi Sync está offline.</strong> As consultas do Mural aguardando este escritório ficarão pendentes.</p>
       <Link href="/configuracoes/meujudi-cs" className="font-semibold underline underline-offset-2">Ver conexão</Link>
     </div>
   );

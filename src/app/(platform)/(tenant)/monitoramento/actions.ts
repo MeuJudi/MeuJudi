@@ -17,7 +17,7 @@ function syncErrorMessage(error: unknown) {
 
 /*
  * The monitoramento screen intentionally has no demo-data action. Real process
- * data must come from the tenant workflow, CS/PJe, DataJud or Mural.
+ * data must come from the tenant workflow, CS/PDPJ, DataJud or Mural.
  */
 /* const demoProcesses = [
   ["10000012320268260001", "TJSP", "1º grau", "PJe", 436, "Procedimento Comum Civel", "Solaris Comercio Ltda.", "Banco Aurora S.A.", "ativo", ["civel", "contrato"], 125000],
@@ -541,6 +541,13 @@ export async function syncTenantDataJudBatch(offset = 0, batchSize = 3) {
   }
 }
 
+/**
+ * Dispara uma consulta individual do Mural pra este processo — Fase 7 de
+ * docs/roadmap/23-meujudi-cs-v0.3.0-refatoracao.md. O Mural só é consultável
+ * por OAB (não por CNJ direto), então isso cria uma tarefa `mural_request`
+ * por OAB ativa do escritório, priorizada (a consulta individual do usuário
+ * furando a fila normal do cron), marcada com `processo_id` pra rastreio.
+ */
 export async function syncProcessMuralNow(processId: string) {
   try {
     const { supabase, profile } = await requireAppUser();
@@ -554,23 +561,42 @@ export async function syncProcessMuralNow(processId: string) {
     if (processError) throw new Error(`Falha ao localizar processo: ${processError.message}`);
     if (!process) throw new Error("Processo não encontrado.");
 
-  const end = new Date();
-  const start = new Date(end);
-  start.setMonth(start.getMonth() - 12);
-  const { data: request, error: requestError } = await supabase
-    .from("cs_mural_requests")
-    .insert({
-      tenant_id: profile.tenant_id,
-      process_id: process.id,
-      requested_by: profile.id,
-      data_inicio: start.toISOString().slice(0, 10),
-      data_fim: end.toISOString().slice(0, 10),
-    })
-    .select("id")
-    .single();
-  if (requestError || !request) throw new Error(`Não foi possível solicitar a consulta pelo CS: ${requestError?.message ?? "solicitação não criada"}`);
+    const service = createServiceClient();
+    const { data: oabs, error: oabsError } = await service
+      .from("escritorio_oabs")
+      .select("oab_number, oab_uf")
+      .eq("tenant_id", profile.tenant_id)
+      .eq("is_active", true);
+    if (oabsError) throw new Error(`Falha ao localizar OABs do escritório: ${oabsError.message}`);
+    if (!oabs || oabs.length === 0) throw new Error("Nenhuma OAB ativa cadastrada neste escritório.");
 
-  return { ok: true as const, queued: true as const, requestId: request.id as string };
+    const end = new Date();
+    const start = new Date(end);
+    start.setMonth(start.getMonth() - 12);
+    const dataInicio = start.toISOString().slice(0, 10);
+    const dataFim = end.toISOString().slice(0, 10);
+    const now = Date.now();
+
+    const taskIds: string[] = [];
+    for (const oab of oabs) {
+      const { data: task, error: taskError } = await service
+        .from("sync_tasks")
+        .insert({
+          tenant_id: profile.tenant_id,
+          source: "mural",
+          type: "mural_request",
+          processo_id: process.id,
+          priority: 2,
+          idempotency_key: `mural_request_individual:${oab.oab_number}:${oab.oab_uf}:${process.id}:${now}`,
+          cursor: { oabNumber: oab.oab_number, oabUf: oab.oab_uf, dataInicio, dataFim },
+        })
+        .select("id")
+        .single();
+      if (taskError || !task) throw new Error(`Não foi possível solicitar a consulta pelo CS: ${taskError?.message ?? "tarefa não criada"}`);
+      taskIds.push(task.id as string);
+    }
+
+    return { ok: true as const, queued: true as const, requestId: taskIds[0] };
   } catch (error) {
     console.error("[monitoramento] sincronização Mural falhou:", error);
     return { ok: false as const, message: syncErrorMessage(error) };
@@ -581,14 +607,17 @@ export async function getMuralSyncRequest(requestId: string) {
   const { supabase, profile } = await requireAppUser();
   if (!profile.tenant_id) return { ok: false as const, message: "Usuário sem escritório vinculado." };
   const { data, error } = await supabase
-    .from("cs_mural_requests")
-    .select("id, status, result, error_message, completed_at")
+    .from("sync_tasks")
+    .select("id, status, error_message, completed_at, counters")
     .eq("id", requestId)
     .eq("tenant_id", profile.tenant_id)
     .maybeSingle();
   if (error) return { ok: false as const, message: error.message };
   if (!data) return { ok: false as const, message: "Solicitação de sincronização não encontrada." };
-  return { ok: true as const, status: data.status as "pending" | "processing" | "completed" | "failed", result: data.result, errorMessage: data.error_message };
+  const terminalOk = data.status === "completed" || data.status === "completed_with_warnings";
+  const terminalFail = data.status === "failed" || data.status === "cancelled" || data.status === "paused_login_required" || data.status === "paused_rate_limit";
+  const status: "pending" | "processing" | "completed" | "failed" = terminalOk ? "completed" : terminalFail ? "failed" : "processing";
+  return { ok: true as const, status, result: data.counters, errorMessage: data.error_message };
 }
 
 /*

@@ -1,5 +1,5 @@
 /**
- * MeuJudi CS — Electron main process entry point
+ * MeuJudi Sync — Electron main process entry point
  *
  * Responsabilidades:
  * - Criar a tray icon (bandeja do Windows)
@@ -16,23 +16,23 @@ import path from 'path';
 import './env';
 import { logger } from './logger';
 import { initTray, updateTrayStatus } from './tray';
+import { loadAppIcon } from './app-icon';
 import { registerIPCHandlers } from './ipc-handlers';
 import { Diagnostic } from './diagnostic';
 import { Pairing } from './pairing';
 import { StatusReporter } from './status-reporter';
-import { APP_NAME, APP_VERSION, TRAY_STATUS } from '../shared/constants';
+import { APP_NAME, APP_VERSION } from '../shared/constants';
 import type { TrayStatus } from '../shared/constants';
 
 let mainWindow: BrowserWindow | null = null;
-let isQuitting = false;
 const pairing = new Pairing();
 const statusReporter = new StatusReporter(pairing);
-let stopRuntime: (() => void) | null = null;
+let csRuntime: ReturnType<typeof registerIPCHandlers> | null = null;
 
 logger.info(`${APP_NAME} v${APP_VERSION} iniciando...`);
 
 /**
- * Single instance lock — garante que só 1 MeuJudi CS roda por vez.
+ * Single instance lock — garante que só 1 MeuJudi Sync roda por vez.
  */
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -41,7 +41,7 @@ if (!gotLock) {
 } else {
   app.on('second-instance', () => {
     logger.info('Segunda instância detectada, abrindo janela de login...');
-    import('./pje-auth').then(({ PdpjAuth }) => {
+    import('./pdpj-auth').then(({ PdpjAuth }) => {
       new PdpjAuth().showLoginWindow().catch((err) => {
         logger.error('Erro ao abrir janela de login:', err);
       });
@@ -51,7 +51,7 @@ if (!gotLock) {
   // Quando o Electron termina de inicializar
   app.whenReady().then(() => {
     // Registra IPC handlers (deve ser antes de qualquer janela abrir)
-    stopRuntime = registerIPCHandlers(pairing, statusReporter);
+    csRuntime = registerIPCHandlers(pairing, statusReporter);
 
     // Auto-start com Windows (minimizado direto na bandeja)
     app.setLoginItemSettings({
@@ -67,7 +67,6 @@ if (!gotLock) {
       () => runDiagnostic(),
       () => openLogsWindow(),
       () => {
-        isQuitting = true;
         app.quit();
       },
       () => openAppWindow()
@@ -79,7 +78,7 @@ if (!gotLock) {
     openAppWindow();
 
     // Status inicial: verifica se já tem sessão salva
-    import('./pje-auth').then(({ PdpjAuth }) => {
+    import('./pdpj-auth').then(({ PdpjAuth }) => {
       const auth = new PdpjAuth();
       auth.getStatus().then((status) => {
         if (status.state === 'connected') {
@@ -129,9 +128,8 @@ if (!gotLock) {
 
   // Antes de fechar, cleanup
   app.on('before-quit', () => {
-    isQuitting = true;
-    stopRuntime?.();
-    stopRuntime = null;
+    csRuntime?.stop();
+    csRuntime = null;
     statusReporter.stop();
     logger.info('App fechando...');
   });
@@ -149,7 +147,7 @@ if (!gotLock) {
 async function openLoginWindow(): Promise<void> {
   updateTrayStatus('connecting');
   try {
-    const { PdpjAuth } = await import('./pje-auth');
+    const { PdpjAuth } = await import('./pdpj-auth');
     const auth = new PdpjAuth();
     const session = await auth.showLoginWindow();
     logger.info('Login PJe realizado com sucesso', { userId: session.userId });
@@ -189,6 +187,7 @@ function openAppWindow(): void {
     minWidth: 720,
     minHeight: 560,
     title: APP_NAME,
+    icon: loadAppIcon(),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
@@ -205,21 +204,21 @@ function openAppWindow(): void {
 }
 
 /**
- * Dispara polling manual (botão "Sincronizar agora" do menu).
+ * Dispara o worker unificado (botão "Sincronizar agora" do menu da bandeja)
+ * — mesmo ciclo que a Home e o botão "Verificar agora" do Mural disparam.
  */
 async function syncNow(): Promise<void> {
+  if (!csRuntime) return;
   updateTrayStatus('connecting');
   try {
-    const { Scheduler } = await import('./scheduler');
-    const scheduler = new Scheduler();
-    const result = await scheduler.tickNow();
+    const result = await csRuntime.triggerSync();
     logger.info('Sincronização manual concluída', result);
     updateTrayStatus('connected');
     new Notification({
       title: `${APP_NAME} - Sincronização concluída`,
-      body: result.mural
-        ? `${result.mural.recebidas} recebidas de ${result.mural.oabs} OAB(s): ${result.mural.novas} novas, ${result.mural.puladas} ja existentes, ${result.mural.erros} erros em ${(result.durationMs / 1000).toFixed(1)}s`
-        : `Nenhuma sincronizacao do Mural executada em ${(result.durationMs / 1000).toFixed(1)}s`,
+      body: result.tasksTotal > 0
+        ? `${result.tasksCompleted} concluída(s), ${result.tasksFailed} falhou(aram), ${result.tasksPaused} pausada(s)`
+        : 'Nenhuma tarefa pendente na fila no momento.',
       silent: true,
     }).show();
   } catch (err: any) {

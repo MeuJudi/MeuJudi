@@ -1,12 +1,12 @@
 /**
- * MeuJudi CS — Constantes globais
+ * MeuJudi Sync — Constantes globais
  * URLs, timeouts, paths padrão.
  */
 
-export const APP_NAME = 'MeuJudi CS';
-export const APP_FULL_NAME = 'MeuJudi Cert Service';
-export const APP_VERSION = '0.2.5';
-export const USER_AGENT = 'MeuJudi-CS/1.0 (compatible; Electron)';
+export const APP_NAME = 'MeuJudi Sync';
+export const APP_FULL_NAME = 'Sincronização do escritório com o MeuJudi';
+export const APP_VERSION = '0.3.0';
+export const USER_AGENT = 'MeuJudi-Sync/1.0 (compatible; Electron)';
 export const MEUJUDI_WEB_URL = process.env.MEUJUDI_WEB_URL || 'https://www.meujudi.com.br';
 
 /**

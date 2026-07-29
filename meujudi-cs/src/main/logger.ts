@@ -1,5 +1,5 @@
 /**
- * MeuJudi CS — Logger estruturado customizado
+ * MeuJudi Sync — Logger estruturado customizado
  * Saída: console + arquivo em %APPDATA%/meujudi-cs/logs/
  *
  * Implementação customizada (sem dependência do pino que tem tipagem restritiva).
@@ -62,7 +62,7 @@ if (!fs.existsSync(logsDir)) {
 
 const isDev = !app.isPackaged;
 // Default 'debug': o nível 'debug' é usado pra rastrear navegação durante
-// login (did-navigate no pje-auth.ts) — é exatamente o dado
+// login (did-navigate no pdpj-auth.ts) — é exatamente o dado
 // mais útil pra diagnosticar problema de login remotamente. Descartar por
 // padrão fazia o relatório enviado pro Supabase perder esse rastro, mesmo
 // aparecendo no painel de logs da UI (que usava um buffer separado).
@@ -103,7 +103,7 @@ function writeToFile(level: LogLevel, timestamp: string, message: string, contex
     const contextStr = context ? ` | ${JSON.stringify(context)}` : '';
     const line = `${timestamp} [${level.toUpperCase()}] ${message}${contextStr}\n`;
     fs.appendFileSync(logFile, line, 'utf-8');
-  } catch (err) {
+  } catch (_err) {
     // Silencioso — não queremos loop de erros no logger
   }
 }

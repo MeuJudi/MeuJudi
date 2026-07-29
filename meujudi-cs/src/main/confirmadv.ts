@@ -1,5 +1,5 @@
 /**
- * MeuJudi CS — Módulo ConfirmADV
+ * MeuJudi Sync — Módulo ConfirmADV
  *
  * Responsabilidade: abrir a página oficial do ConfirmADV dentro de uma
  * BrowserWindow do CS, deixar o advogado resolver o reCAPTCHA e digitar o
@@ -19,6 +19,7 @@
 
 import { BrowserWindow, session as electronSession, Notification } from 'electron';
 import { logger, recordDiagnosticEvent } from './logger';
+import { loadAppIcon } from './app-icon';
 import { MEUJUDI_WEB_URL } from '../shared/constants';
 import { inferEventFromUrl, extractRequestIdFromUrl, CONFIRMADV_BASE } from './confirmadv-helpers';
 import type { Pairing } from './pairing';
@@ -243,6 +244,7 @@ export class ConfirmADVService {
       minWidth: 900,
       minHeight: 700,
       title: `ConfirmADV — ${validation.oab_number}/${validation.oab_uf}`,
+      icon: loadAppIcon(),
       autoHideMenuBar: true,
       webPreferences: {
         partition: PARTITION,
@@ -259,7 +261,7 @@ export class ConfirmADVService {
 
     // Notifica o advogado que tem validação pendente
     new Notification({
-      title: 'MeuJudi CS — Validar OAB',
+      title: 'MeuJudi Sync — Validar OAB',
       body: `Abra a janela para validar ${validation.oab_number}/${validation.oab_uf}. O reCAPTCHA e o código enviado ao e-mail profissional são resolvidos por você.`,
       silent: false,
     }).show();

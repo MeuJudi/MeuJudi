@@ -12,11 +12,12 @@
  */
 
 import { useEffect, useState } from 'react';
+import { AppShell } from '@/components/AppShell';
 import type { ConfirmADVValidation } from '@shared/types';
 
 const STAGES = [
   { id: 1, label: 'Dados profissionais' },
-  { id: 2, label: 'Conectar MeuJudi CS' },
+  { id: 2, label: 'Conectar MeuJudi Sync' },
   { id: 3, label: 'Confirmar no ConfirmADV' },
   { id: 4, label: 'Liberar escritorio' },
 ] as const;
@@ -88,18 +89,10 @@ export default function OabValidationPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 p-6">
-      <div className="mx-auto max-w-2xl space-y-6">
-        <header>
-          <a href="../index.html" className="text-sm text-gray-500 hover:text-gray-700">Voltar</a>
-          <h1 className="mt-1 text-3xl font-bold">Validacao de OAB</h1>
-          <p className="mt-1 text-gray-500">
-            O MeuJudi CS abre a pagina oficial do ConfirmADV. Voce resolve o reCAPTCHA e o codigo enviado
-            ao e-mail profissional manualmente. A janela fecha sozinha apos a verificacao e o escritorio
-            fica liberado no Web.
-          </p>
-        </header>
-
+    <AppShell
+      title="Validação de OAB"
+      subtitle="O MeuJudi Sync abre a página oficial do ConfirmADV. Você resolve o reCAPTCHA e o código enviado ao e-mail profissional manualmente. A janela fecha sozinha após a verificação e o escritório fica liberado no Web."
+    >
         <ol className="card space-y-3">
           {STAGES.map((stage) => (
             <li key={stage.id} className="flex items-center gap-3">
@@ -170,7 +163,6 @@ export default function OabValidationPage() {
             enviado ao MeuJudi Web.
           </p>
         </section>
-      </div>
-    </main>
+    </AppShell>
   );
 }

@@ -29,12 +29,15 @@ dev-local.cmd
 *.exe
 *.msi
 
-# MeuJudi CS installer releases are tracked; source code is tracked too.
+# MeuJudi Sync installer releases are tracked; source code is tracked too.
 # Older rule (`/meujudi-cs/*`) used to exclude the source, but it caused
 # work to disappear from version control. Removed in favor of explicit
 # ignores inside the CS folder (node_modules, dist, etc.) via the local
 # .gitignore in MeuJudi-CS/.
+# Renamed "MeuJudi CS" -> "MeuJudi Sync" (Fase 11, v0.3.0) — old exe naming
+# kept too so historical releases already tracked stay tracked.
 !/meujudi-cs/release/MeuJudi-CS-Setup-v*.exe
+!/meujudi-cs/release/MeuJudi-Sync-Setup-v*.exe
 # Chaves privadas e credenciais locais nunca entram no Git.
 meujudi-cs/*.private-key.pem
 meujudi-cs/*.pem

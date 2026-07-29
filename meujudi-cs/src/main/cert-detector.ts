@@ -1,5 +1,5 @@
 /**
- * MeuJudi CS — CertDetector
+ * MeuJudi Sync — CertDetector
  *
  * Detecta cert. A1 (e-CPF) instalado no Windows Cert Store.
  * Usa PowerShell pra listar e parsear (mais robusto que node-forge pra isso).
@@ -68,7 +68,7 @@ export function detectarCertA1(): CertA1Info {
 
     // Filtra certs. A1 (e-CPF) — Subject contém "ICP-Brasil" ou é e-CPF
     // Heurística: pega o primeiro cert. que tem padrão de CPF no Subject (11 dígitos)
-    let cert = certs.find((c: any) => /\d{11}/.test(c.Subject)) || certs[0];
+    const cert = certs.find((c: any) => /\d{11}/.test(c.Subject)) || certs[0];
 
     // Extrai CPF do Subject (formato típico: "NOME SOBRENOME:CPF" ou "CN=nome:CPF")
     const cpfMatch = cert.Subject.match(/(\d{11})/);

@@ -13,7 +13,7 @@ import { cancelarSolicitacaoValidacao, getStatusSolicitacaoValidacao } from "./a
 
 const STATUS_LABEL: Record<string, string> = {
   pendente: "Solicitação registrada",
-  aguardando_cs: "Aguardando o MeuJudi CS",
+  aguardando_cs: "Aguardando o MeuJudi Sync",
   recaptcha_em_andamento: "Verificação em andamento",
   aguardando_codigo: "Aguardando confirmação por e-mail",
   validando: "Confirmando resultado",
@@ -26,9 +26,9 @@ const STATUS_LABEL: Record<string, string> = {
 
 const STATUS_TEXTO: Record<string, string> = {
   pendente:
-    "Sua solicitação foi registrada. Abra o MeuJudi CS em um dispositivo pareado a este escritório para continuar a verificação pelo ConfirmADV.",
-  aguardando_cs: "Aguardando o MeuJudi CS iniciar a verificação.",
-  recaptcha_em_andamento: "A janela do ConfirmADV foi aberta no MeuJudi CS. Conclua a verificação de segurança por lá.",
+    "Sua solicitação foi registrada. Abra o MeuJudi Sync em um dispositivo pareado a este escritório para continuar a verificação pelo ConfirmADV.",
+  aguardando_cs: "Aguardando o MeuJudi Sync iniciar a verificação.",
+  recaptcha_em_andamento: "A janela do ConfirmADV foi aberta no MeuJudi Sync. Conclua a verificação de segurança por lá.",
   aguardando_codigo: "Confira o e-mail profissional informado e confirme o código enviado pelo ConfirmADV.",
   validando: "Confirmando o resultado da verificação.",
   validada: "Sua identidade profissional foi validada.",

@@ -1,6 +1,5 @@
-import cron from 'node-cron';
 import Store from 'electron-store';
-import { INTERVALS, MEUJUDI_WEB_URL } from '../shared/constants';
+import { MEUJUDI_WEB_URL } from '../shared/constants';
 import { decryptObject, encryptObject } from '../shared/crypto';
 import { logger, recordDiagnosticEvent } from './logger';
 import { MuralClient, type MuralComunicacao } from './mural-client';
@@ -21,7 +20,6 @@ type HistoricalCheckpoint = {
 };
 
 type HistoricalStore = { payload: string | null };
-type MuralRequest = { id: string; oab_number: string; oab_uf: string; data_inicio: string; data_fim: string };
 type ProgressStore = { recent: MuralRequestProgress[] };
 
 const HISTORICAL_MONTHS = 12;
@@ -61,43 +59,19 @@ export class MuralSync {
   private readonly mural = new MuralClient();
   private readonly checkpointStore = new Store<HistoricalStore>({ name: 'cs-mural-history', defaults: { payload: null } });
   private readonly progressStore = new Store<ProgressStore>({ name: 'cs-mural-progress', defaults: { recent: [] } });
-  private timer: cron.ScheduledTask | null = null;
-  private requestTimer: NodeJS.Timeout | null = null;
-  private requestPolling = false;
   private historicalRunning = false;
   private currentRequest: MuralRequestProgress | null = null;
 
   constructor(private readonly pairing: Pairing) {}
 
-  /** Compatibilidade interna; o agendamento oficial agora pertence ao Scheduler. */
-  startLegacy() {
-    if (this.timer) return;
-    this.timer = cron.schedule(INTERVALS.muralSync, () => {
-      this.tick().catch((error) => logger.error('Erro no Mural automatico:', error));
-    });
-    this.requestTimer = setInterval(() => {
-      this.processPendingRequests().catch((error) => logger.error('Erro nas solicitações do Mural:', error));
-    }, 15_000);
-    this.processPendingRequests().catch((error) => logger.error('Erro inicial nas solicitações do Mural:', error));
-    logger.info('MuralSync agendado:', INTERVALS.muralSync);
-  }
-
-  async processPendingRequests() {
-    if (this.requestPolling) return;
-    const token = this.pairing.getDeviceToken();
-    if (!token) return;
-    this.requestPolling = true;
-    const headers = { Authorization: `Bearer ${token}` };
-    try {
-      const response = await fetch(`${MEUJUDI_WEB_URL}/api/cs/mural-requests`, { headers });
-      const data = await response.json() as { requests?: MuralRequest[]; error?: string };
-      if (!response.ok) throw new Error(data.error || `Solicitações do Mural HTTP ${response.status}`);
-      for (const request of data.requests ?? []) await this.processPendingRequest(headers, request);
-    } finally {
-      this.requestPolling = false;
-    }
-  }
-
+  /**
+   * Progresso da consulta individual/periódica por OAB. Esse mecanismo
+   * (processPendingRequests/processPendingRequest) foi migrado pra tarefa
+   * `mural_request` do worker unificado na Fase 7 — `currentRequest` nunca
+   * mais é escrito, então isso sempre volta vazio. Mantido só porque o
+   * IPC `mural:progress` ainda existe e o painel do Mural ainda o lê;
+   * ver a nota em MuralProgressPanel apontando pra "Fila de tarefas".
+   */
   getProgress(): MuralProgressSnapshot {
     return {
       running: this.currentRequest?.status === 'processing',
@@ -115,98 +89,6 @@ export class MuralSync {
     const data = await response.json() as { requests?: MuralRemoteRequest[]; error?: string };
     if (!response.ok) throw new Error(data.error || `Status das solicitações HTTP ${response.status}`);
     return data.requests ?? [];
-  }
-
-  private saveProgress(progress: MuralRequestProgress) {
-    const recent = this.progressStore.get('recent').filter((item) => item.requestId !== progress.requestId);
-    this.progressStore.set('recent', [progress, ...recent].slice(0, 30));
-  }
-
-  private async processPendingRequest(headers: Record<string, string>, request: MuralRequest) {
-    const startedAt = Date.now();
-    const startedAtIso = new Date(startedAt).toISOString();
-    const oabLabel = `${request.oab_number}/${request.oab_uf}`;
-    const progress: MuralRequestProgress = {
-      requestId: request.id,
-      oab: request.oab_number,
-      uf: request.oab_uf,
-      dataInicio: request.data_inicio,
-      dataFim: request.data_fim,
-      status: 'processing',
-      page: 0,
-      recebidas: 0,
-      encontradas: 0,
-      novas: 0,
-      erros: 0,
-      startedAt: startedAtIso,
-      updatedAt: startedAtIso,
-    };
-    this.currentRequest = progress;
-    try {
-      const seen = new Set<number>();
-      let recebidas = 0;
-      let novas = 0;
-      let erros = 0;
-
-      for (let page = 1; page <= MAX_PAGES_PER_CHUNK; page += 1) {
-        const response = await this.mural.buscarPorOAB(request.oab_number, request.oab_uf, request.data_inicio, request.data_fim, page);
-        const items = response.items ?? [];
-        recebidas += items.length;
-        const fresh = items.filter((item) => !seen.has(item.id));
-        fresh.forEach((item) => seen.add(item.id));
-        const result = await this.sendBatch(headers, fresh);
-        novas += result.novas;
-        erros += result.erros;
-        this.currentRequest = {
-          ...progress,
-          page,
-          recebidas,
-          encontradas: seen.size,
-          novas,
-          erros,
-          updatedAt: new Date().toISOString(),
-        };
-        if (items.length < 100) break;
-        await sleep(REQUEST_DELAY_MS);
-      }
-
-      await this.completeRequest(headers, request.id, true, { recebidas, encontradas: seen.size, novas, erros });
-      const completed: MuralRequestProgress = {
-        ...this.currentRequest ?? progress,
-        status: erros > 0 ? 'completed' : 'completed',
-        recebidas,
-        encontradas: seen.size,
-        novas,
-        erros,
-        updatedAt: new Date().toISOString(),
-        completedAt: new Date().toISOString(),
-      };
-      this.saveProgress(completed);
-      this.currentRequest = null;
-      recordDiagnosticEvent('cs_mural_process_request_finished', erros ? 'warning' : 'success', `Consulta pontual concluída: OAB ${oabLabel}`, { requestId: request.id, oab: oabLabel, recebidas, encontradas: seen.size, novas }, Date.now() - startedAt);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Falha na consulta pontual do Mural.';
-      await this.completeRequest(headers, request.id, false, undefined, message);
-      const failed: MuralRequestProgress = {
-        ...this.currentRequest ?? progress,
-        status: 'failed',
-        message,
-        updatedAt: new Date().toISOString(),
-        completedAt: new Date().toISOString(),
-      };
-      this.saveProgress(failed);
-      this.currentRequest = null;
-      recordDiagnosticEvent('cs_mural_process_request_failed', 'error', message, { requestId: request.id, oab: `${request.oab_number}/${request.oab_uf}` }, Date.now() - startedAt);
-    }
-  }
-
-  private async completeRequest(headers: Record<string, string>, requestId: string, ok: boolean, result?: unknown, error?: string) {
-    const response = await fetch(`${MEUJUDI_WEB_URL}/api/cs/mural-requests/${requestId}`, {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ok, result, error }),
-    });
-    if (!response.ok) logger.error('Não foi possível concluir solicitação do Mural:', requestId, response.status);
   }
 
   isHistoricalRunning() {
@@ -230,8 +112,14 @@ export class MuralSync {
     return this.syncWindow(inicio, hoje, 'cs_mural_sync');
   }
 
-  /** Importa os ultimos 12 meses em semanas, retomando o ultimo checkpoint. */
-  async syncHistorical(): Promise<HistoricalSyncResult | null> {
+  /**
+   * Importa os ultimos 12 meses em semanas, retomando o ultimo checkpoint.
+   * `onProgress` é opcional — usado pela tarefa `mural_historical` do
+   * worker unificado (Fase 7) pra espelhar o checkpoint local no
+   * heartbeat da fila, só pra visibilidade (a retomada em si continua
+   * local, via `cs-mural-history`).
+   */
+  async syncHistorical(onProgress?: (taskIndex: number, totalTasks: number, counters: SyncCounters) => void): Promise<HistoricalSyncResult | null> {
     if (this.historicalRunning) throw new Error('A importacao historica ja esta em andamento.');
     const token = this.pairing.getDeviceToken();
     if (!token) {
@@ -277,6 +165,7 @@ export class MuralSync {
         this.setHistoricalCheckpoint({
           planKey, taskIndex, counters, startedAt: new Date(startedAt).toISOString(),
         });
+        onProgress?.(taskIndex, tasks.length, counters);
       }
 
       const result = { ...counters, semanas: weeks.length, retomada };
@@ -329,7 +218,27 @@ export class MuralSync {
     return counters;
   }
 
-  private async syncOabWindow(headers: Record<string, string>, oab: Oab, from: Date, to: Date, onPage?: (page: number) => void): Promise<SyncCounters> {
+  /**
+   * Executa a consulta de uma OAB numa janela de datas, reportando
+   * progresso via callback — usado pela tarefa `mural_request` do worker
+   * unificado (Fase 7), que não tem estado local próprio.
+   */
+  async runOabWindowTask(
+    oabNumber: string,
+    oabUf: string,
+    dataInicio: string,
+    dataFim: string,
+    onProgress?: (page: number, counters: SyncCounters) => void,
+  ): Promise<SyncCounters> {
+    const token = this.pairing.getDeviceToken();
+    if (!token) throw new Error('CS não está pareado.');
+    const headers = { Authorization: `Bearer ${token}` };
+    const from = new Date(`${dataInicio}T00:00:00Z`);
+    const to = new Date(`${dataFim}T00:00:00Z`);
+    return this.syncOabWindow(headers, { oab_number: oabNumber, oab_uf: oabUf }, from, to, undefined, onProgress);
+  }
+
+  private async syncOabWindow(headers: Record<string, string>, oab: Oab, from: Date, to: Date, onPage?: (page: number) => void, onProgress?: (page: number, counters: SyncCounters) => void): Promise<SyncCounters> {
     const counters = emptyCounters();
     let pagina = 1;
     while (true) {
@@ -341,6 +250,7 @@ export class MuralSync {
       counters.novas += result.novas;
       counters.puladas += result.puladas;
       counters.erros += result.erros;
+      onProgress?.(pagina, counters);
       if (items.length < 100) break;
       pagina += 1;
       if (pagina > MAX_PAGES_PER_CHUNK) throw new Error(`Limite de paginas atingido para a OAB ${oab.oab_number}/${oab.oab_uf} em ${dateKey(from)}`);

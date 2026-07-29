@@ -89,6 +89,42 @@ esses arquivos pra detalhes da pesquisa de raspador de dados públicos).
 - Consulta real ao Supabase confirmando o comportamento do bug antes da
   correção (ver item 3 acima).
 
+## Teste real (27/07/2026) — descoberta importante
+
+Build v0.2.4 instalada e testada pelo Caio com certificado A1 real. Resultado:
+
+- **O login em si funcionou** — a janela do jus.br abriu, o SSO via cert. A1
+  completou e a sessão aparece autenticada ("CAIO SILVA" no canto superior).
+  Ou seja, a mudança de URL (`https://www.jus.br`) resolveu o "acesso-negado"
+  de fato — o cert. A1 é aceito e o jus.br reconhece o login.
+- **Mas o botão "Consultar processos" da home do jus.br NÃO é o caminho
+  certo.** Ele abre uma ferramenta separada — "Portal de Serviços do Poder
+  Judiciário / Consultar Processos" (CNJ, `v1.1.0`) — que é uma **consulta
+  pública/manual** (busca por número de processo, OAB, CPF ou CNPJ digitado
+  à mão). Não é o painel pessoal do PJe (`/painel/usuario-externo`) que o
+  `pje-auth.ts` espera capturar via cookie — é um serviço nacional de
+  consulta avulsa, sem relação com a sessão autenticada do advogado no PJe.
+- **O menu hambúrguer (☰) do jus.br** tem as opções: Página inicial, Meus
+  favoritos, **Serviços Nacionais**, **Sistemas Processuais**, Consultar
+  processos, Notícias, Tribunais e conselhos, Avisos gerais. O candidato mais
+  provável pro que precisamos é **"Sistemas Processuais"** — ainda não
+  testado.
+
+### Próximo passo (não feito ainda)
+
+Testar o item **"Sistemas Processuais"** do menu do jus.br — é provável que
+seja o SSO real que redireciona pro PJe de cada tribunal (o painel
+`usuario-externo` que a v4 do `pje-auth.ts` já sabe detectar). Se não for,
+abrir o DevTools (F12) da janela do jus.br pra inspecionar as requisições de
+rede e achar a URL/rota real que o próprio jus.br usa quando alguém acessa o
+PJe pelo portal (em vez de tentar adivinhar formato de URL como fizemos
+antes com o Keycloak direto).
+
+**Importante:** o objetivo é achar o **link/redirecionamento automático**
+que o jus.br já faz pro PJe do tribunal certo — não é pra automatizar o
+preenchimento do formulário de "Consultar Processos" (que é busca manual,
+pública, e não é o mesmo dado/sessão que o `pje-auth.ts` precisa).
+
 ## O que NÃO foi verificado ainda
 
 - O novo fluxo de login via `https://www.jus.br` **não foi testado com um

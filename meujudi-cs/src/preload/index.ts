@@ -1,5 +1,5 @@
 /**
- * MeuJudi CS — Preload script
+ * MeuJudi Sync — Preload script
  *
  * Bridge seguro entre Electron main process e renderer (Next.js).
  * Expõe uma API limitada e tipada via contextBridge.
@@ -11,17 +11,21 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { ElectronAPI } from '../shared/types';
 
 const api: ElectronAPI = {
-  pje: {
-    showLoginWindow: () => ipcRenderer.invoke('pje:show-login'),
-    getStatus: () => ipcRenderer.invoke('pje:status'),
-    disconnect: () => ipcRenderer.invoke('pje:disconnect'),
-    syncNow: () => ipcRenderer.invoke('pje:sync-now'),
-    getLogs: (limit = 100) => ipcRenderer.invoke('pje:get-logs', limit),
+  pdpj: {
+    showLoginWindow: () => ipcRenderer.invoke('pdpj:show-login'),
+    getStatus: () => ipcRenderer.invoke('pdpj:status'),
+    disconnect: () => ipcRenderer.invoke('pdpj:disconnect'),
+    openJus: () => ipcRenderer.invoke('pdpj:open-jus'),
+    validateApi: () => ipcRenderer.invoke('pdpj:validate-api'),
+    getLinkedOabs: () => ipcRenderer.invoke('pdpj:linked-oabs'),
+    enqueueOabSync: (oabNumber, oabUf) => ipcRenderer.invoke('pdpj:enqueue-oab-sync', oabNumber, oabUf),
+    fetchProcessDetails: (cnj) => ipcRenderer.invoke('pdpj:process-details', cnj),
   },
   diagnostic: {
     run: () => ipcRenderer.invoke('diagnostic:run'),
     sendToSupabase: (report) => ipcRenderer.invoke('diagnostic:send-to-supabase', report),
     getLast: () => ipcRenderer.invoke('diagnostic:get-last'),
+    getLogs: (limit = 100) => ipcRenderer.invoke('diagnostic:get-logs', limit),
   },
   app: {
     getVersion: () => ipcRenderer.invoke('app:get-version'),
@@ -31,6 +35,16 @@ const api: ElectronAPI = {
     submitCode: (codigo) => ipcRenderer.invoke('pairing:submit-code', codigo),
     getStatus: () => ipcRenderer.invoke('pairing:status'),
     unpair: () => ipcRenderer.invoke('pairing:unpair'),
+  },
+  connection: {
+    getStatus: () => ipcRenderer.invoke('connection:get-status'),
+  },
+  queue: {
+    listTasks: () => ipcRenderer.invoke('queue:list-tasks'),
+  },
+  sync: {
+    now: () => ipcRenderer.invoke('sync:now'),
+    getProgress: () => ipcRenderer.invoke('sync:get-progress'),
   },
   mural: {
     syncHistorical: () => ipcRenderer.invoke('mural:sync-historical'),

@@ -1,7 +1,9 @@
-// Cron: cria pedidos de consulta ao Mural para o CS.
+// Cron: cria tarefas de consulta ao Mural para o CS (fila unificada
+// sync_tasks — ver docs/roadmap/23-meujudi-cs-v0.3.0-refatoracao.md Fase 7).
 // Roda periodicamente (a cada 6h via cron-job.org ou Vercel cron).
-// Para cada OAB ativa do sistema, cria um cs_mural_requests que o CS
-// vai pegar no próximo poll, buscar no PJe e devolver via /api/cs/sync/mural.
+// Para cada OAB ativa do sistema, cria uma tarefa mural_request que o
+// SyncWorker do CS reserva no próximo ciclo, busca no PJe e devolve via
+// /api/cs/sync/mural.
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -40,31 +42,15 @@ export async function POST(req: NextRequest) {
 
   for (const oab of oabs) {
     try {
-      // 2. Verifica se já existe pedido pendente/processing pra esta OAB
-      const { data: existente } = await supabase
-        .from("cs_mural_requests")
-        .select("id")
-        .eq("tenant_id", oab.tenant_id)
-        .eq("oab_number", oab.oab_number)
-        .eq("oab_uf", oab.oab_uf)
-        .in("status", ["pending", "processing"])
-        .limit(1)
-        .maybeSingle();
-
-      if (existente) {
-        pulados++;
-        continue;
-      }
-
-      // 3. Determina janela de datas
-      // Último sync bem-sucedido desta OAB
+      // Último sync concluído desta OAB, pra saber de onde retomar a janela.
       const { data: ultimoSync } = await supabase
-        .from("cs_mural_requests")
+        .from("sync_tasks")
         .select("completed_at")
         .eq("tenant_id", oab.tenant_id)
-        .eq("oab_number", oab.oab_number)
-        .eq("oab_uf", oab.oab_uf)
-        .eq("status", "completed")
+        .eq("source", "mural")
+        .eq("type", "mural_request")
+        .contains("cursor", { oabNumber: oab.oab_number, oabUf: oab.oab_uf })
+        .in("status", ["completed", "completed_with_warnings"])
         .order("completed_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -72,23 +58,28 @@ export async function POST(req: NextRequest) {
       const dataInicio = ultimoSync?.completed_at
         ? new Date(ultimoSync.completed_at)
         : new Date(now.getTime() - JANELA_PADRAO_DIAS * 24 * 60 * 60 * 1000);
+      const dataInicioStr = dataInicio.toISOString().split("T")[0];
+      const dataFimStr = now.toISOString().split("T")[0];
 
-      // 4. Cria o pedido
-      const { error: insertError } = await supabase
-        .from("cs_mural_requests")
-        .insert({
-          tenant_id: oab.tenant_id,
-          oab_number: oab.oab_number,
-          oab_uf: oab.oab_uf,
-          requested_by: null, // cron, não usuário
-          data_inicio: dataInicio.toISOString().split("T")[0],
-          data_fim: now.toISOString().split("T")[0],
-          status: "pending",
-        });
+      // Chave de dedup: enquanto essa janela não for concluída, criar de
+      // novo com a mesma chave é ignorado (409) — substitui a checagem
+      // manual de "pedido pendente" que existia antes.
+      const { error: insertError } = await supabase.from("sync_tasks").insert({
+        tenant_id: oab.tenant_id,
+        source: "mural",
+        type: "mural_request",
+        idempotency_key: `mural_request:${oab.oab_number}:${oab.oab_uf}:${dataInicioStr}`,
+        priority: 5,
+        cursor: { oabNumber: oab.oab_number, oabUf: oab.oab_uf, dataInicio: dataInicioStr, dataFim: dataFimStr },
+      });
 
       if (insertError) {
-        console.error(`[solicitar-mural] erro ao criar pedido OAB ${oab.oab_number}/${oab.oab_uf}:`, insertError.message);
-        erros++;
+        if (insertError.code === "23505") {
+          pulados++;
+        } else {
+          console.error(`[solicitar-mural] erro ao criar tarefa OAB ${oab.oab_number}/${oab.oab_uf}:`, insertError.message);
+          erros++;
+        }
       } else {
         criados++;
       }

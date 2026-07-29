@@ -244,8 +244,8 @@ export async function createGithubReleaseUploadTicket(input: {
         },
         body: JSON.stringify({
           tag_name: tagName,
-          name: `MeuJudi CS ${tagName}`,
-          body: input.changelog?.trim() || `Versão ${tagName} do MeuJudi CS.`,
+          name: `MeuJudi Sync ${tagName}`,
+          body: input.changelog?.trim() || `Versão ${tagName} do MeuJudi Sync.`,
           draft: false,
           prerelease: false,
         }),

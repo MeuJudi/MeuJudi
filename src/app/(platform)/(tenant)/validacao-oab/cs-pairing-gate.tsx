@@ -67,11 +67,11 @@ export function CsPairingGate({ tenantId }: CsPairingGateProps) {
           </span>
           <div>
             <h2 className="font-display text-lg font-semibold text-[var(--color-card-foreground)]">
-              Conecte o MeuJudi CS para continuar
+              Conecte o MeuJudi Sync para continuar
             </h2>
             <p className="mt-0.5 text-sm text-[var(--color-muted-foreground)]">
               A validação da OAB pelo ConfirmADV é feita pelo app desktop
-              MeuJudi CS. Sem ele conectado, não conseguimos abrir a janela
+              MeuJudi Sync. Sem ele conectado, não conseguimos abrir a janela
               oficial nem receber o resultado.
             </p>
           </div>
@@ -83,7 +83,7 @@ export function CsPairingGate({ tenantId }: CsPairingGateProps) {
               1
             </span>
             <div>
-              <p className="font-medium text-[var(--color-card-foreground)]">Baixe o MeuJudi CS</p>
+              <p className="font-medium text-[var(--color-card-foreground)]">Baixe o MeuJudi Sync</p>
               <p className="text-xs text-[var(--color-muted-foreground)]">
                 Windows 10/11 (64 bits). Instalador de ~150 MB.
               </p>
@@ -107,7 +107,7 @@ export function CsPairingGate({ tenantId }: CsPairingGateProps) {
             <div>
               <p className="font-medium text-[var(--color-card-foreground)]">Gere um código de pareamento</p>
               <p className="text-xs text-[var(--color-muted-foreground)]">
-                Em <strong>Configurações → MeuJudi CS</strong>, gere um código de 8 caracteres
+                Em <strong>Configurações → MeuJudi Sync</strong>, gere um código de 8 caracteres
                 e digite no app. Esta tela vai detectar automaticamente.
               </p>
             </div>
@@ -137,7 +137,7 @@ export function CsPairingGate({ tenantId }: CsPairingGateProps) {
           {verificando ? (
             <>
               <Loader2 className="h-3 w-3 animate-spin" />
-              Verificando conexão com o MeuJudi CS...
+              Verificando conexão com o MeuJudi Sync...
             </>
           ) : pareado && online ? (
             <>
@@ -147,7 +147,7 @@ export function CsPairingGate({ tenantId }: CsPairingGateProps) {
           ) : pareado ? (
             <>
               <RefreshCw className="h-3 w-3" />
-              MeuJudi CS pareado, mas offline. Abra o aplicativo no computador do escritorio.
+              MeuJudi Sync pareado, mas offline. Abra o aplicativo no computador do escritorio.
             </>
           ) : (
             <>

@@ -1,5 +1,5 @@
 // Camada 0 — Roteador de fonte: decide se um campo já vem estruturado
-// (sincronizado na tabela `processos` por DataJud/Mural/PJe CS) antes de
+// (sincronizado na tabela `processos` por DataJud/Mural/PDPJ CS) antes de
 // gastar regex ou IA extraindo do texto livre de uma movimentação/comunicação.
 //
 // Ver docs/roadmap/08-ia-regex.md seção 3.
@@ -7,8 +7,8 @@
 // IMPORTANTE (correção de arquitetura, 17/07/2026): o desenho original
 // assumia chamar a API do PJe diretamente (`PJeAPI.getPauta()`) a partir do
 // pipeline de extração. Isso não é possível — `PJeAPI` roda só dentro do
-// processo Electron do MeuJudi CS, no PC do advogado, nunca é alcançável
-// pelo servidor Next.js. A arquitetura real é: o MeuJudi CS (e, no futuro,
+// processo Electron do MeuJudi Sync, no PC do advogado, nunca é alcançável
+// pelo servidor Next.js. A arquitetura real é: o MeuJudi Sync (e, no futuro,
 // os crons de DataJud/Mural) sincronizam dados PARA a tabela `processos`
 // (colunas `proxima_audiencia`, `valor_causa`, `advogados`, etc). A Camada 0
 // só precisa checar essas colunas — não importa qual processo as populou.

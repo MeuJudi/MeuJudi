@@ -1,8 +1,8 @@
 /**
- * LogsViewer — lista os últimos logs estruturados do MeuJudi CS.
+ * LogsViewer — lista os últimos logs estruturados do MeuJudi Sync.
  */
 
-import { useLogs } from '@/hooks/usePJeStatus';
+import { useLogs } from '@/hooks/usePdpjStatus';
 import type { LogEntry } from '@shared/types';
 
 const LEVEL_STYLES: Record<LogEntry['level'], string> = {

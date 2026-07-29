@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
 import { usePairing } from '@/hooks/usePairing';
+import { AppShell } from '@/components/AppShell';
 import type { HistoricalSyncStatus } from '@shared/types';
 
 export default function PairingPage() {
@@ -76,19 +77,13 @@ export default function PairingPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 p-6">
-      <div className="mx-auto max-w-2xl space-y-6">
-        <header>
-          <a href="../../index.html" className="text-sm text-gray-500 hover:text-gray-700">Voltar</a>
-          <h1 className="mt-1 text-3xl font-bold">Conectar ao MeuJudi Web</h1>
-          <p className="mt-1 text-gray-500">Pareie este computador com o escritorio correto para sincronizar o Mural.</p>
-        </header>
+    <AppShell title="Pareamento" subtitle="Pareie este computador com o escritorio correto para sincronizar o Mural.">
         {error && <div className="card border-red-300 bg-red-50 text-red-700">{error}</div>}
         {message && <div className="card border-green-300 bg-green-50 text-green-700">{message}</div>}
         {status ? (
           <section className="card space-y-5">
             <div><p className="text-sm font-medium text-green-700">Dispositivo conectado</p><h2 className="mt-2 text-xl font-semibold">{status.tenantName}</h2><p className="text-sm text-gray-500">Pareado por {status.userName}</p></div>
-            <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">O MeuJudi CS pode consultar as OABs deste escritorio e enviar as comunicacoes do Mural para o Web.</p>
+            <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">O MeuJudi Sync pode consultar as OABs deste escritorio e enviar as comunicacoes do Mural para o Web.</p>
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
               <p className="font-semibold">Importacao historica</p>
               <p className="mt-1">Busca os ultimos 12 meses em lotes semanais. Se houver falha ou voce fechar o CS, a proxima tentativa continua do ponto salvo.</p>
@@ -105,7 +100,7 @@ export default function PairingPage() {
           </section>
         ) : (
           <section className="card space-y-5">
-            <div><h2 className="text-xl font-semibold">Digite o codigo de pareamento</h2><p className="mt-1 text-sm text-gray-500">No MeuJudi Web, abra Configuracoes - MeuJudi CS, gere um codigo e informe aqui.</p></div>
+            <div><h2 className="text-xl font-semibold">Digite o codigo de pareamento</h2><p className="mt-1 text-sm text-gray-500">No MeuJudi Web, abra Configuracoes - MeuJudi Sync, gere um codigo e informe aqui.</p></div>
             <form onSubmit={handleSubmit} className="space-y-3">
               <input autoFocus value={code} onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-HJ-NP-Z2-9]/g, '').slice(0, 8))} placeholder="ABCD2345" className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 font-mono text-2xl tracking-[0.18em] outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-200" />
               <div className="flex flex-wrap gap-2"><button type="submit" disabled={isLoading || code.length !== 8} className="btn-primary flex-1">{isLoading ? 'Conectando...' : 'Conectar dispositivo'}</button><button type="button" onClick={() => setScannerOpen(true)} disabled={isLoading} className="btn-secondary">Escanear QR</button></div>
@@ -114,7 +109,6 @@ export default function PairingPage() {
             <p className="text-xs text-gray-400">O codigo expira em 10 minutos e so pode ser usado uma vez.</p>
           </section>
         )}
-      </div>
-    </main>
+    </AppShell>
   );
 }

@@ -22,11 +22,11 @@ export function CsDownloadSection({ release }: Props) {
           <div className="flex items-center gap-2">
             <FileDown className="h-5 w-5 text-[var(--tenant-brass)]" />
             <h2 className="font-display text-xl font-semibold text-[var(--color-card-foreground)]">
-              Download do MeuJudi CS
+              Download do MeuJudi Sync
             </h2>
           </div>
           <p className="mt-1 max-w-2xl text-sm text-[var(--color-muted-foreground)]">
-            O MeuJudi CS é um aplicativo de desktop que conecta o PJe pelo
+            O MeuJudi Sync é um aplicativo de desktop que conecta ao PDPJ/Jus.br pelo
             certificado A1 do escritório e sincroniza dados automaticamente com
             a plataforma web.
           </p>
@@ -62,7 +62,7 @@ export function CsDownloadSection({ release }: Props) {
               >
                 <a href={release.file_url} download>
                   <Download className="mr-1.5 h-3.5 w-3.5" />
-                  Baixar MeuJudi CS
+                  Baixar MeuJudi Sync
                 </a>
               </Button>
               <span className="text-[10px] text-[var(--color-muted-foreground)]">

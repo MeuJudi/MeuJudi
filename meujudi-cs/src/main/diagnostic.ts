@@ -1,5 +1,5 @@
 /**
- * MeuJudi CS — Diagnostic
+ * MeuJudi Sync — Diagnostic
  *
  * Roda bateria de testes automatizada pra validar a integração com cert. A1 + PJe.
  * Gera DiagnosticReport que é:
@@ -16,14 +16,13 @@ import os from 'os';
 import { getRecentDiagnosticEvents, getRecentLogs, logger, recordDiagnosticEvent } from './logger';
 import { detectarCertA1 } from './cert-detector';
 import { CookieStore } from './cookie-store';
-import { APP_NAME, APP_VERSION, PDPJ_LOGIN_URL, PDPJ_PORTAL_URL, TIMEOUTS } from '../shared/constants';
+import { APP_VERSION, PDPJ_LOGIN_URL, PDPJ_PORTAL_URL, TIMEOUTS } from '../shared/constants';
 import { enviarRelatorioSupabase } from './supabase-reporter';
 import type {
   DiagnosticReport,
   PJeConnectionTest,
   PJeLoginTest,
   CertPopupTest,
-  CookiesTest,
 } from '../shared/types';
 import { randomUUID } from 'crypto';
 
@@ -316,7 +315,7 @@ export class Diagnostic {
       // Tenta fazer 1 request autenticado (vai falhar sem sessão)
       // Apenas mede se o TLS handshake funciona
       const url = PDPJ_LOGIN_URL;
-      const response = await fetch(url, {
+      await fetch(url, {
         method: 'GET',
         headers: { 'User-Agent': `MeuJudi-CS/${APP_VERSION} (diagnostic)` },
       }).catch((err) => ({ status: 0, error: err.message }));

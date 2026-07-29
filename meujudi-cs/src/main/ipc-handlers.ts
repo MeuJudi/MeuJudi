@@ -1,21 +1,26 @@
 /**
- * MeuJudi CS — IPC Handlers
+ * MeuJudi Sync — IPC Handlers
  *
  * Registra todos os handlers de IPC que o preload (window.meujudi) pode chamar.
  * Conecta o renderer (Next.js) com o main process (Electron).
  */
 
 import { ipcMain, app, shell } from 'electron';
-import { PdpjAuth } from './pje-auth';
-import { Scheduler } from './scheduler';
+import { PdpjAuth } from './pdpj-auth';
 import { Diagnostic } from './diagnostic';
 import { logger, getRecentLogs } from './logger';
 import { enviarRelatorioSupabase } from './supabase-reporter';
 import { Pairing } from './pairing';
 import { MuralSync } from './mural-sync';
+import { MuralPush } from './mural-push';
 import { ConfirmADVService } from './confirmadv';
-import type { StatusReporter } from './status-reporter';
-import type { PJeStatus, PublicSession, LogEntry, DiagnosticReport, ConfirmADVValidation } from '../shared/types';
+import { PdpjExtractor } from './pdpj-extractor';
+import { TaskQueueClient } from './task-queue-client';
+import { SyncWorker } from './sync-worker';
+import { createPdpjTaskHandlers } from './pdpj-tasks';
+import { createMuralTaskHandlers, startMuralScheduledTasks } from './mural-tasks';
+import type { StatusReporter, ConnectionStatus } from './status-reporter';
+import type { PdpjStatus, PublicSession, LogEntry, DiagnosticReport, ConfirmADVValidation, SyncTask, UnifiedSyncProgress } from '../shared/types';
 
 /**
  * Registra todos os IPC handlers. Deve ser chamado uma vez no app.whenReady().
@@ -23,24 +28,36 @@ import type { PJeStatus, PublicSession, LogEntry, DiagnosticReport, ConfirmADVVa
 export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: StatusReporter) {
   const auth = new PdpjAuth();
   const muralSync = new MuralSync(pairing);
+  const muralPush = new MuralPush(pairing);
   const confirmAdv = new ConfirmADVService(pairing);
-  const scheduler = new Scheduler(pairing, muralSync, statusReporter);
-  scheduler.start();
+  const pdpjExtractor = new PdpjExtractor(pairing, auth);
+  const taskQueueClient = new TaskQueueClient(pairing);
+  const syncWorker = new SyncWorker(taskQueueClient, statusReporter);
+  const { handlePdpjOab, handlePdpjCnj } = createPdpjTaskHandlers(pairing, auth);
+  syncWorker.registerHandler('pdpj', 'pdpj_oab', handlePdpjOab);
+  syncWorker.registerHandler('pdpj', 'pdpj_cnj', handlePdpjCnj);
+  const { handleMuralRequest, handleMuralPush, handleMuralSweep, handleMuralHistorical } = createMuralTaskHandlers(pairing, muralSync, muralPush);
+  syncWorker.registerHandler('mural', 'mural_request', handleMuralRequest);
+  syncWorker.registerHandler('mural', 'mural_push', handleMuralPush);
+  syncWorker.registerHandler('mural', 'mural_sweep', handleMuralSweep);
+  syncWorker.registerHandler('mural', 'mural_historical', handleMuralHistorical);
+  syncWorker.start();
+  const muralScheduledTasks = startMuralScheduledTasks(taskQueueClient);
   confirmAdv.start();
   const diagnostic = new Diagnostic();
 
   // ============================================================
-  //  IPC: PJe
+  //  IPC: Portal PDPJ/Jus
   // ============================================================
 
-  ipcMain.handle('pje:show-login', async (): Promise<PublicSession> => {
-    logger.info('IPC: pje:show-login');
+  ipcMain.handle('pdpj:show-login', async (): Promise<PublicSession> => {
+    logger.info('IPC: pdpj:show-login');
     try {
       return await auth.showLoginWindow();
     } catch (err: any) {
-      logger.error('Login PJe falhou; executando diagnostico automatico:', err.message);
+      logger.error('Login PDPJ falhou; executando diagnostico automatico:', err.message);
       try {
-        await diagnostic.run('pje_login_failed', err.message || 'Erro desconhecido no login PJe');
+        await diagnostic.run('pdpj_login_failed', err.message || 'Erro desconhecido no login PDPJ');
       } catch (diagnosticErr: any) {
         logger.error('Falha ao executar/enviar diagnostico automatico:', diagnosticErr.message);
       }
@@ -48,27 +65,70 @@ export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: St
     }
   });
 
-  ipcMain.handle('pje:status', async (): Promise<PJeStatus> => {
+  ipcMain.handle('pdpj:status', async (): Promise<PdpjStatus> => {
     return auth.getStatus();
   });
 
-  ipcMain.handle('pje:disconnect', async (): Promise<void> => {
-    logger.info('IPC: pje:disconnect');
+  ipcMain.handle('pdpj:disconnect', async (): Promise<void> => {
+    logger.info('IPC: pdpj:disconnect');
     await auth.disconnect();
   });
 
-  ipcMain.handle('pje:sync-now', async () => {
-    logger.info('IPC: pje:sync-now');
-    return scheduler.tickNow();
+  ipcMain.handle('pdpj:open-jus', async () => auth.openJus());
+  ipcMain.handle('pdpj:validate-api', async () => {
+    logger.info('IPC: pdpj:validate-api');
+    return auth.ensureApiSession();
   });
 
-  ipcMain.handle('pje:get-logs', async (_event, limit: number = 100): Promise<LogEntry[]> => {
-    return getRecentLogs(limit).slice().reverse();
+  ipcMain.handle('pdpj:enqueue-oab-sync', async (_event, oabNumber: string, oabUf: string) => {
+    logger.info('IPC: pdpj:enqueue-oab-sync', { oabUf, oabNumber: '[redacted-number]' });
+    const normalizedNumber = oabNumber.replace(/\D/g, '');
+    const normalizedUf = oabUf.trim().toUpperCase();
+    return taskQueueClient.create({
+      source: 'pdpj',
+      type: 'pdpj_oab',
+      idempotencyKey: `pdpj_oab:${normalizedNumber}:${normalizedUf}:${Date.now()}`,
+      priority: 4,
+      cursor: { oabNumber: normalizedNumber, oabUf: normalizedUf, searchAfter: null, pageCount: 0 },
+    });
   });
+  ipcMain.handle('pdpj:process-details', async (_event, cnj: string) => {
+    logger.info('IPC: pdpj:process-details', { cnjSuffix: cnj.replace(/\D/g, '').slice(-8) });
+    return pdpjExtractor.fetchProcessDetails(cnj);
+  });
+  ipcMain.handle('pdpj:linked-oabs', async () => pdpjExtractor.getLinkedOabs());
 
   ipcMain.handle('pairing:submit-code', async (_event, codigo: string) => pairing.pair(codigo));
   ipcMain.handle('pairing:status', async () => pairing.getStatus());
   ipcMain.handle('pairing:unpair', async () => pairing.unpair());
+
+  ipcMain.handle('sync:now', async (): Promise<UnifiedSyncProgress> => {
+    logger.info('IPC: sync:now');
+    return syncWorker.syncNow();
+  });
+
+  ipcMain.handle('sync:get-progress', async (): Promise<UnifiedSyncProgress | null> => {
+    return syncWorker.getCurrentProgress() ?? syncWorker.getLastProgress();
+  });
+
+  ipcMain.handle('queue:list-tasks', async (): Promise<SyncTask[]> => {
+    try {
+      return await taskQueueClient.list();
+    } catch (err: any) {
+      logger.warn('Falha ao listar fila de tarefas:', err.message);
+      return [];
+    }
+  });
+
+  ipcMain.handle('connection:get-status', async (): Promise<ConnectionStatus> => {
+    return statusReporter?.getConnectionStatus() ?? {
+      paired: pairing.isPaired(),
+      online: false,
+      lastHeartbeatAt: null,
+      lastError: null,
+      revoked: false,
+    };
+  });
 
   ipcMain.handle('mural:sync-historical', async () => {
     logger.info('IPC: mural:sync-historical');
@@ -80,9 +140,12 @@ export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: St
     checkpoint: muralSync.getHistoricalCheckpoint(),
   }));
 
-  ipcMain.handle('mural:poll-now', async () => {
+  ipcMain.handle('mural:poll-now', async (): Promise<UnifiedSyncProgress> => {
+    // Antes chamava o poller antigo de /api/cs/mural-requests (Fase 7
+    // migrou isso pra sync_tasks) — agora só dispara um ciclo do worker
+    // unificado, igual o "Sincronizar agora" da Home.
     logger.info('IPC: mural:poll-now');
-    await muralSync.processPendingRequests();
+    return syncWorker.syncNow();
   });
 
   ipcMain.handle('mural:progress', async () => muralSync.getProgress());
@@ -120,6 +183,10 @@ export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: St
     return enviarRelatorioSupabase(report);
   });
 
+  ipcMain.handle('diagnostic:get-logs', async (_event, limit: number = 100): Promise<LogEntry[]> => {
+    return getRecentLogs(limit).slice().reverse();
+  });
+
   ipcMain.handle('diagnostic:get-last', async (): Promise<DiagnosticReport | null> => {
     const fs = require('fs');
     const path = require('path');
@@ -154,8 +221,12 @@ export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: St
     await shell.openPath(logsPath);
   });
 
-  return () => {
-    scheduler.stop();
-    confirmAdv.stop();
+  return {
+    stop: () => {
+      muralScheduledTasks.stop();
+      confirmAdv.stop();
+      syncWorker.stop();
+    },
+    triggerSync: () => syncWorker.syncNow(),
   };
 }
