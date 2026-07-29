@@ -1,4 +1,4 @@
-# GitHub Releases do MeuJudi CS
+# GitHub Releases do MeuJudi Sync
 
 O codigo-fonte do CS nao fica no Git. Os instaladores versionados ficam em
 `meujudi-cs/release/` e tambem podem ser publicados como assets de GitHub
@@ -35,7 +35,7 @@ No Super Admin, informe a versao, selecione o instalador e publique. O sistema:
 1. cria a tag `v<versao>`;
 2. cria a release no GitHub;
 3. envia o asset diretamente para o GitHub;
-4. usa o nome `MeuJudi-CS-Setup-v<versao>.exe`;
+4. usa o nome `MeuJudi-Sync-Setup-v<versao>.exe`;
 5. salva no Supabase somente os metadados e a URL de download.
 
 Todas as releases permanecem disponiveis no historico. A remocao pelo painel

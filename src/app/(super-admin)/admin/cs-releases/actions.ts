@@ -157,7 +157,7 @@ export async function listTrackedCsInstallers(): Promise<ActionResult<TrackedCsI
     return {
       ok: true,
       data: entries
-        .filter((entry) => entry.type === "file" && /^MeuJudi-CS-Setup-v.+\.exe$/i.test(entry.name) && entry.download_url)
+        .filter((entry) => entry.type === "file" && /^MeuJudi-(CS|Sync)-Setup-v.+\.exe$/i.test(entry.name) && entry.download_url)
         .map((entry) => ({ name: entry.name, size: entry.size, downloadUrl: entry.download_url as string })),
     };
   } catch (error) {
@@ -227,7 +227,7 @@ export async function createGithubReleaseUploadTicket(input: {
 
     const github = await getGithubInstallationToken();
     const extension = fileName.split(".").pop()?.toLowerCase() ?? "exe";
-    const assetName = `MeuJudi-CS-Setup-v${version}.${extension}`;
+    const assetName = `MeuJudi-Sync-Setup-v${version}.${extension}`;
     const tagName = `v${version}`;
     if (await versionAlreadyRegistered(version)) {
       return { ok: false, error: `A versao ${version} ja esta salva. O sistema deve usar a proxima versao disponivel.` };

@@ -71,11 +71,11 @@ npm run dev
 npm run dist:win
 ```
 
-Gera: `release\MeuJudi-CS-Setup.exe` (~50 MB)
+Gera: `release\MeuJudi-Sync-Setup.exe` (~50 MB)
 
 **Para testar com --first-run:**
 ```bash
-release\MeuJudi-CS-Setup.exe --first-run
+release\MeuJudi-Sync-Setup.exe --first-run
 ```
 
 ---
@@ -252,7 +252,7 @@ node tests/validate-pre-build.js
 - ✅ `cert-detector.ts` usa PowerShell pra detectar cert. A1
 - ✅ `diagnostic.ts` roda 5 testes + sanitiza dados + envia pro Supabase
 - ✅ `supabase-reporter.ts` tem timeout e trata erros
-- ✅ `installer.iss` gera `MeuJudi-CS-Setup.exe`
+- ✅ `installer.iss` gera `MeuJudi-Sync-Setup.exe`
 - ✅ Doc do advogado explica cert. A1 + popup + troubleshooting + LGPD
 - ✅ SQL cria tabela com RLS + índices
 
