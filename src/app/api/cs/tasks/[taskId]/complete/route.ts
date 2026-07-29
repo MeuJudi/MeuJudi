@@ -53,8 +53,18 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ta
   if (isTerminal) update.completed_at = now;
   if (body.cursor !== undefined) update.cursor = body.cursor;
   if (body.counters !== undefined) update.counters = body.counters;
-  if (body.errorCode !== undefined) update.error_code = String(body.errorCode).slice(0, 60);
-  if (body.errorMessage !== undefined) update.error_message = String(body.errorMessage).slice(0, 500);
+  if (status === "completed" || status === "completed_with_warnings") {
+    // Uma tentativa anterior pode ter deixado error_code/error_message
+    // gravados (achado em log real, 29/07/2026: a tarefa completava com
+    // sucesso mas a UI continuava mostrando o erro da tentativa passada,
+    // porque esses campos só eram atualizados quando explicitamente
+    // enviados no corpo — sucesso nunca envia, então nunca limpava).
+    update.error_code = null;
+    update.error_message = null;
+  } else {
+    if (body.errorCode !== undefined) update.error_code = String(body.errorCode).slice(0, 60);
+    if (body.errorMessage !== undefined) update.error_message = String(body.errorMessage).slice(0, 500);
+  }
 
   const { data: updated, error } = await supabase
     .from("sync_tasks")
