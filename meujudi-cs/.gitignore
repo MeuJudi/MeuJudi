@@ -37,10 +37,10 @@ cache/
 *.pdf
 *.tmp
 
-# electron-builder — instaladores publicados ficam rastreados (ver
-# .gitignore da raiz), só o resto do diretório de build (win-unpacked/,
-# builder-debug.yml etc.) e releases antigas fora do padrão v* ficam de fora.
+# electron-builder — desde 30/07/2026 os instaladores não são mais
+# commitados aqui: vivem como assets de Release no repo dedicado
+# MeuJudi/MeuJudi-Sync-Releases (usado tanto pro download inicial via
+# Super Admin quanto pelo autoUpdater do CS). Exceções antigas mantidas só
+# pra não desrastrear instaladores já commitados no histórico.
 release/*
-!release/MeuJudi-Sync-Setup-v*.exe
-!release/MeuJudi-Sync-Setup-v*.exe.blockmap
 dist-electron/

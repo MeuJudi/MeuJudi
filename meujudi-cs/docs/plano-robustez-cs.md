@@ -195,7 +195,7 @@ necessidade de gerenciar/rotacionar token nenhum.
   (`autoInstallOnAppQuit`, padrão do electron-updater) — não força
   restart no meio do expediente.
 - `package.json`: `build.publish = { provider: "github", owner:
-  "MeuJudi", repo: "meujudi-sync-releases" }`.
+  "MeuJudi", repo: "MeuJudi-Sync-Releases" }`.
   `win.verifyUpdateCodeSignature: false` já estava setado (necessário
   porque o instalador ainda não é assinado, item 4).
 - Processo de release ainda é manual: `npm run dist:win` gera o `.exe` +
@@ -205,6 +205,39 @@ necessidade de gerenciar/rotacionar token nenhum.
   (log local) — ainda não sobem pro Supabase nem aparecem pro Super
   Admin. Isso só fica coberto quando o item 15 (nenhum erro silencioso)
   for implementado.
+
+**Consolidação com o Super Admin (30/07/2026).** Descobrimos, ao implementar
+isso, que já existia um sistema pronto de antes desta sessão —
+`/admin/cs-releases` — pra Super Admin publicar versões do instalador
+(usado no link "Baixar MeuJudi Sync" de `/configuracoes/meujudi-cs`). Ele
+também usa um GitHub App + GitHub Releases, mas apontava por padrão pro
+repo **privado** `MeuJudi/MeuJudi` (`GITHUB_RELEASE_OWNER`/
+`GITHUB_RELEASE_REPO` em `.env.example`) — o mesmo problema de exposição
+de código-fonte discutido acima, e um link de download que provavelmente
+não funcionava pra um tenant sem conta GitHub com acesso ao repo privado
+(GitHub bloqueia download anônimo de asset de Release privado).
+
+Resolvido reapontando os dois sistemas pro mesmo repo público
+`MeuJudi/MeuJudi-Sync-Releases`:
+- `.env.example`: `GITHUB_RELEASE_REPO` mudou de `MeuJudi` para
+  `MeuJudi-Sync-Releases` (precisa também atualizar a env var real na
+  Vercel — não é algo que dá pra automatizar daqui).
+- O GitHub App usado por `/admin/cs-releases` precisa ser instalado
+  nesse repo novo também (Settings → Installations → Configure no
+  GitHub, ação manual, só o dono da conta consegue fazer).
+- Removido o fluxo "Arquivo versionado no Git" do formulário de
+  `/admin/cs-releases` (`listTrackedCsInstallers`/
+  `publishTrackedCsInstaller` em `actions.ts`, e a UI correspondente em
+  `cs-release-form.tsx`) — esse fluxo listava `.exe` já commitados dentro
+  de `meujudi-cs/release/` no próprio repo de código, um padrão que só
+  fazia sentido enquanto os instaladores eram commitados ali. Com o repo
+  dedicado, só sobra o fluxo de upload direto (Super Admin escolhe o
+  arquivo do computador, sobe direto pro GitHub Release).
+- `.gitignore` (raiz e `meujudi-cs/`) não força mais o rastreio de novos
+  `.exe`/`.blockmap` em `meujudi-cs/release/` — instaladores publicados a
+  partir de agora só existem como asset de Release, não commitados no
+  histórico do repo de código. Builds antigos já commitados continuam
+  rastreados (mudança de `.gitignore` não destrata arquivo já versionado).
 
 ## 12. App por conta de usuário do Windows, não por máquina
 
