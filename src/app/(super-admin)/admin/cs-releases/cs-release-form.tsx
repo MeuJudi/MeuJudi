@@ -1,12 +1,19 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { FileUp, Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { createGithubReleaseUploadTicket, finalizeGithubReleaseUpload } from "./actions";
+import {
+  adoptGithubRelease,
+  createGithubReleaseUploadTicket,
+  finalizeGithubReleaseUpload,
+  listGithubReleases,
+  type TrackedGithubRelease,
+} from "./actions";
 
 type Props = {
   latestVersion: string | null;
+  savedVersions: string[];
 };
 
 type ReleaseKind = "patch" | "minor" | "major";
@@ -26,15 +33,35 @@ function calculateVersion(latestVersion: string | null, kind: ReleaseKind): stri
   return `${major}.${minor}.${patch + 1}`;
 }
 
-export function CsReleaseForm({ latestVersion }: Props) {
+export function CsReleaseForm({ latestVersion, savedVersions }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [source, setSource] = useState<"local" | "git">("local");
   const [releaseKind, setReleaseKind] = useState<ReleaseKind>("patch");
   const [version, setVersion] = useState(() => calculateVersion(latestVersion, "patch"));
+  const [githubReleases, setGithubReleases] = useState<TrackedGithubRelease[]>([]);
+  const [selectedRelease, setSelectedRelease] = useState<TrackedGithubRelease | null>(null);
+  const [githubError, setGithubError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const versionRef = useRef<HTMLInputElement>(null);
+
+  const selectedVersion = selectedRelease?.version ?? version;
+  const selectedVersionAlreadySaved = savedVersions.includes(selectedVersion);
+
+  useEffect(() => {
+    if (source !== "git" || githubReleases.length > 0) return;
+    let cancelled = false;
+    void listGithubReleases().then((result) => {
+      if (cancelled) return;
+      if (result.ok) setGithubReleases(result.data);
+      else setGithubError(result.error);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [source, githubReleases.length]);
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -45,6 +72,20 @@ export function CsReleaseForm({ latestVersion }: Props) {
 
     startTransition(async () => {
       try {
+        if (source === "git") {
+          if (!selectedRelease) throw new Error("Selecione um Release já publicado no GitHub.");
+          const adoptResult = await adoptGithubRelease({
+            ...selectedRelease,
+            changelog: String(formData.get("changelog") ?? "") || null,
+          });
+          if (!adoptResult.ok) throw new Error(adoptResult.error);
+          setSuccess(true);
+          form.reset();
+          setSelectedRelease(null);
+          setTimeout(() => setSuccess(false), 3000);
+          return;
+        }
+
         const file = formData.get("file");
         if (!(file instanceof File) || file.size === 0) throw new Error("Nenhum arquivo selecionado.");
 
@@ -89,6 +130,29 @@ export function CsReleaseForm({ latestVersion }: Props) {
     <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-4">
       <h3 className="text-sm font-semibold">Publicar nova versao</h3>
 
+      <div className="grid gap-2 sm:grid-cols-2">
+        {(["local", "git"] as const).map((option) => (
+          <button
+            key={option}
+            type="button"
+            onClick={() => {
+              setSource(option);
+              setError(null);
+              if (option === "local") {
+                setSelectedRelease(null);
+                const next = calculateVersion(latestVersion, releaseKind);
+                setVersion(next);
+                if (versionRef.current) versionRef.current.value = next;
+              }
+            }}
+            className={`rounded-md border px-3 py-2 text-left text-xs ${source === option ? "border-primary bg-primary/10" : "border-[var(--tenant-line)]"}`}
+          >
+            <strong className="block">{option === "local" ? "Arquivo deste computador" : "Release já publicado no GitHub"}</strong>
+            <span className="text-muted-foreground">{option === "local" ? "Enviar um novo instalador." : "Adotar um Release feito direto no GitHub (ex.: via gh CLI)."}</span>
+          </button>
+        ))}
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <label htmlFor="version" className="text-xs font-medium text-muted-foreground">Versao *</label>
@@ -101,6 +165,7 @@ export function CsReleaseForm({ latestVersion }: Props) {
           <select
             id="release-kind"
             value={releaseKind}
+            disabled={source === "git"}
             onChange={(event) => {
               const kind = event.target.value as ReleaseKind;
               setReleaseKind(kind);
@@ -119,11 +184,40 @@ export function CsReleaseForm({ latestVersion }: Props) {
 
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">Arquivo *</label>
-          <button type="button" onClick={() => fileRef.current?.click()} className="flex w-full items-center gap-2 rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-3 py-2 text-left text-sm hover:bg-[var(--tenant-surface)]">
-            <FileUp className="h-4 w-4 text-muted-foreground" />
-            {fileName ?? "Selecionar arquivo..."}
-          </button>
-          <input ref={fileRef} name="file" type="file" required accept=".exe,.msi,.dmg,.appimage,.tar.gz,.zip" className="hidden" onChange={(event) => setFileName(event.target.files?.[0]?.name ?? null)} />
+          {source === "local" ? (
+            <>
+              <button type="button" onClick={() => fileRef.current?.click()} className="flex w-full items-center gap-2 rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-3 py-2 text-left text-sm hover:bg-[var(--tenant-surface)]">
+                <FileUp className="h-4 w-4 text-muted-foreground" />
+                {fileName ?? "Selecionar arquivo..."}
+              </button>
+              <input ref={fileRef} name="file" type="file" required={source === "local"} accept=".exe,.msi,.dmg,.appimage,.tar.gz,.zip" className="hidden" onChange={(event) => setFileName(event.target.files?.[0]?.name ?? null)} />
+            </>
+          ) : (
+            <select
+              value={selectedRelease?.assetId ?? ""}
+              onChange={(event) => {
+                const selected = githubReleases.find((item) => String(item.assetId) === event.target.value) ?? null;
+                setSelectedRelease(selected);
+                if (selected) {
+                  setVersion(selected.version);
+                  if (versionRef.current) versionRef.current.value = selected.version;
+                }
+              }}
+              className="w-full rounded-md border border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-3 py-2 text-sm"
+            >
+              <option value="">Selecionar Release do GitHub...</option>
+              {githubReleases.map((release) => {
+                const alreadySaved = savedVersions.includes(release.version);
+                return (
+                  <option key={release.assetId} value={release.assetId} disabled={alreadySaved}>
+                    {release.tagName} — {release.fileName}{alreadySaved ? " (ja liberada)" : ""}
+                  </option>
+                );
+              })}
+            </select>
+          )}
+          {source === "git" && selectedVersionAlreadySaved && <p className="text-xs text-amber-700">Esta versao ja esta liberada. Escolha outra versao.</p>}
+          {githubError && <p className="text-xs text-destructive">{githubError}</p>}
         </div>
       </div>
 
@@ -134,9 +228,9 @@ export function CsReleaseForm({ latestVersion }: Props) {
 
       {error && <p className="text-xs text-destructive">{error}</p>}
       {success && <p className="text-xs text-green-600">Versao publicada com sucesso!</p>}
-      <Button type="submit" disabled={isPending} size="sm">
+      <Button type="submit" disabled={isPending || (source === "git" && (!selectedRelease || selectedVersionAlreadySaved))} size="sm">
         {isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Upload className="mr-1.5 h-3.5 w-3.5" />}
-        Publicar nova release
+        {source === "git" ? "Liberar versao para download" : "Publicar nova release"}
       </Button>
     </form>
   );

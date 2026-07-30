@@ -107,6 +107,108 @@ async function getGithubInstallationToken() {
   return { ...config, token: body.token };
 }
 
+export type TrackedGithubRelease = {
+  releaseId: number;
+  assetId: number;
+  tagName: string;
+  version: string;
+  fileName: string;
+  fileSizeBytes: number;
+  downloadUrl: string;
+};
+
+/** Lista Releases já publicados no GitHub (ex.: via `gh release upload` direto), pra Super Admin adotar sem re-enviar o arquivo. */
+export async function listGithubReleases(): Promise<ActionResult<TrackedGithubRelease[]>> {
+  await requireSuperAdmin();
+  try {
+    const github = await getGithubInstallationToken();
+    const response = await fetch(
+      `https://api.github.com/repos/${github.owner}/${github.repo}/releases?per_page=30`,
+      {
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${github.token}`,
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+      },
+    );
+    if (!response.ok) {
+      const details = await response.text();
+      if (response.status === 403) {
+        throw new Error(
+          `O GitHub App nao tem permissao pra listar releases em ${github.owner}/${github.repo}. Detalhes: ${details}`,
+        );
+      }
+      throw new Error(`GitHub releases: ${details}`);
+    }
+    const releases = (await response.json()) as Array<{
+      id: number;
+      tag_name: string;
+      assets: Array<{ id: number; name: string; size: number; browser_download_url: string }>;
+    }>;
+    const data: TrackedGithubRelease[] = [];
+    for (const release of releases) {
+      const asset = release.assets.find((a) => /^MeuJudi-(CS|Sync)-Setup-v.+\.exe$/i.test(a.name));
+      if (!asset) continue;
+      const version = release.tag_name.replace(/^v/, "");
+      data.push({
+        releaseId: release.id,
+        assetId: asset.id,
+        tagName: release.tag_name,
+        version,
+        fileName: asset.name,
+        fileSizeBytes: asset.size,
+        downloadUrl: asset.browser_download_url,
+      });
+    }
+    return { ok: true, data };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha ao listar releases do GitHub.";
+    return { ok: false, error: message };
+  }
+}
+
+/** Registra no cs_releases um Release que já existe no GitHub (sem fazer upload). */
+export async function adoptGithubRelease(input: {
+  releaseId: number;
+  assetId: number;
+  tagName: string;
+  version: string;
+  fileName: string;
+  fileSizeBytes: number;
+  downloadUrl: string;
+  changelog: string | null;
+}): Promise<ActionResult<null>> {
+  const ctx = await requireSuperAdmin();
+  if (await versionAlreadyRegistered(input.version)) {
+    return { ok: false, error: `A versao ${input.version} ja esta salva. Use a versao existente.` };
+  }
+  const { error: deactivateError } = await ctx.supabase
+    .from("cs_releases")
+    .update({ is_active: false })
+    .eq("is_active", true);
+  if (deactivateError) return { ok: false, error: `Banco: ${deactivateError.message}` };
+
+  const { error } = await ctx.supabase.from("cs_releases").insert({
+    version: input.version,
+    file_url: input.downloadUrl,
+    file_name: input.fileName,
+    file_size_bytes: input.fileSizeBytes,
+    changelog: input.changelog,
+    uploaded_by: ctx.profile.id,
+    is_active: true,
+    github_release_id: input.releaseId,
+    github_asset_id: input.assetId,
+    github_tag_name: input.tagName,
+  });
+  if (error) return { ok: false, error: `Banco: ${error.message}` };
+
+  revalidatePath("/admin/cs-releases");
+  revalidatePath("/configuracoes/meujudi-cs");
+  revalidatePath("/cs");
+  return { ok: true, data: null };
+}
+
 async function versionAlreadyRegistered(version: string) {
   const { data } = await createServiceClient()
     .from("cs_releases")

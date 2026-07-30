@@ -84,7 +84,10 @@ export default async function CsReleasesPage() {
       )}
 
       {/* Formulário de upload */}
-      <CsReleaseForm latestVersion={getLatestVersion(releases)} />
+      <CsReleaseForm
+        latestVersion={getLatestVersion(releases)}
+        savedVersions={releases.map((release) => release.version)}
+      />
 
       {/* Lista de versões */}
       {releases.length > 0 && (

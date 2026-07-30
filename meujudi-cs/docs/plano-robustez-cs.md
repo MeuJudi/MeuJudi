@@ -225,14 +225,16 @@ Resolvido reapontando os dois sistemas pro mesmo repo público
 - O GitHub App usado por `/admin/cs-releases` precisa ser instalado
   nesse repo novo também (Settings → Installations → Configure no
   GitHub, ação manual, só o dono da conta consegue fazer).
-- Removido o fluxo "Arquivo versionado no Git" do formulário de
-  `/admin/cs-releases` (`listTrackedCsInstallers`/
-  `publishTrackedCsInstaller` em `actions.ts`, e a UI correspondente em
-  `cs-release-form.tsx`) — esse fluxo listava `.exe` já commitados dentro
-  de `meujudi-cs/release/` no próprio repo de código, um padrão que só
-  fazia sentido enquanto os instaladores eram commitados ali. Com o repo
-  dedicado, só sobra o fluxo de upload direto (Super Admin escolhe o
-  arquivo do computador, sobe direto pro GitHub Release).
+- Adaptado (não removido) o fluxo "Arquivo versionado no Git" do
+  formulário de `/admin/cs-releases`: antes (`listTrackedCsInstallers`/
+  `publishTrackedCsInstaller`) ele listava `.exe` já commitados dentro de
+  `meujudi-cs/release/` no próprio repo de código — deixou de fazer
+  sentido já que instaladores não são mais commitados ali. Trocado por
+  `listGithubReleases`/`adoptGithubRelease`, que listam Releases já
+  publicados de verdade no `MeuJudi-Sync-Releases` (via API de Releases,
+  não a de Contents) — útil pra adotar no painel um Release feito direto
+  por `gh release upload` (como os que fizemos nesta sessão) sem precisar
+  re-enviar o arquivo pelo navegador.
 - `.gitignore` (raiz e `meujudi-cs/`) não força mais o rastreio de novos
   `.exe`/`.blockmap` em `meujudi-cs/release/` — instaladores publicados a
   partir de agora só existem como asset de Release, não commitados no
