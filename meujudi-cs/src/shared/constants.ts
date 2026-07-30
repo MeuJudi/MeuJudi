@@ -56,6 +56,7 @@ export const INTERVALS = {
   retryBackoff: [1000, 2000, 4000, 8000, 16000, 30000], // backoff exponencial
   muralSync: '0 6 * * 1',
   pdpjApiValidation: 5 * 60 * 1000, // 5min — verifica em segundo plano se o Bearer da API PDPJ precisa ser revalidado
+  updateCheck: 6 * 60 * 60 * 1000, // 6h — verifica se tem versão nova no repo de releases
 } as const;
 
 /**

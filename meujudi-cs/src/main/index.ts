@@ -21,6 +21,7 @@ import { registerIPCHandlers } from './ipc-handlers';
 import { Diagnostic } from './diagnostic';
 import { Pairing } from './pairing';
 import { StatusReporter } from './status-reporter';
+import { initAutoUpdater } from './auto-updater';
 import { APP_NAME, APP_VERSION } from '../shared/constants';
 import type { TrayStatus } from '../shared/constants';
 
@@ -74,6 +75,8 @@ if (!gotLock) {
 
     // Mantem o Web informado sobre a presenca deste dispositivo pareado.
     statusReporter.start();
+
+    initAutoUpdater();
 
     openAppWindow();
 

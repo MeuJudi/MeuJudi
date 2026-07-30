@@ -175,6 +175,37 @@ item 4 junto.
 
 **Decisão:** implementar.
 
+**Implementado (30/07/2026).** Decisão de hospedagem: repo novo e
+**público**, separado do código (`MeuJudi/MeuJudi-Sync-Releases`), com só
+os artefatos do instalador (`.exe` + `latest.yml`) — nunca código-fonte.
+Motivo de ser público: cogitamos GitHub Releases no repo privado
+`MeuJudi/MeuJudi` (exigiria embutir um token no app) e um GitHub App
+instalado nesse mesmo repo (mesmo problema — a permissão "Contents" de um
+GitHub App não separa "só releases" de "todo o código", então o token
+ainda daria acesso de leitura ao repo inteiro). Como o conteúdo do repo
+novo é só o instalador — o mesmo binário que qualquer cliente já recebe
+ao instalar — deixá-lo público não expõe nada de novo e elimina a
+necessidade de gerenciar/rotacionar token nenhum.
+
+- `meujudi-cs/src/main/auto-updater.ts` (novo): `initAutoUpdater()`,
+  chamado uma vez no `app.whenReady()` de `index.ts`. Só roda com
+  `app.isPackaged` (não faz nada em dev). Checa 30s depois do start e
+  depois a cada `INTERVALS.updateCheck` (6h). Download automático; a
+  instalação só acontece no próximo reinício natural do app
+  (`autoInstallOnAppQuit`, padrão do electron-updater) — não força
+  restart no meio do expediente.
+- `package.json`: `build.publish = { provider: "github", owner:
+  "MeuJudi", repo: "meujudi-sync-releases" }`.
+  `win.verifyUpdateCodeSignature: false` já estava setado (necessário
+  porque o instalador ainda não é assinado, item 4).
+- Processo de release ainda é manual: `npm run dist:win` gera o `.exe` +
+  `latest.yml` em `release/`; sobem como assets de um Release novo
+  (tag `v<versão>`) no repo `MeuJudi-Sync-Releases`.
+- Erros de checagem/download de update só geram `recordDiagnosticEvent`
+  (log local) — ainda não sobem pro Supabase nem aparecem pro Super
+  Admin. Isso só fica coberto quando o item 15 (nenhum erro silencioso)
+  for implementado.
+
 ## 12. App por conta de usuário do Windows, não por máquina
 
 **Problema:** a sessão pareada fica salva na pasta de configuração da
@@ -268,8 +299,8 @@ Itens com decisão "implementar", em ordem sugerida por custo/benefício:
 6. Vazamento de memória — rede de segurança por limite (2) — médio.
 7. Janelas ociosas fechando sozinhas (1) — médio, precisa medir o timeout
    certo na prática.
-8. Atualização automática (11) — médio, amarrado à decisão de assinatura
-   digital (4).
+8. ~~Atualização automática (11)~~ — **implementado em 30/07/2026** (repo
+   público separado `MeuJudi-Sync-Releases`, ver detalhes no item 11).
 
 Fora da lista de código: assinatura digital (4, decisão de custo),
 documento pra TI (5, baixa prioridade com 1 tenant só), proxy corporativo

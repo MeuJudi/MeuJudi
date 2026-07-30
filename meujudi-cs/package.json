@@ -94,6 +94,11 @@
       "installerIcon": "assets/icon.ico",
       "uninstallerIcon": "assets/icon.ico",
       "shortcutName": "MeuJudi Sync"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "MeuJudi",
+      "repo": "MeuJudi-Sync-Releases"
     }
   }
 }
