@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
   if (processoId) {
     const { error } = await supabase
       .from("processos")
-      .update({ ultima_sync_pje: now })
+      .update({ ultima_sync_pje: now, ultima_sync_pdpj: now })
       .eq("id", processoId)
       .eq("tenant_id", device.tenantId);
     if (error) {
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
   } else {
     const { data: inserted, error } = await supabase
       .from("processos")
-      .insert({ tenant_id: device.tenantId, cnj, source_context: "private_cs", ultima_sync_pje: now })
+      .insert({ tenant_id: device.tenantId, cnj, source_context: "private_cs", ultima_sync_pje: now, ultima_sync_pdpj: now })
       .select("id")
       .maybeSingle();
     if (error) {

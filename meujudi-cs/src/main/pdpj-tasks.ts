@@ -20,6 +20,7 @@
  *   `src/lib/regex/pdpj-documentos.ts`.
  */
 
+import { createHash } from 'node:crypto';
 import { MEUJUDI_WEB_URL } from '../shared/constants';
 import { logger, recordDiagnosticEvent } from './logger';
 import { PdpjApiClient, PdpjApiError, PDPJ_API_URL, extractCnj } from './pdpj-api';
@@ -69,6 +70,30 @@ interface DocumentoParaEnviar {
   tipo: string | null;
   dataHoraJuntada: string | null;
   texto: string | null;
+}
+
+/**
+ * "Pulo inteligente" (docs/roadmap/24-crons-sincronizacao-automatica-
+ * pdpj.md) — pergunta pro Web quais hashes de URL já são conhecidos antes
+ * de gastar baixando texto de documento nenhum. Falha de rede aqui não
+ * derruba a tarefa: devolve vazio (trata tudo como novo), o pior caso é
+ * reprocessar documento que já tinha, nunca perder documento novo.
+ */
+async function buscarDocumentosConhecidos(deviceToken: string, cnj: string, urlHashes: string[]): Promise<Set<string>> {
+  if (urlHashes.length === 0) return new Set();
+  try {
+    const response = await fetch(`${MEUJUDI_WEB_URL}/api/cs/sync/pdpj/documentos-conhecidos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deviceToken}` },
+      body: JSON.stringify({ cnj, urlHashes }),
+    });
+    if (!response.ok) return new Set();
+    const data = (await response.json()) as { conhecidos?: string[] };
+    return new Set(data.conhecidos ?? []);
+  } catch (err: any) {
+    logger.warn('[PdpjTasks] Falha ao pré-checar documentos conhecidos; seguindo sem pular nenhum', { cnjSuffix: cnj.slice(-8), message: err?.message });
+    return new Set();
+  }
 }
 
 async function enviarResultadoPdpj(deviceToken: string, cnj: string, documentos: DocumentoParaEnviar[]): Promise<void> {
@@ -222,10 +247,34 @@ export function createPdpjTaskHandlers(pairing: Pairing, auth: PdpjAuth) {
         });
       }
       const documentos = extractDocumentos(details).slice(0, MAX_DOCUMENTOS_POR_PROCESSO);
+      const token = pairing.getDeviceToken();
+      if (!token) return { status: 'failed', errorCode: 'sem_pareamento', errorMessage: 'CS não está pareado.' };
 
-      const textos = await mapComConcorrencia(documentos, MAX_QUERY_WINDOWS, (doc) => buscarTextoComTolerancia(api, cnj, doc));
+      // Pulo inteligente: documento sem hrefBinario nunca é dedupado do
+      // lado do Web (não tem URL pra hashear), então continua sendo
+      // buscado sempre, como já era — o pulo só vale pros que TÊM link,
+      // que são a maioria e o custo real da tarefa.
+      const hashPorDoc = new Map<PdpjDocumentoRef, string>();
+      for (const doc of documentos) {
+        if (doc.hrefBinario) hashPorDoc.set(doc, createHash('sha256').update(`${PDPJ_API_URL}${doc.hrefBinario}`, 'utf-8').digest('hex'));
+      }
+      const conhecidos = await buscarDocumentosConhecidos(token, cnj, [...hashPorDoc.values()]);
+      const documentosNovos = documentos.filter((doc) => {
+        const hash = hashPorDoc.get(doc);
+        return !hash || !conhecidos.has(hash);
+      });
+
+      if (documentos.length > 0 && documentosNovos.length === 0) {
+        // Nada novo — completa sem baixar texto de ninguém.
+        recordDiagnosticEvent('pdpj_cnj_task_finished', 'success', `CNJ ${cnj.slice(-8)} sem documento novo, pulado`, {
+          documentosVerificados: documentos.length,
+        });
+        return { status: 'completed', counters: { documentosEncontrados: 0, textosLidos: 0, jaConhecidos: documentos.length } };
+      }
+
+      const textos = await mapComConcorrencia(documentosNovos, MAX_QUERY_WINDOWS, (doc) => buscarTextoComTolerancia(api, cnj, doc));
       const textosLidos = textos.filter(Boolean).length;
-      const documentosParaEnviar: DocumentoParaEnviar[] = documentos.map((doc, indice) => ({
+      const documentosParaEnviar: DocumentoParaEnviar[] = documentosNovos.map((doc, indice) => ({
         url: doc.hrefBinario ? `${PDPJ_API_URL}${doc.hrefBinario}` : null,
         nome: doc.nome,
         tipo: doc.tipo,
@@ -233,8 +282,6 @@ export function createPdpjTaskHandlers(pairing: Pairing, auth: PdpjAuth) {
         texto: textos[indice],
       }));
 
-      const token = pairing.getDeviceToken();
-      if (!token) return { status: 'failed', errorCode: 'sem_pareamento', errorMessage: 'CS não está pareado.' };
       await enviarResultadoPdpj(token, cnj, documentosParaEnviar);
 
       recordDiagnosticEvent('pdpj_cnj_task_finished', 'success', `Detalhe do CNJ ${cnj.slice(-8)} sincronizado`, {
