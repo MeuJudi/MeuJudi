@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { getDocumentFetchRequest, getDocumentSignedUrl, getProcessDetails, solicitarDocumento, type ProcessDetails } from "@/lib/process-details/actions";
 import { formatMuralText } from "@/lib/mural/format-text";
 import { getMuralSyncRequest, syncProcessDataJudNow, syncProcessMuralNow } from "@/app/(platform)/(tenant)/monitoramento/actions";
+import { createClient as createBrowserSupabaseClient } from "@/lib/supabase/client";
 
 type ProcessDetailsModalProps = { processId: string | null; onClose: () => void };
 type ProcessTab = "resumo" | "movimentacoes" | "agenda" | "mural" | "documentos";
@@ -138,31 +139,70 @@ function extracaoResumo(extracao: Record<string, unknown> | null): string[] {
   return resumo;
 }
 
-const DOCUMENT_REQUEST_TIMEOUT_ATTEMPTS = 20;
-const DOCUMENT_REQUEST_POLL_MS = 1500;
+const DOCUMENT_REQUEST_TIMEOUT_MS = 25_000;
+// Rede de segurança, não o caminho principal: se por algum motivo o evento
+// Realtime não chegar (socket ainda conectando, mensagem perdida), confirma
+// via polling de baixa frequência em vez de ficar parado esperando pra
+// sempre. Em condições normais quem resolve é o UPDATE do Realtime, que
+// chega assim que o CS termina — não essa checagem.
+const DOCUMENT_REQUEST_FALLBACK_POLL_MS = 4_000;
 
 /**
  * Busca sob demanda: pede pro CS (via Realtime, ver
- * src/lib/cs/realtime-token.ts) buscar o PDF, faz polling curto do status
- * (mesmo padrão do Mural em syncSource acima, só que bem mais rápido —
- * segundos, não os 30s da fila normal) e devolve uma signed URL de vida
- * curta pro Storage temporário. Nunca redireciona pro PDPJ.
+ * src/lib/cs/realtime-token.ts) buscar o PDF e escuta a própria linha do
+ * pedido via Realtime (sessão real do usuário, RLS de sempre) pra saber a
+ * hora exata que ficou pronto — sem esperar um intervalo de polling.
+ * Devolve uma signed URL de vida curta pro Storage temporário. Nunca
+ * redireciona pro PDPJ.
  */
 async function buscarDocumentoUrl(processoDocumentoId: string, onProgress: (message: string) => void): Promise<string> {
   const { requestId } = await solicitarDocumento(processoDocumentoId);
-  for (let attempt = 0; attempt < DOCUMENT_REQUEST_TIMEOUT_ATTEMPTS; attempt += 1) {
-    await new Promise((resolve) => window.setTimeout(resolve, DOCUMENT_REQUEST_POLL_MS));
-    const status = await getDocumentFetchRequest(requestId);
-    if (!status.ok) throw new Error(status.message);
-    if (status.status === "completed") {
-      const signed = await getDocumentSignedUrl(requestId);
-      if (!signed.ok) throw new Error(signed.message);
-      return signed.url;
+  onProgress("Avisando o MeuJudi Sync...");
+
+  await new Promise<void>((resolve, reject) => {
+    const supabase = createBrowserSupabaseClient();
+    let settled = false;
+
+    const channel = supabase
+      .channel(`document-fetch-request:${requestId}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "document_fetch_requests", filter: `id=eq.${requestId}` },
+        (payload) => {
+          const row = payload.new as { status?: string; error_message?: string | null };
+          if (row.status === "done") finish(true);
+          else if (row.status === "failed" || row.status === "expired") finish(false, row.error_message ?? undefined);
+          else onProgress("Buscando o documento no PDPJ...");
+        },
+      )
+      .subscribe();
+
+    const fallbackTimer = window.setInterval(() => {
+      getDocumentFetchRequest(requestId).then((check) => {
+        if (!check.ok) return;
+        if (check.status === "completed") finish(true);
+        else if (check.status === "failed") finish(false, check.errorMessage ?? undefined);
+      }).catch(() => undefined);
+    }, DOCUMENT_REQUEST_FALLBACK_POLL_MS);
+
+    const timeoutTimer = window.setTimeout(() => {
+      finish(false, "Tempo esgotado esperando o MeuJudi Sync. Ele está aberto no computador do escritório?");
+    }, DOCUMENT_REQUEST_TIMEOUT_MS);
+
+    function finish(ok: boolean, message?: string) {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutTimer);
+      window.clearInterval(fallbackTimer);
+      void supabase.removeChannel(channel);
+      if (ok) resolve();
+      else reject(new Error(message || "O MeuJudi Sync não conseguiu buscar o documento."));
     }
-    if (status.status === "failed") throw new Error(status.errorMessage || "O MeuJudi Sync não conseguiu buscar o documento.");
-    onProgress(attempt < 3 ? "Buscando o documento no PDPJ..." : "Ainda buscando — confirme se o MeuJudi Sync está aberto no computador do escritório.");
-  }
-  throw new Error("Tempo esgotado esperando o MeuJudi Sync. Ele está aberto no computador do escritório?");
+  });
+
+  const signed = await getDocumentSignedUrl(requestId);
+  if (!signed.ok) throw new Error(signed.message);
+  return signed.url;
 }
 
 function DocumentoActions({ doc, onView }: { doc: ProcessDetails["documentos"][number]; onView: (url: string) => void }) {
