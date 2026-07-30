@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CalendarDays, Check, Clock3, Copy, FileText, Info, LockKeyhole, RefreshCw, Scale, UserRound, Video } from "lucide-react";
+import { AlertTriangle, CalendarDays, Check, Clock3, Copy, Download, Eye, FileText, Info, Loader2, LockKeyhole, RefreshCw, Scale, UserRound, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { getProcessDetails, type ProcessDetails } from "@/lib/process-details/actions";
+import { getDocumentFetchRequest, getDocumentSignedUrl, getProcessDetails, solicitarDocumento, type ProcessDetails } from "@/lib/process-details/actions";
 import { formatMuralText } from "@/lib/mural/format-text";
 import { getMuralSyncRequest, syncProcessDataJudNow, syncProcessMuralNow } from "@/app/(platform)/(tenant)/monitoramento/actions";
 
@@ -138,7 +138,77 @@ function extracaoResumo(extracao: Record<string, unknown> | null): string[] {
   return resumo;
 }
 
-function DocumentosList({ items }: { items: ProcessDetails["documentos"] }) {
+const DOCUMENT_REQUEST_TIMEOUT_ATTEMPTS = 20;
+const DOCUMENT_REQUEST_POLL_MS = 1500;
+
+/**
+ * Busca sob demanda: pede pro CS (via Realtime, ver
+ * src/lib/cs/realtime-token.ts) buscar o PDF, faz polling curto do status
+ * (mesmo padrão do Mural em syncSource acima, só que bem mais rápido —
+ * segundos, não os 30s da fila normal) e devolve uma signed URL de vida
+ * curta pro Storage temporário. Nunca redireciona pro PDPJ.
+ */
+async function buscarDocumentoUrl(processoDocumentoId: string, onProgress: (message: string) => void): Promise<string> {
+  const { requestId } = await solicitarDocumento(processoDocumentoId);
+  for (let attempt = 0; attempt < DOCUMENT_REQUEST_TIMEOUT_ATTEMPTS; attempt += 1) {
+    await new Promise((resolve) => window.setTimeout(resolve, DOCUMENT_REQUEST_POLL_MS));
+    const status = await getDocumentFetchRequest(requestId);
+    if (!status.ok) throw new Error(status.message);
+    if (status.status === "completed") {
+      const signed = await getDocumentSignedUrl(requestId);
+      if (!signed.ok) throw new Error(signed.message);
+      return signed.url;
+    }
+    if (status.status === "failed") throw new Error(status.errorMessage || "O MeuJudi Sync não conseguiu buscar o documento.");
+    onProgress(attempt < 3 ? "Buscando o documento no PDPJ..." : "Ainda buscando — confirme se o MeuJudi Sync está aberto no computador do escritório.");
+  }
+  throw new Error("Tempo esgotado esperando o MeuJudi Sync. Ele está aberto no computador do escritório?");
+}
+
+function DocumentoActions({ doc, onView }: { doc: ProcessDetails["documentos"][number]; onView: (url: string) => void }) {
+  const [pending, setPending] = useState<"visualizar" | "baixar" | null>(null);
+  const [progress, setProgress] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function acionar(kind: "visualizar" | "baixar") {
+    setPending(kind);
+    setError(null);
+    setProgress("Avisando o MeuJudi Sync...");
+    try {
+      const url = await buscarDocumentoUrl(doc.id, setProgress);
+      if (kind === "visualizar") {
+        onView(url);
+      } else {
+        const link = window.document.createElement("a");
+        link.href = url;
+        link.download = doc.nome ?? "documento.pdf";
+        link.click();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível buscar o documento.");
+    } finally {
+      setPending(null);
+      setProgress(null);
+    }
+  }
+
+  return (
+    <div className="flex shrink-0 flex-col items-end gap-1">
+      <div className="flex gap-1.5">
+        <button type="button" disabled={pending !== null} onClick={() => acionar("visualizar")} className="inline-flex items-center gap-1 rounded border border-[var(--tenant-brass)] bg-[color-mix(in_srgb,var(--tenant-brass)_12%,var(--tenant-surface))] px-2 py-0.5 text-[11px] font-semibold text-[var(--tenant-brass)] hover:underline disabled:opacity-60">
+          {pending === "visualizar" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Eye className="h-3 w-3" />} Visualizar
+        </button>
+        <button type="button" disabled={pending !== null} onClick={() => acionar("baixar")} className="inline-flex items-center gap-1 rounded border border-[var(--tenant-line)] bg-[var(--tenant-surface)] px-2 py-0.5 text-[11px] font-semibold text-[var(--tenant-surface-foreground)] hover:bg-[var(--tenant-surface-muted)] disabled:opacity-60">
+          {pending === "baixar" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />} Baixar
+        </button>
+      </div>
+      {progress ? <p className="max-w-[220px] text-right text-[10px] text-[var(--color-muted-foreground)]">{progress}</p> : null}
+      {error ? <p className="max-w-[220px] text-right text-[10px] text-[var(--color-destructive)]">{error}</p> : null}
+    </div>
+  );
+}
+
+function DocumentosList({ items, onView }: { items: ProcessDetails["documentos"]; onView: (url: string) => void }) {
   return (
     <Panel title="Documentos" icon={<FileText className="h-4 w-4 text-[var(--tenant-brass)]" />}>
       {items.length === 0 ? (
@@ -160,9 +230,7 @@ function DocumentosList({ items }: { items: ProcessDetails["documentos"] }) {
                       {[doc.tipo, formatDate(doc.data_juntada ?? doc.descoberto_em)].filter(Boolean).join(" · ")}
                     </p>
                   </div>
-                  <a href={doc.url} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded border border-[var(--tenant-brass)] bg-[color-mix(in_srgb,var(--tenant-brass)_12%,var(--tenant-surface))] px-2 py-0.5 text-[11px] font-semibold text-[var(--tenant-brass)] hover:underline">
-                    Abrir no PDPJ
-                  </a>
+                  <DocumentoActions doc={doc} onView={onView} />
                 </div>
                 {resumo.length > 0 ? (
                   <div className="mt-2 flex flex-wrap gap-1.5">
@@ -185,6 +253,7 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
   const [copied, setCopied] = useState(false);
   const [syncing, setSyncing] = useState<"datajud" | "mural" | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [state, setState] = useState<{ processId: string | null; details: ProcessDetails | null; error: string | null }>({ processId: null, details: null, error: null });
 
   useEffect(() => {
@@ -278,6 +347,7 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
   }
 
   return (
+    <>
     <Dialog open={!!processId} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="flex max-h-[92vh] max-w-[min(1100px,calc(100vw-24px))] flex-col gap-0 overflow-hidden border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-0 text-[var(--tenant-surface-foreground)] shadow-2xl">
         <DialogHeader className="shrink-0 border-b border-[var(--tenant-line)] px-5 py-5 pr-14 sm:px-7">
@@ -341,7 +411,7 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
               {activeTab === "movimentacoes" ? <TimelineList title="Movimentações do processo" icon={<FileText className="h-4 w-4 text-[var(--tenant-brass)]" />} empty="Nenhuma movimentação vinculada." items={details.movements.map((item) => ({ id: item.id, title: item.nome, subtitle: item.texto_completo, meta: formatDateTime(item.data_movimento), source: item.fonte, warning: Boolean(item.prazo_fatal) }))} /> : null}
               {activeTab === "agenda" ? <TimelineList title="Agenda vinculada" icon={<CalendarDays className="h-4 w-4 text-[var(--tenant-brass)]" />} empty="Nenhum evento vinculado." items={details.agenda.map((item) => ({ id: item.id, title: item.titulo, subtitle: item.descricao, meta: formatDateTime(item.data_inicio), source: item.fonte, warning: item.tipo === "prazo", link: item.link_videoconferencia }))} /> : null}
               {activeTab === "mural" ? <TimelineList title="Comunicações do Mural" icon={<FileText className="h-4 w-4 text-[var(--tenant-brass)]" />} empty="Nenhuma comunicação vinculada." items={details.mural.map((item) => ({ id: item.id, title: item.tipo_comunicacao, subtitle: item.texto, meta: `${formatDate(item.data_disponibilizacao)} · ${item.sigla_tribunal}`, source: "mural" }))} /> : null}
-              {activeTab === "documentos" ? <DocumentosList items={details.documentos} /> : null}
+              {activeTab === "documentos" ? <DocumentosList items={details.documentos} onView={setViewerUrl} /> : null}
             </div>
           </> : null}
         </div>
@@ -355,6 +425,16 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <Dialog open={!!viewerUrl} onOpenChange={(open) => !open && setViewerUrl(null)}>
+      <DialogContent className="flex h-[85vh] max-w-4xl flex-col gap-0 overflow-hidden border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-0">
+        <DialogHeader className="shrink-0 border-b border-[var(--tenant-line)] px-4 py-3">
+          <DialogTitle className="text-sm font-semibold">Documento</DialogTitle>
+        </DialogHeader>
+        {viewerUrl ? <iframe src={viewerUrl} title="Visualizar documento" className="min-h-0 flex-1" /> : null}
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

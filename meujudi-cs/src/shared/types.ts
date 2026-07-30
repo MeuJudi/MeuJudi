@@ -3,15 +3,12 @@
  * Interfaces usadas entre main process, preload e renderer.
  */
 
-import type { PJETribunal } from './constants';
-
 /**
  * SessÃ£o autenticada no PJe (cookies + CSRF token + expiraÃ§Ã£o).
  * Persistida criptografada em disco via electron-store.
  */
 export interface PdpjSession {
-  tribunal: PJETribunal;
-  userId: number;              // id do advogado logado (185531 no caso do LuÃ­s Fellype)
+  userId: number;
   cookies: SerializedCookie[];
   csrfToken: string;            // valor do cookie XSRF-TOKEN
   expiresAt: Date;              // quando a sessÃ£o expira
@@ -23,11 +20,6 @@ export interface PdpjSession {
   tokenType?: 'Bearer';
   tokenExpiresAt?: Date;
   apiValidated?: boolean;
-}
-
-export interface LinkedOab {
-  oabNumber: string;
-  oabUf: string;
 }
 
 export interface SerializedCookie {
@@ -55,7 +47,6 @@ export type PdpjStatus =
  * SessÃ£o sem dados sensÃ­veis (pra mandar pro renderer).
  */
 export interface PublicSession {
-  tribunal: PJETribunal;
   userId: number;
   userName?: string;            // nome do advogado (opcional, pra UI)
   expiresAt: Date;
@@ -166,9 +157,6 @@ export interface ElectronAPI {
     disconnect: () => Promise<void>;
     openJus: () => Promise<void>;
     validateApi: () => Promise<boolean>;
-    getLinkedOabs: () => Promise<LinkedOab[]>;
-    enqueueOabSync: (oabNumber: string, oabUf: string) => Promise<{ created: boolean; taskId?: string }>;
-    fetchProcessDetails: (cnj: string) => Promise<Record<string, unknown>>;
   };
   diagnostic: {
     run: () => Promise<DiagnosticReport>;
@@ -333,6 +321,7 @@ export interface ConnectionStatus {
 
 export interface PairingInfo {
   deviceToken: string;
+  deviceId: string;
   tenantId: string;
   tenantName: string;
   userName: string;

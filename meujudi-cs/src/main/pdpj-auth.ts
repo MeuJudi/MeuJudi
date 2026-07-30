@@ -33,7 +33,8 @@ import { BrowserWindow, session as electronSession } from 'electron';
 import { CookieStore } from './cookie-store';
 import { loadAppIcon } from './app-icon';
 import { logger, recordDiagnosticEvent } from './logger';
-import { PDPJ_LOGIN_URL, TIMEOUTS, APP_NAME } from '../shared/constants';
+import { PDPJ_LOGIN_URL, TIMEOUTS, INTERVALS, MEUJUDI_WEB_URL, APP_NAME } from '../shared/constants';
+import type { Pairing } from './pairing';
 import type { PdpjSession, PublicSession, SerializedCookie } from '../shared/types';
 
 const PDPJ_COOKIE_HOSTS = new Set([
@@ -47,8 +48,23 @@ const COOKIE_WAIT_MS = 1500; // espera Angular setar cookies HttpOnly
 const COOKIE_CAPTURE_TIMEOUT_MS = 30_000;
 const COOKIE_CAPTURE_RETRY_MS = 1000;
 const PDPJ_PORTAL_URL = 'https://portaldeservicos.pdpj.jus.br/';
-const BEARER_CAPTURE_TIMEOUT_MS = 20_000;
+// Achado em log real (29/07/2026): depois do clique em "Consultar
+// processos", o Portal às vezes faz uma reautenticação silenciosa via SSO
+// (prompt=none) que redireciona de volta pro Portal com um novo `code` na
+// URL — mas a SPA (Angular) pode levar mais que os 20s antigos pra
+// terminar de carregar e disparar a primeira chamada autenticada.
+const BEARER_CAPTURE_TIMEOUT_MS = 45_000;
 const BEARER_CAPTURE_RETRY_MS = 500;
+// Achado (29/07/2026, 3a rodada, via diagnostico de estrutura da pagina): o
+// Portal so dispara a chamada autenticada apos uma busca de verdade — a
+// pagina sozinha nunca chama a API. A busca principal usa a OAB vinculada
+// ao escritorio (generica, funciona pra qualquer tenant — ver getLinkedOab).
+// Esse CNJ so serve de ultimo recurso, quando o escritorio ainda nao tem
+// OAB vinculada ou a busca por OAB falha por qualquer motivo — qualquer CNJ
+// com o formato certo funciona (a resposta e sempre descartada, so
+// precisamos do cabecalho Bearer), por isso e um valor generico, nao o
+// processo de tenant nenhum.
+const BEARER_PRIME_CNJ_FALLBACK = '0000001-01.2024.8.26.0100';
 // O fluxo OAuth do Portal PDPJ ja esta estavel (ver cs-pdpj-login-fix.md) —
 // a janela tecnica de renovacao/validacao da sessao fica sempre oculta,
 // sem roubar foco. So a janela de LOGIN inicial (showLoginWindow) e
@@ -56,12 +72,25 @@ const BEARER_CAPTURE_RETRY_MS = 500;
 // usuario. Ver docs/roadmap/23-meujudi-cs-v0.3.0-refatoracao.md Fase 5.
 const SHOW_PDPJ_VALIDATION_WINDOW = false;
 
+interface QueryWindowSlot {
+  window: BrowserWindow;
+  busy: boolean;
+}
+
+/** Teto de janelas ocultas dedicadas a consultas em paralelo — ver docs/roadmap/22-extracao-pdpj-e-fila-cs.md. */
+export const MAX_QUERY_WINDOWS = 2;
+
 export class PdpjAuth {
   private authWindow: BrowserWindow | null = null;
   private store: CookieStore;
   private urlPollInterval: NodeJS.Timeout | null = null;
+  private queryPool: QueryWindowSlot[] = [];
+  private queryWaiters: Array<() => void> = [];
+  private autoValidateTimer: NodeJS.Timeout | null = null;
+  private ensureApiSessionPromise: Promise<boolean> | null = null;
+  private linkedOabCache: { oabNumber: string; oabUf: string } | null = null;
 
-  constructor() {
+  constructor(private readonly pairing?: Pairing) {
     this.store = new CookieStore();
   }
 
@@ -114,11 +143,9 @@ export class PdpjAuth {
       logger.info('========================================');
       logger.info('INICIANDO LOGIN PJe');
       logger.info('========================================');
-      logger.info('Tributal: TRT9');
       logger.info('URL de login (via PDPJ/Jus.br):', PDPJ_LOGIN_URL);
       logger.info('Dominios de cookies: PDPJ/Jus.br e portal publico');
       recordDiagnosticEvent('pje_login_started', 'started', 'Usuario iniciou conexao com PJe', {
-        tribunal: 'trt9',
         loginUrlHost: new URL(PDPJ_LOGIN_URL).host,
         cookieHosts: Array.from(PDPJ_COOKIE_HOSTS),
       });
@@ -516,6 +543,57 @@ export class PdpjAuth {
   }
 
   /**
+   * OAB vinculada ao escritório pareado — usada só pra ter algo real e
+   * genérico (funciona pra qualquer tenant) pra digitar na busca que
+   * dispara a primeira chamada autenticada (ver `ensurePortalBearer`).
+   * Cache em memória: a lista de OABs do escritório não muda com
+   * frequência, não precisa bater na rede toda vez.
+   */
+  private async getLinkedOab(): Promise<{ oabNumber: string; oabUf: string } | null> {
+    if (this.linkedOabCache) return this.linkedOabCache;
+    const token = this.pairing?.getDeviceToken();
+    if (!token) return null;
+    try {
+      const response = await fetch(`${MEUJUDI_WEB_URL}/api/cs/oabs`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) return null;
+      const data = await response.json() as { oabs?: Array<{ oab_number?: string; oab_uf?: string }> };
+      const first = data.oabs?.find((oab) => oab.oab_number && oab.oab_uf);
+      if (!first?.oab_number || !first.oab_uf) return null;
+      this.linkedOabCache = { oabNumber: first.oab_number.replace(/\D/g, ''), oabUf: first.oab_uf.toUpperCase() };
+      return this.linkedOabCache;
+    } catch (error: any) {
+      logger.warn('PDPJ: falha ao buscar OAB vinculada pro gatilho de validacao', error?.message || error);
+      return null;
+    }
+  }
+
+  /**
+   * Destrava na fila as tarefas que ficaram paradas em
+   * `paused_login_required` — sem isso, `POST /api/cs/tasks/claim` nunca
+   * mais escolhe elas de novo (só considera `pending` ou lease expirado),
+   * mesmo com o login/API já revalidados. Chamado assim que o Bearer é
+   * recapturado com sucesso (ver docs/roadmap/22-extracao-pdpj-e-fila-cs.md).
+   */
+  private async resumePausedTasks(): Promise<void> {
+    const token = this.pairing?.getDeviceToken();
+    if (!token) return;
+    try {
+      const response = await fetch(`${MEUJUDI_WEB_URL}/api/cs/tasks/resume`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        logger.warn('PDPJ: falha ao destravar tarefas pausadas', { status: response.status });
+        return;
+      }
+      const data = await response.json() as { resumed?: number };
+      if (data.resumed) logger.info(`PDPJ: ${data.resumed} tarefa(s) pausada(s) destravada(s) apos revalidar a API`);
+    } catch (error: any) {
+      logger.warn('PDPJ: erro ao destravar tarefas pausadas', error?.message || error);
+    }
+  }
+
+  /**
    * O retorno do login Jus.br pode acontecer antes de o Portal PDPJ fazer a
    * primeira chamada da API. Abrimos o Portal automaticamente, aguardamos a
    * requisicao autenticada e mantemos o Bearer somente no processo principal.
@@ -545,7 +623,8 @@ export class PdpjAuth {
     }
 
     const startedAt = Date.now();
-    let lastClickAt = 0;
+    let lastStorageDumpAt = 0;
+    let domInspected = false;
     let consultationTriggered = false;
     while (Date.now() - startedAt < BEARER_CAPTURE_TIMEOUT_MS) {
       const token = getBearerToken();
@@ -553,8 +632,108 @@ export class PdpjAuth {
         recordDiagnosticEvent('pdpj_api_validated', 'success', 'Bearer da API PDPJ capturado');
         return token;
       }
-      if (!consultationTriggered && Date.now() - lastClickAt >= 750) {
-        lastClickAt = Date.now();
+      // Diagnostico temporario (29/07/2026): achado em log real — depois do
+      // clique em "Consultar processos", nenhuma requisicao autenticada
+      // aparece, mas uma chave `kc-callback-<state>` ficava presa no
+      // localStorage. Achado (29/07/2026, 2a rodada): recarregar a janela de
+      // novo enquanto o Keycloak JS ainda estava terminando o check-sso
+      // silencioso (via iframe interno) interrompia esse processo no meio —
+      // por isso agora so clicamos UMA VEZ e so ficamos observando depois,
+      // sem tocar na pagina de novo. So loga NOMES de chave, nunca valor.
+      if (Date.now() - lastStorageDumpAt > 10_000) {
+        lastStorageDumpAt = Date.now();
+        const storageKeys = await this.authWindow.webContents.executeJavaScript(`(() => {
+          try {
+            return { session: Object.keys(window.sessionStorage || {}), local: Object.keys(window.localStorage || {}) };
+          } catch (e) { return { error: String(e && e.message || e) }; }
+        })()`, true).catch((error: any) => ({ error: error?.message || String(error) }));
+        logger.info('PDPJ: chaves de armazenamento na pagina (diagnostico, so nomes)', storageKeys);
+      }
+      // Busca uma vez, alguns segundos depois do clique em "Consultar
+      // processos", pra dar tempo da pagina renderizar o formulario.
+      // Prioriza buscar pela OAB vinculada ao escritorio (generico, funciona
+      // pra qualquer tenant); se nao tiver OAB vinculada ou a interacao com
+      // o seletor falhar por qualquer motivo, cai pro CNJ generico de
+      // fallback — nunca fica sem tentar nada (achado em log real,
+      // 29/07/2026: o seletor de tipo de busca e um mat-select com opcoes
+      // "Número do Processo"/"CPF da Parte"/"CNPJ da Parte"/"OAB"/"STF...").
+      if (!domInspected && consultationTriggered && Date.now() - startedAt > 5000) {
+        domInspected = true;
+        const linkedOab = await this.getLinkedOab();
+        const searchResult = await this.authWindow.webContents.executeJavaScript(`(async () => {
+          const oab = ${JSON.stringify(linkedOab)};
+          const dumpInputs = () => Array.from(document.querySelectorAll('input,textarea'))
+            .map((el) => ({ tag: el.tagName, type: el.type || null, name: el.name || null, id: el.id || null, placeholder: el.placeholder || null }));
+          const setNativeValue = (el, value) => {
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            setter.call(el, value);
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+          };
+          const clickBuscar = () => {
+            const searchButton = Array.from(document.querySelectorAll('button')).find((b) => {
+              const text = (b.textContent || '').toLowerCase();
+              return text.includes('buscar') && !text.includes('limpar');
+            });
+            if (!searchButton) return false;
+            searchButton.click();
+            return true;
+          };
+
+          // Tenta a busca por OAB primeiro (generica, funciona pra qualquer
+          // tenant). Qualquer etapa que falhar so registra o motivo e cai
+          // pro fallback de CNJ abaixo — nunca retorna sem tentar o
+          // fallback tambem (achado em log real, 29/07/2026: a 1a versao
+          // desistia se um passo da OAB falhasse, sem tentar o CNJ).
+          let oabFalhaMotivo = null;
+          let inputsAposSelecionarOab = null;
+          if (oab) {
+            try {
+              const trigger = document.querySelector('[role="combobox"],mat-select');
+              if (!trigger) {
+                oabFalhaMotivo = 'combobox-nao-encontrado';
+              } else {
+                trigger.click();
+                await new Promise((r) => setTimeout(r, 400));
+                const oabOption = Array.from(document.querySelectorAll('.cdk-overlay-container [role="option"], .cdk-overlay-container mat-option'))
+                  .find((el) => (el.textContent || '').trim().toLowerCase() === 'oab');
+                if (!oabOption) {
+                  oabFalhaMotivo = 'opcao-oab-nao-encontrada';
+                } else {
+                  oabOption.click();
+                  await new Promise((r) => setTimeout(r, 500));
+                  inputsAposSelecionarOab = dumpInputs();
+                  const input = document.querySelector('input:not([type="hidden"])');
+                  if (!input) {
+                    oabFalhaMotivo = 'campo-nao-encontrado-apos-selecionar-oab';
+                  } else {
+                    setNativeValue(input, oab.oabUf + oab.oabNumber);
+                    if (clickBuscar()) return { ok: true, modo: 'oab', inputsAposSelecionarOab };
+                    oabFalhaMotivo = 'botao-buscar-nao-encontrado-oab';
+                  }
+                }
+              }
+            } catch (e) {
+              oabFalhaMotivo = String(e && e.message || e);
+            }
+          }
+
+          // Fallback: sem OAB vinculada, ou a busca por OAB falhou em
+          // alguma etapa (motivo registrado em oabFalhaMotivo).
+          try {
+            const input = document.querySelector('input[name="numeroProcesso"]') || document.querySelector('input:not([type="hidden"])');
+            if (!input) return { ok: false, reason: 'nenhum-campo-encontrado', oabFalhaMotivo, inputsAposSelecionarOab };
+            setNativeValue(input, ${JSON.stringify(BEARER_PRIME_CNJ_FALLBACK)});
+            if (clickBuscar()) return { ok: true, modo: 'cnj-fallback', oabFalhaMotivo, inputsAposSelecionarOab };
+            return { ok: false, reason: 'botao-buscar-nao-encontrado-fallback', oabFalhaMotivo, inputsAposSelecionarOab };
+          } catch (e) {
+            return { ok: false, reason: String(e && e.message || e), oabFalhaMotivo, inputsAposSelecionarOab };
+          }
+        })()`, true).catch((error: any) => ({ ok: false, reason: error?.message || String(error) }));
+        logger.info('PDPJ: tentativa de busca automatica pra disparar chamada autenticada', { ...searchResult, oabDisponivel: Boolean(linkedOab) });
+      }
+      if (!consultationTriggered) {
+        consultationTriggered = true;
         const action = await this.authWindow.webContents.executeJavaScript(`(() => {
           const selectors = 'a,button,[role="button"],[role="link"]';
           const items = Array.from(document.querySelectorAll(selectors));
@@ -565,13 +744,11 @@ export class PdpjAuth {
           return 'clicked';
         })()`, true).catch(() => false);
         if (typeof action === 'string' && action.startsWith('https://')) {
-          consultationTriggered = true;
           logger.info('Destino de Consultar processos encontrado; navegando na janela tecnica:', safeHost(action));
           await this.authWindow.loadURL(action).catch((error: any) => {
             logger.warn('Falha ao navegar para Consultar processos:', error.message);
           });
         } else if (action === 'clicked') {
-          consultationTriggered = true;
           logger.info('Consultar processos acionado na janela tecnica do Jus');
         }
       }
@@ -640,7 +817,6 @@ export class PdpjAuth {
     logger.info('userId extraído:', userId);
 
     const session: PdpjSession = {
-      tribunal: 'trt9',
       userId,
       cookies: cookies.map(this.serializeCookie),
       csrfToken: '',
@@ -658,7 +834,6 @@ export class PdpjAuth {
     logger.info('========================================');
     logger.info('SESSÃO PJe SALVA COM SUCESSO');
     logger.info('userId:', userId);
-    logger.info('Tribunal:', session.tribunal);
     logger.info('Cookies:', session.cookies.length);
     logger.info('Expira em:', session.expiresAt.toISOString());
     logger.info('========================================');
@@ -667,9 +842,10 @@ export class PdpjAuth {
   }
 
   /**
-   * Aguarda os cookies reais do PJe. O Chromium pode gravar o cookie como
-   * `.pje.trt9.jus.br` ou `pje.trt9.jus.br`, entao consultamos por URL,
-   * por dominio e tambem filtramos a lista completa da sessao.
+   * Aguarda os cookies reais do PJe. O Chromium pode gravar o cookie com ou
+   * sem o ponto inicial no dominio (ex.: `.jus.br` ou `jus.br`), entao
+   * consultamos por URL, por dominio e tambem filtramos a lista completa da
+   * sessao.
    */
   private async waitForPdpjCookies(): Promise<Electron.Cookie[]> {
     if (!this.authWindow) {
@@ -714,121 +890,6 @@ export class PdpjAuth {
       map.set(`${cookie.name}|${cookie.domain}|${cookie.path}`, cookie);
     }
     return Array.from(map.values());
-  }
-
-  /**
-   * Extrai userId do painel fazendo 1 request autenticado.
-   * Tenta várias fontes (cookie, perfil, JWT) e formatos diferentes.
-   */
-  private async extractUserId(cookies: Electron.Cookie[]): Promise<number> {
-    if (!this.authWindow) throw new Error('Janela não disponível');
-
-    logger.info('Extraindo userId...');
-
-    // Estratégia 1: tenta extrair do cookie KEYCLOAK_IDENTITY (Keycloak guarda userId lá)
-    const kcIdentity = cookies.find((c) => c.name === 'KEYCLOAK_IDENTITY' || c.name === 'KEYCLOAK_ID');
-    if (kcIdentity) {
-      try {
-        // KEYCLOAK_IDENTITY é um JWT (header.payload.signature)
-        const parts = kcIdentity.value.split('.');
-        if (parts.length === 3) {
-          const payload = JSON.parse(
-            Buffer.from(parts[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8')
-          );
-          if (payload.sub) {
-            const userId = parseInt(payload.sub, 10);
-            if (!isNaN(userId)) {
-              logger.info('userId extraído do JWT Keycloak:', userId);
-              return userId;
-            }
-          }
-        }
-      } catch (err: any) {
-        logger.warn('Falha ao extrair userId do JWT Keycloak:', err.message);
-      }
-    }
-
-    // Estratégia 2: request ao endpoint de perfis
-    try {
-      const xsrfCookie = cookies.find((c) => c.name === 'XSRF-TOKEN');
-      if (!xsrfCookie) throw new Error('XSRF-TOKEN não encontrado');
-
-      const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
-
-      logger.info('Tentando extrair userId via /pje-seguranca/api/token/perfis...');
-      const response = await fetch('https://pje.trt9.jus.br/pje-seguranca/api/token/perfis', {
-        headers: {
-          Cookie: cookieHeader,
-          'x-xsrf-token': xsrfCookie.value,
-          Accept: 'application/json',
-          'User-Agent': 'MeuJudi-CS/1.0 (compatible; Electron)',
-        },
-      });
-
-      if (!response.ok) {
-        logger.warn(`/perfis retornou HTTP ${response.status}`);
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const perfis: any = await response.json();
-      logger.debug('Perfis retornados:', JSON.stringify(perfis).slice(0, 800));
-
-      // Tenta extrair userId de várias formas (depende da versão do PJe)
-      const userId =
-        perfis.id ??
-        perfis.userId ??
-        perfis.user_id ??
-        perfis.idUsuario ??
-        perfis.usuario?.id ??
-        perfis.usuario?.idUsuario ??
-        perfis.content?.[0]?.id ??
-        perfis[0]?.id;
-
-      if (userId && typeof userId === 'number') {
-        logger.info('userId extraído do /perfis:', userId);
-        return userId;
-      }
-
-      logger.warn('userId não encontrado em nenhum formato conhecido');
-    } catch (err: any) {
-      logger.warn('Erro ao buscar /perfis:', err.message);
-    }
-
-    // Estratégia 3: request ao painel de processos (pega userId do primeiro)
-    try {
-      const xsrfCookie = cookies.find((c) => c.name === 'XSRF-TOKEN');
-      const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
-
-      logger.info('Tentando extrair userId via /paineladvogado/.../processos...');
-      // Tenta vários userIds comuns (fallback chain)
-      const commonUserIds = [185531, 123456, 0]; // 185531 = Luís Fellype TRT9
-      for (const testId of commonUserIds) {
-        try {
-          const response = await fetch(
-            `https://pje.trt9.jus.br/pje-comum-api/api/paineladvogado/${testId}/processos?pagina=1&tamanhoPagina=1`,
-            {
-              headers: {
-                Cookie: cookieHeader,
-                'x-xsrf-token': xsrfCookie?.value || '',
-                Accept: 'application/json',
-              },
-            }
-          );
-          if (response.ok) {
-            logger.info(`userId ${testId} retornou 200 OK, usando como fallback`);
-            return testId;
-          }
-        } catch {
-          // ignora
-        }
-      }
-    } catch (err: any) {
-      logger.warn('Erro ao tentar userIds comuns:', err.message);
-    }
-
-    // Último fallback: hardcoded
-    logger.warn('Usando userId hardcoded 185531 (Luís Fellype TRT9) como último fallback');
-    return 185531;
   }
 
   /**
@@ -922,6 +983,43 @@ export class PdpjAuth {
   }
 
   // ============================================================
+  //  VALIDAÇÃO AUTOMÁTICA DA API EM SEGUNDO PLANO
+  // ============================================================
+
+  /**
+   * Liga um verificador periódico: sempre que existir sessão de cookies
+   * válida mas sem Bearer confirmado (login recente, token invalidado por
+   * um 401/403 numa consulta, etc.), tenta revalidar sozinho — sem
+   * depender do usuário clicar "Validar API agora" nem de uma tarefa da
+   * fila tropeçar nisso na hora. Chamado uma vez em `registerIPCHandlers`.
+   */
+  startAutoValidation(intervalMs = INTERVALS.pdpjApiValidation): void {
+    if (this.autoValidateTimer) return;
+    this.autoValidateTimer = setInterval(() => void this.maybeValidateApi(), intervalMs);
+    void this.maybeValidateApi();
+  }
+
+  stopAutoValidation(): void {
+    if (this.autoValidateTimer) {
+      clearInterval(this.autoValidateTimer);
+      this.autoValidateTimer = null;
+    }
+  }
+
+  private async maybeValidateApi(): Promise<void> {
+    const session = this.store.getValidSession();
+    if (!session || session.accessToken) return; // sem sessão (precisa logar) ou já validado — nada a fazer
+    // Não precisa de guard próprio contra execução simultânea — `ensureApiSession()`
+    // já compartilha uma única execução entre todos os chamadores (ver seu comentário).
+    try {
+      logger.info('Validacao automatica da API PDPJ (segundo plano) iniciada');
+      await this.ensureApiSession();
+    } catch (error: any) {
+      logger.warn('Validacao automatica da API PDPJ falhou; tenta de novo no proximo ciclo', error?.message || error);
+    }
+  }
+
+  // ============================================================
   //  QUERIES
   // ============================================================
 
@@ -939,8 +1037,41 @@ export class PdpjAuth {
     return { state: 'connected', session: this.toPublicSession(session) };
   }
 
-  /** Atualiza uma sessao antiga de cookies para uma sessao API PDPJ sem novo login. */
-  async ensureApiSession(): Promise<boolean> {
+  /**
+   * Atualiza uma sessao antiga de cookies para uma sessao API PDPJ sem novo
+   * login. Pode ser chamado por várias origens ao mesmo tempo (clique
+   * manual em "Validar API agora", `ensureSession()` de uma tarefa da fila,
+   * o verificador automático em segundo plano) — todas compartilham a
+   * mesma `authWindow`, então rodar duas ao mesmo tempo faz uma navegação
+   * cancelar a outra no meio (achado em log real, 29/07/2026: duas
+   * validações simultâneas produziam pares de eventos ~2s um do outro e
+   * nenhuma nunca terminava). Esse guard garante só uma execução por vez —
+   * quem chamar enquanto já tem uma rodando reaproveita o mesmo resultado.
+   */
+  /**
+   * `force`: pula o "já validado, nada a fazer" e refaz a captura do zero
+   * mesmo com um Bearer em cache válido — usado no clique manual em
+   * "Validar API agora" (um pedido explícito do usuário pra checar agora
+   * deveria sempre checar de verdade, não só devolver o cache). O
+   * verificador automático em segundo plano e `ensureSession()` das
+   * tarefas da fila continuam sem forçar (não tem motivo bom pra jogar
+   * fora um Bearer que ainda está válido só porque um timer disparou).
+   */
+  async ensureApiSession(force = false): Promise<boolean> {
+    if (this.ensureApiSessionPromise) {
+      logger.info('Validacao da API PDPJ ja em andamento; reaproveitando execucao existente');
+      return this.ensureApiSessionPromise;
+    }
+    if (force) this.store.clearAccessToken();
+    this.ensureApiSessionPromise = this.doEnsureApiSession();
+    try {
+      return await this.ensureApiSessionPromise;
+    } finally {
+      this.ensureApiSessionPromise = null;
+    }
+  }
+
+  private async doEnsureApiSession(): Promise<boolean> {
     logger.info('Validacao da API PDPJ em segundo plano iniciada');
     const current = this.store.getValidSession();
     if (!current) {
@@ -1035,6 +1166,7 @@ export class PdpjAuth {
       logger.info('Bearer PDPJ capturado em segundo plano; atualizando sessao local');
       await this.captureSession(token);
       recordDiagnosticEvent('pdpj_session_upgraded', 'success', 'Sessao PDPJ antiga atualizada automaticamente para a API');
+      await this.resumePausedTasks();
       return true;
     } catch (error: any) {
       logger.error('Falha na validacao PDPJ em segundo plano:', error?.message || error);
@@ -1052,78 +1184,206 @@ export class PdpjAuth {
   }
 
   /**
-   * Executa uma consulta pela mesma janela Chromium que autenticou no PDPJ.
-   * O gateway aceita a chamada do Portal, mas rejeita o mesmo Bearer quando
-   * ele e repetido por um fetch Node fora do contexto do navegador.
+   * Executa uma consulta numa janela Chromium autenticada no PDPJ. O gateway
+   * aceita a chamada do Portal, mas rejeita o mesmo Bearer quando ele e
+   * repetido por um fetch Node fora do contexto do navegador — por isso
+   * sempre passa por uma BrowserWindow real, nunca por node-fetch direto.
+   *
+   * Usa um pool de até `MAX_QUERY_WINDOWS` janelas ocultas dedicadas só a
+   * consultas (separado da `authWindow` de login) — permite paralelizar a
+   * busca de texto de vários documentos sem monopolizar uma única janela.
+   * Nunca testado ao vivo com 2 janelas simultâneas ainda; se a segunda
+   * falhar por algum motivo específico do gateway, o pool continua
+   * funcionando com 1 (só perde o paralelismo, não quebra).
    */
   async requestPdpjApi(url: string, authorization: string): Promise<{ status: number; contentType: string | null; body: string }> {
-    if (!this.authWindow || this.authWindow.isDestroyed()) {
-      const session = this.store.getValidSession();
-      if (!session) throw new Error('Sessao autenticada do PDPJ nao esta disponivel.');
-      this.authWindow = new BrowserWindow({
-        width: 1000,
-        height: 750,
-        show: false,
-        icon: loadAppIcon(),
-        autoHideMenuBar: true,
-        webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
-      });
-      this.authWindow.setTitle('MeuJudi Sync - Sessao PDPJ');
-      logger.info('PDPJ API: janela Chromium recriada para usar sessao salva');
-      for (const cookie of session.cookies) {
-        const domain = cookie.domain.replace(/^\./, '');
-        await electronSession.defaultSession.cookies.set({
-          url: `https://${domain}${cookie.path || '/'}`,
-          name: cookie.name,
-          value: cookie.value,
-          domain: cookie.domain,
-          path: cookie.path || '/',
-          secure: cookie.secure,
-          httpOnly: cookie.httpOnly,
-        });
-      }
-    }
+    const session = this.store.getValidSession();
+    if (!session) throw new Error('Sessao autenticada do PDPJ nao esta disponivel.');
 
-    const currentUrl = this.authWindow.webContents.getURL();
-    if (!currentUrl.startsWith(PDPJ_PORTAL_URL)) {
-      logger.info('PDPJ API: preparando contexto Chromium no Portal antes da consulta');
-      await this.authWindow.loadURL(`${PDPJ_PORTAL_URL}consulta`);
-    }
-
-    const urlLiteral = JSON.stringify(url);
-    const authorizationLiteral = JSON.stringify(authorization);
-    let result: { status: number; contentType: string | null; body: string };
+    const { window, release } = await this.acquireQueryWindow(session);
     try {
-      result = await this.authWindow.webContents.executeJavaScript(`(async () => {
-        const response = await fetch(${urlLiteral}, {
-          method: 'GET',
-          credentials: 'include',
-          headers: {
-            Accept: 'application/json, text/plain, */*',
-            Authorization: ${authorizationLiteral},
-            skipErrorInterceptor: 'true'
-          }
+      const urlLiteral = JSON.stringify(url);
+      const authorizationLiteral = JSON.stringify(authorization);
+      let result: { status: number; contentType: string | null; body: string };
+      try {
+        result = await window.webContents.executeJavaScript(`(async () => {
+          const response = await fetch(${urlLiteral}, {
+            method: 'GET',
+            credentials: 'include',
+            headers: {
+              Accept: 'application/json, text/plain, */*',
+              Authorization: ${authorizationLiteral},
+              skipErrorInterceptor: 'true'
+            }
+          });
+          return {
+            status: response.status,
+            contentType: response.headers.get('content-type'),
+            body: await response.text()
+          };
+        })()`, true) as { status: number; contentType: string | null; body: string };
+      } catch (error: any) {
+        logger.warn('PDPJ API: falha ao executar consulta no Chromium', {
+          message: error?.message || String(error),
+          currentUrl: safeUrlForLog(window.webContents.getURL()),
         });
-        return {
-          status: response.status,
-          contentType: response.headers.get('content-type'),
-          body: await response.text()
-        };
-      })()`, true) as { status: number; contentType: string | null; body: string };
-    } catch (error: any) {
-      logger.warn('PDPJ API: falha ao executar consulta no Chromium', {
-        message: error?.message || String(error),
-        currentUrl: safeUrlForLog(this.authWindow.webContents.getURL()),
+        throw error;
+      }
+
+      logger.info('PDPJ API: resposta recebida pelo contexto Chromium', {
+        status: result.status,
+        contentType: result.contentType,
+        bodyLength: result.body.length,
       });
-      throw error;
+      return result;
+    } finally {
+      release();
+    }
+  }
+
+  /**
+   * Busca sob demanda o binário de UM documento (hrefBinario), pra
+   * visualizar/baixar no Web — nunca usado pela varredura em lote
+   * (pdpj-tasks.ts::handlePdpjCnj continua proibido de tocar isso, ver
+   * tests/no-secrets-no-pdf.test.js). Só chamado a partir de
+   * document-requests.ts, um documento por vez, por pedido explícito.
+   *
+   * `executeJavaScript` só devolve tipos serializáveis — não dá pra trazer
+   * um Buffer/Blob bruto pro processo main, então a conversão pra base64
+   * acontece dentro da própria página (fetch -> arrayBuffer -> base64).
+   */
+  async requestPdpjApiBinario(url: string, authorization: string): Promise<{ status: number; contentType: string | null; base64: string }> {
+    const session = this.store.getValidSession();
+    if (!session) throw new Error('Sessao autenticada do PDPJ nao esta disponivel.');
+
+    const { window, release } = await this.acquireQueryWindow(session);
+    try {
+      const urlLiteral = JSON.stringify(url);
+      const authorizationLiteral = JSON.stringify(authorization);
+      let result: { status: number; contentType: string | null; base64: string };
+      try {
+        result = await window.webContents.executeJavaScript(`(async () => {
+          const response = await fetch(${urlLiteral}, {
+            method: 'GET',
+            credentials: 'include',
+            headers: {
+              Accept: 'application/pdf, application/octet-stream, */*',
+              Authorization: ${authorizationLiteral},
+              skipErrorInterceptor: 'true'
+            }
+          });
+          const buffer = await response.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
+          let binary = '';
+          for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+          return {
+            status: response.status,
+            contentType: response.headers.get('content-type'),
+            base64: btoa(binary)
+          };
+        })()`, true) as { status: number; contentType: string | null; base64: string };
+      } catch (error: any) {
+        logger.warn('PDPJ API: falha ao executar busca de binario no Chromium', {
+          message: error?.message || String(error),
+          currentUrl: safeUrlForLog(window.webContents.getURL()),
+        });
+        throw error;
+      }
+
+      logger.info('PDPJ API: binario recebido pelo contexto Chromium', {
+        status: result.status,
+        contentType: result.contentType,
+        base64Length: result.base64.length,
+      });
+      return result;
+    } finally {
+      release();
+    }
+  }
+
+  // ============================================================
+  //  POOL DE JANELAS DE CONSULTA (paralelismo limitado)
+  // ============================================================
+
+  /** Pega uma janela livre do pool (cria se ainda não estiver no teto) ou espera alguém liberar. */
+  private async acquireQueryWindow(session: PdpjSession): Promise<{ window: BrowserWindow; release: () => void }> {
+    const free = this.queryPool.find((slot) => !slot.busy && !slot.window.isDestroyed());
+    if (free) {
+      free.busy = true;
+      return { window: free.window, release: () => this.releaseQueryWindow(free) };
     }
 
-    logger.info('PDPJ API: resposta recebida pelo contexto Chromium', {
-      status: result.status,
-      contentType: result.contentType,
-      bodyLength: result.body.length,
+    this.queryPool = this.queryPool.filter((slot) => !slot.window.isDestroyed());
+    if (this.queryPool.length < MAX_QUERY_WINDOWS) {
+      const window = await this.createQueryWindow(session);
+      const slot: QueryWindowSlot = { window, busy: true };
+      this.queryPool.push(slot);
+      return { window, release: () => this.releaseQueryWindow(slot) };
+    }
+
+    // Pool cheio e todas ocupadas: espera alguém liberar e tenta de novo.
+    await new Promise<void>((resolve) => this.queryWaiters.push(resolve));
+    return this.acquireQueryWindow(session);
+  }
+
+  private releaseQueryWindow(slot: QueryWindowSlot): void {
+    slot.busy = false;
+    const next = this.queryWaiters.shift();
+    if (next) next();
+  }
+
+  /** Cria uma janela oculta nova do pool: aplica os cookies da sessão salva e navega pro Portal uma vez. */
+  private async createQueryWindow(session: PdpjSession): Promise<BrowserWindow> {
+    logger.info('PDPJ API: criando janela do pool de consultas', { poolSize: this.queryPool.length + 1 });
+    for (const cookie of session.cookies) {
+      const domain = cookie.domain.replace(/^\./, '');
+      await electronSession.defaultSession.cookies.set({
+        url: `https://${domain}${cookie.path || '/'}`,
+        name: cookie.name,
+        value: cookie.value,
+        domain: cookie.domain,
+        path: cookie.path || '/',
+        secure: cookie.secure,
+        httpOnly: cookie.httpOnly,
+      });
+    }
+
+    const window = new BrowserWindow({
+      width: 1000,
+      height: 750,
+      show: false,
+      icon: loadAppIcon(),
+      autoHideMenuBar: true,
+      webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
     });
-    return result;
+    window.setTitle('MeuJudi Sync - Consulta PDPJ');
+    window.on('closed', () => {
+      this.queryPool = this.queryPool.filter((slot) => slot.window !== window);
+    });
+    try {
+      await window.loadURL(`${PDPJ_PORTAL_URL}consulta`);
+    } catch (error: any) {
+      // Achado em log real (29/07/2026): o Portal as vezes dispara uma
+      // reautenticacao silenciosa via SSO (prompt=none) logo na primeira
+      // navegacao pro /consulta — o Electron reporta ERR_ABORTED mesmo a
+      // pagina terminando de carregar depois (mesmo padrao ja tolerado em
+      // ensurePortalBearer). Tratar isso como falha fatal aqui deixava a
+      // janela orfa (nunca entrava no pool, nunca era fechada) — toda nova
+      // tentativa criava outra janela, vazando memoria sem limite.
+      logger.warn('PDPJ API: loadURL da janela do pool rejeitou (tolerado, mesma causa do redirecionamento silencioso)', error?.message || error);
+    }
+    // Da um tempo pra pagina assentar depois do redirecionamento silencioso
+    // antes de devolver a janela pro pool — sem isso o primeiro fetch podia
+    // rodar no meio da navegacao ainda em andamento.
+    if (window.webContents.isLoading()) {
+      await new Promise<void>((resolve) => {
+        const onSettled = () => resolve();
+        window.webContents.once('did-finish-load', onSettled);
+        window.webContents.once('did-fail-load', onSettled);
+        setTimeout(resolve, 5000);
+      });
+    }
+    return window;
   }
 
   /**
@@ -1133,6 +1393,11 @@ export class PdpjAuth {
     this.store.clearSession();
     if (this.authWindow && !this.authWindow.isDestroyed()) this.authWindow.close();
     this.authWindow = null;
+    for (const slot of this.queryPool) {
+      if (!slot.window.isDestroyed()) slot.window.close();
+    }
+    this.queryPool = [];
+    this.queryWaiters = [];
     try {
       await electronSession.defaultSession.clearStorageData({
         storages: ['cookies', 'localstorage'],
@@ -1206,7 +1471,6 @@ export class PdpjAuth {
 
   private toPublicSession(session: PdpjSession): PublicSession {
     return {
-      tribunal: session.tribunal,
       userId: session.userId,
       expiresAt: session.expiresAt,
       createdAt: session.createdAt,

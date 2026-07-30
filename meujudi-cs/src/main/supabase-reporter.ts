@@ -6,20 +6,19 @@
  */
 
 import { logger } from './logger';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../shared/constants';
 import type { DiagnosticReport, DiagnosticReportDB } from '../shared/types';
 
 const TABLE_NAME = 'diagnostic_reports';
 const TIMEOUT_MS = 15_000;
-const DEFAULT_SUPABASE_URL = 'https://lsuhkzvbzgkbjyfuppeg.supabase.co';
-const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_TH3aLztSSpaAJ_tKym-ewg_F1ZxYofZ';
 
 export async function enviarRelatorioSupabase(report: DiagnosticReport): Promise<{
   sent: boolean;
   id?: string;
   error?: string;
 }> {
-  const supabaseUrl = process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_KEY || DEFAULT_SUPABASE_ANON_KEY;
+  const supabaseUrl = SUPABASE_URL;
+  const supabaseKey = SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseKey) {
     logger.warn('Supabase nao configurado (SUPABASE_URL/SUPABASE_ANON_KEY ausentes). Pulando envio.');

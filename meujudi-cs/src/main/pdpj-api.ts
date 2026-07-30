@@ -6,7 +6,7 @@ import type { PdpjSession } from '../shared/types';
 export { PdpjApiError, extractCnj };
 export type { PdpjProcessPage };
 
-const PDPJ_API_URL = 'https://portaldeservicos.pdpj.jus.br/api/v2';
+export const PDPJ_API_URL = 'https://portaldeservicos.pdpj.jus.br/api/v2';
 const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_RETRIES = 3;
 
@@ -18,12 +18,20 @@ export interface PdpjBrowserResponse {
   body: string;
 }
 
+export interface PdpjBrowserBinaryResponse {
+  status: number;
+  contentType: string | null;
+  base64: string;
+}
+
 type BrowserRequest = (url: string, authorization: string) => Promise<PdpjBrowserResponse>;
+type BrowserRequestBinario = (url: string, authorization: string) => Promise<PdpjBrowserBinaryResponse>;
 
 export class PdpjApiClient {
   constructor(
     private readonly getSession: SessionProvider,
     private readonly browserRequest?: BrowserRequest,
+    private readonly browserRequestBinario?: BrowserRequestBinario,
   ) {}
 
   async buscarPorOab(oabNumber: string, oabUf: string, cursor?: string[]): Promise<PdpjProcessPage> {
@@ -51,11 +59,50 @@ export class PdpjApiClient {
     return this.normalizePageWithLog(await this.request(`/processos?${params.toString()}`));
   }
 
+  /**
+   * Busca o texto de um documento pelo `hrefTexto` confirmado na resposta de
+   * `buscarDetalhes` (nunca pelo `hrefBinario` — esse é só repassado como
+   * link de download, o CS nunca o busca). Content-type do `/texto` nunca
+   * foi observado ao vivo, então trata a resposta como texto puro por
+   * padrão e só desembrulha se vier um JSON reconhecível.
+   */
+  async buscarTextoDocumento(hrefTexto: string): Promise<string> {
+    const raw = await this.request(hrefTexto.startsWith('/') ? hrefTexto : `/${hrefTexto}`, { parseJson: false });
+    return unwrapTexto(typeof raw === 'string' ? raw : '');
+  }
+
+  /**
+   * Busca o PDF de UM documento pelo `hrefBinario`, sob demanda — nunca
+   * usado pela varredura em lote (ver tests/no-secrets-no-pdf.test.js e
+   * meujudi-cs/src/main/document-requests.ts, o único chamador). Devolve
+   * base64 (não Buffer) porque o `executeJavaScript` do Electron não
+   * consegue trazer um Buffer/Blob bruto de volta pro processo main.
+   */
+  async buscarBinarioDocumento(hrefBinario: string): Promise<string> {
+    if (!this.browserRequestBinario) throw new PdpjApiError('Busca de binario nao configurada.', undefined, false);
+    const session = this.getSession();
+    if (!session?.accessToken) throw new PdpjApiError('Login PDPJ necessario para buscar o documento.', 401);
+
+    const path = hrefBinario.startsWith('/') ? hrefBinario : `/${hrefBinario}`;
+    const authorization = `${session.tokenType ?? 'Bearer'} ${session.accessToken}`;
+    logger.info('PDPJ API: iniciando busca de binario sob demanda', { path: redactPdpjPath(path), hasBearer: true });
+
+    const result = await this.browserRequestBinario(`${PDPJ_API_URL}${path}`, authorization);
+    if (result.status === 401 || result.status === 403 || result.status === 404) {
+      throw new PdpjApiError(`PDPJ respondeu HTTP ${result.status}.`, result.status);
+    }
+    if (result.status < 200 || result.status >= 300) {
+      throw new PdpjApiError(`PDPJ respondeu HTTP ${result.status}.`, result.status, result.status >= 500 || result.status === 429);
+    }
+    return result.base64;
+  }
+
   private normalizePageWithLog(body: unknown): PdpjProcessPage {
     return normalizePage(body, (info) => logger.info('PDPJ API: estrutura da pagina recebida', info));
   }
 
-  private async request(path: string): Promise<unknown> {
+  private async request(path: string, options?: { parseJson?: boolean }): Promise<unknown> {
+    const parseJson = options?.parseJson ?? true;
     const session = this.getSession();
     if (!session?.accessToken) {
       throw new PdpjApiError('Login PDPJ necessario para consultar processos.', 401);
@@ -81,7 +128,7 @@ export class PdpjApiClient {
         const response = browserResponse ? undefined : await fetch(`${PDPJ_API_URL}${path}`, {
           method: 'GET',
           headers: {
-            Accept: 'application/json, text/plain, */*',
+            Accept: parseJson ? 'application/json, text/plain, */*' : 'text/plain, application/json, */*',
             Authorization: authorization,
             'User-Agent': 'MeuJudi-CS/0.2.18',
             Cookie: cookieHeader,
@@ -121,7 +168,9 @@ export class PdpjApiClient {
           throw new PdpjApiError(`PDPJ respondeu HTTP ${status}.`, status, status >= 500 || status === 429);
         }
 
-        const body = responseBody ? JSON.parse(responseBody) as unknown : await response!.json() as unknown;
+        const body = parseJson
+          ? (responseBody ? JSON.parse(responseBody) as unknown : await response!.json() as unknown)
+          : (responseBody ?? await response!.text());
         logger.info('PDPJ API: resposta recebida', {
           status,
           path: redactPdpjPath(path),
@@ -143,5 +192,27 @@ export class PdpjApiClient {
     }
     throw lastError instanceof Error ? lastError : new Error('Falha desconhecida no PDPJ.');
   }
+}
+
+/**
+ * A resposta de `/texto` nunca foi observada ao vivo (só confirmamos que o
+ * campo `hrefTexto` existe na resposta de detalhes). Desembrulha caso venha
+ * como JSON `{ texto | conteudo | content | text }`; senão assume que já é
+ * texto puro.
+ */
+function unwrapTexto(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (typeof parsed === 'string') return parsed.trim();
+    if (isRecord(parsed)) {
+      const candidate = parsed.texto ?? parsed.conteudo ?? parsed.content ?? parsed.text;
+      if (typeof candidate === 'string') return candidate.trim();
+    }
+  } catch {
+    // não é JSON — já é texto puro, segue com o valor original.
+  }
+  return trimmed;
 }
 

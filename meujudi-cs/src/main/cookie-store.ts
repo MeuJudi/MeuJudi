@@ -52,10 +52,17 @@ export class CookieStore {
 
   /**
    * Retorna a sessão válida (não expirada), ou null.
+   *
+   * `forceRefresh` pula o cache de 30s e lê direto do disco. Necessário
+   * quando outra instância de CookieStore (cada uma tem seu próprio cache
+   * em memória, mesmo apontando pro mesmo arquivo) acabou de salvar uma
+   * sessão nova — sem isso, um `getValidSession()` chamado logo em
+   * seguida podia devolver o valor cacheado antigo (ex.: sem accessToken)
+   * mesmo com o token novo já gravado em disco.
    */
-  getValidSession(): PdpjSession | null {
+  getValidSession(forceRefresh = false): PdpjSession | null {
     // Cache
-    if (this.cachedSession && Date.now() - this.cachedAt < this.CACHE_TTL_MS) {
+    if (!forceRefresh && this.cachedSession && Date.now() - this.cachedAt < this.CACHE_TTL_MS) {
       if (this.cachedSession.expiresAt > new Date()) {
         return this.cachedSession;
       }
@@ -98,6 +105,21 @@ export class CookieStore {
    */
   hasValidSession(): boolean {
     return this.getValidSession() !== null;
+  }
+
+  /**
+   * Invalida só o Bearer (mantém os cookies) — usado quando uma consulta à
+   * API falha com 401/403: o cookie ainda pode estar válido, mas o token
+   * ficou obsoleto e precisa ser revalidado (ver
+   * PdpjAuth.startAutoValidation, que roda em segundo plano).
+   */
+  clearAccessToken(): void {
+    const session = this.getValidSession(true);
+    if (!session) return;
+    session.accessToken = undefined;
+    session.apiValidated = false;
+    this.saveSession(session);
+    logger.info('Bearer PDPJ invalidado; sessao de cookies mantida pra revalidacao automatica');
   }
 
   /**

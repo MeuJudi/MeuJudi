@@ -5,7 +5,7 @@
  * Substitui settings/pje-connection.tsx, que agora só redireciona pra cá.
  */
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { usePdpjStatus } from '@/hooks/usePdpjStatus';
 import { useTimeAgo, formatDateTime } from '@/hooks/useTimeAgo';
 import { StatusIndicator } from '@/components/StatusIndicator';
@@ -126,134 +126,6 @@ function ConnectedCard({
         >
           Validar API agora
         </button>
-      </div>
-
-      <PdpjExtractionPanel />
-    </div>
-  );
-}
-
-function PdpjExtractionPanel() {
-  const [oabs, setOabs] = useState<Array<{ oabNumber: string; oabUf: string }>>([]);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('');
-
-  useEffect(() => {
-    void window.meujudi.pdpj.getLinkedOabs().then(setOabs).catch((error) => setMessage(error?.message || 'Nao foi possivel carregar as OABs vinculadas.'));
-  }, []);
-
-  const start = async () => {
-    const linked = oabs[0];
-    if (!linked) return;
-    setBusy(true);
-    setMessage('');
-    try {
-      const result = await window.meujudi.pdpj.enqueueOabSync(linked.oabNumber, linked.oabUf);
-      setMessage(
-        result.created
-          ? 'Sincronização enfileirada. Acompanhe o andamento em "Fila de tarefas" — CNJs novos aparecem lá conforme forem descobertos.'
-          : 'Não foi possível enfileirar a sincronização.',
-      );
-    } catch (error: any) {
-      setMessage(error?.message || 'Nao foi possivel enfileirar a sincronizacao.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <section className="border-t pt-4 space-y-3">
-      <div>
-        <h3 className="font-semibold">Sincronização de processos pelo PDPJ</h3>
-        <p className="text-sm text-gray-500">
-          A OAB vem automaticamente do escritório pareado. A varredura roda em segundo plano pela
-          fila de tarefas — nada fica salvo localmente neste computador.
-        </p>
-      </div>
-      <div className="flex items-center gap-3">
-        <div className="flex-1 rounded-lg border bg-gray-50 px-3 py-2 text-sm text-gray-700">
-          {oabs.length ? oabs.map((item) => `${item.oabNumber}/${item.oabUf}`).join(', ') : 'Nenhuma OAB vinculada encontrada'}
-        </div>
-        <button onClick={start} disabled={busy || !oabs.length} className="btn-primary">{busy ? 'Enfileirando...' : 'Sincronizar OAB vinculada'}</button>
-      </div>
-      {message && <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800 break-words">{message}</p>}
-      <PdpjCnjTestPanel />
-    </section>
-  );
-}
-
-const TEST_CNJS = [
-  '0005245-63.2026.8.16.0000',
-  '0003592-62.2026.8.16.0182',
-  '0018631-46.2015.8.16.0001',
-];
-
-function findUrls(value: unknown, urls: string[] = [], depth = 0, path = ''): string[] {
-  if (depth > 6 || urls.length >= 20) return urls;
-  if (typeof value === 'string' && /^https?:\/\//i.test(value)) {
-    if (!urls.includes(value)) urls.push(value);
-  } else if (typeof value === 'string' && /^\/processos\//i.test(value) && /href|document|arquivo/i.test(path)) {
-    const absoluteUrl = `https://portaldeservicos.pdpj.jus.br/api/v2${value}`;
-    if (!urls.includes(absoluteUrl)) urls.push(absoluteUrl);
-  } else if (Array.isArray(value)) {
-    value.forEach((item, index) => findUrls(item, urls, depth + 1, `${path}[${index}]`));
-  } else if (value && typeof value === 'object') {
-    Object.entries(value).forEach(([key, item]) => findUrls(item, urls, depth + 1, path ? `${path}.${key}` : key));
-  }
-  return urls;
-}
-
-function PdpjCnjTestPanel() {
-  const [results, setResults] = useState<Record<string, Record<string, unknown> | null>>({});
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState<string | null>(null);
-
-  const search = async (cnj: string) => {
-    setBusy(cnj);
-    setErrors((current) => ({ ...current, [cnj]: '' }));
-    try {
-      const details = await window.meujudi.pdpj.fetchProcessDetails(cnj);
-      setResults((current) => ({ ...current, [cnj]: details }));
-    } catch (error: any) {
-      setErrors((current) => ({ ...current, [cnj]: error?.message || 'Falha ao consultar o processo.' }));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  return (
-    <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
-      <div>
-        <h4 className="font-semibold text-amber-950">Teste de detalhe e documentos PDPJ</h4>
-        <p className="text-sm text-amber-900">Consulta individual pelo navegador autenticado do CS. Os resultados ficam somente nesta tela durante o teste.</p>
-      </div>
-      <div className="space-y-2">
-        {TEST_CNJS.map((cnj) => {
-          const details = results[cnj];
-          const urls = details ? findUrls(details) : [];
-          return (
-            <div key={cnj} className="rounded-lg border border-amber-200 bg-white p-3 space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <code className="text-sm text-gray-800">{cnj}</code>
-                <button onClick={() => void search(cnj)} disabled={busy !== null} className="btn-secondary text-sm">
-                  {busy === cnj ? 'Consultando...' : 'Consultar detalhe'}
-                </button>
-              </div>
-              {errors[cnj] && <p className="text-sm text-red-700">{errors[cnj]}</p>}
-              {details && (
-                <div className="text-xs text-gray-700 space-y-1">
-                  <p><strong>Campos retornados:</strong> {Object.keys(details).sort().join(', ') || 'nenhum'}</p>
-                  <p><strong>URLs encontradas:</strong> {urls.length}</p>
-                  {urls.length > 0 && <ul className="list-disc pl-5 break-all">{urls.map((url) => <li key={url}><a className="text-blue-700 underline" href={url} target="_blank" rel="noreferrer">{url}</a></li>)}</ul>}
-                  <details>
-                    <summary className="cursor-pointer text-blue-700">Ver resposta técnica</summary>
-                    <pre className="mt-2 max-h-72 overflow-auto rounded bg-gray-100 p-2 text-[10px]">{JSON.stringify(details, null, 2)}</pre>
-                  </details>
-                </div>
-              )}
-            </div>
-          );
-        })}
       </div>
     </div>
   );

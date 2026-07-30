@@ -1,6 +1,6 @@
 "use server";
 
-import { requireAppUser } from "@/lib/auth/guards";
+import { requireAppUser, requireWritableAppUser } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/service";
 
 export type ProcessDetails = {
@@ -220,4 +220,87 @@ async function resolveAttorneyAvatars(keys: AttorneyKey[], attorneys: unknown[])
     const match = matches.get(`${number}/${uf}`);
     return match ? { ...record, nome: match.display_name || record.nome, avatar_url: match.avatar_url, avatar_source: match.avatar_source } : value;
   });
+}
+
+/**
+ * Pede pro CS (via Realtime — ver src/lib/cs/realtime-token.ts) buscar o
+ * PDF de um documento específico, sob demanda. Só cria a "campainha" —
+ * quem busca de verdade e sobe pro Storage é o CS, através das rotas
+ * /api/cs/document-requests/* autenticadas por device token.
+ */
+export async function solicitarDocumento(processoDocumentoId: string): Promise<{ requestId: string }> {
+  const { supabase, authUser, profile } = await requireWritableAppUser();
+  if (!profile.tenant_id) throw new Error("Usuario sem tenant.");
+
+  const { data: documento, error: documentoError } = await supabase
+    .from("processo_documentos")
+    .select("id, processo_id, pdpj_documento_id, processos!inner(cnj)")
+    .eq("id", processoDocumentoId)
+    .single<{ id: string; processo_id: string; pdpj_documento_id: string | null; processos: { cnj: string } }>();
+  if (documentoError || !documento) throw new Error("Documento nao encontrado.");
+  if (!documento.pdpj_documento_id) throw new Error("Documento sem identificador PDPJ — nao e possivel buscar o PDF.");
+
+  const cnjValue = documento.processos?.cnj;
+  if (!cnjValue) throw new Error("Processo sem CNJ associado.");
+
+  const { data: created, error: insertError } = await supabase
+    .from("document_fetch_requests")
+    .insert({
+      tenant_id: profile.tenant_id,
+      processo_documento_id: documento.id,
+      cnj: cnjValue,
+      pdpj_documento_id: documento.pdpj_documento_id,
+      requested_by: authUser.id,
+    })
+    .select("id")
+    .single();
+  if (insertError || !created) throw new Error(insertError?.message ?? "Nao foi possivel criar o pedido.");
+
+  return { requestId: created.id };
+}
+
+/** Mesmo padrao de getMuralSyncRequest (monitoramento/actions.ts) — polling curto do status. */
+export async function getDocumentFetchRequest(requestId: string) {
+  const { supabase, profile } = await requireAppUser();
+  if (!profile.tenant_id) return { ok: false as const, message: "Usuário sem escritório vinculado." };
+  const { data, error } = await supabase
+    .from("document_fetch_requests")
+    .select("id, status, error_message")
+    .eq("id", requestId)
+    .eq("tenant_id", profile.tenant_id)
+    .maybeSingle();
+  if (error) return { ok: false as const, message: error.message };
+  if (!data) return { ok: false as const, message: "Pedido de documento não encontrado." };
+  const status: "processing" | "completed" | "failed" =
+    data.status === "done" ? "completed" : data.status === "failed" || data.status === "expired" ? "failed" : "processing";
+  return { ok: true as const, status, errorMessage: data.error_message };
+}
+
+/**
+ * Gera a signed URL de vida curta pro PDF já buscado pelo CS. O bucket
+ * `documentos-temp` não tem policy nenhuma pra `authenticated`/`anon` (só
+ * service role) — por isso confirma a posse via RLS no client de sessão
+ * antes de usar o client de service role só pra assinar a URL.
+ */
+export async function getDocumentSignedUrl(requestId: string) {
+  const { supabase, profile } = await requireAppUser();
+  if (!profile.tenant_id) return { ok: false as const, message: "Usuário sem escritório vinculado." };
+  const { data, error } = await supabase
+    .from("document_fetch_requests")
+    .select("id, status, storage_path")
+    .eq("id", requestId)
+    .eq("tenant_id", profile.tenant_id)
+    .maybeSingle();
+  if (error) return { ok: false as const, message: error.message };
+  if (!data || data.status !== "done" || !data.storage_path) {
+    return { ok: false as const, message: "Documento ainda não está pronto." };
+  }
+
+  const service = createServiceClient();
+  const { data: signed, error: signError } = await service.storage
+    .from("documentos-temp")
+    .createSignedUrl(data.storage_path, 300);
+  if (signError || !signed) return { ok: false as const, message: signError?.message ?? "Não foi possível gerar o link do documento." };
+
+  return { ok: true as const, url: signed.signedUrl };
 }

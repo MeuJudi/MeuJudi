@@ -89,3 +89,50 @@ export function extractCnj(record: Record<string, unknown>): string | null {
   const value = candidates.find((item) => typeof item === 'string' || typeof item === 'number');
   return value === undefined ? null : String(value);
 }
+
+export interface PdpjDocumentoRef {
+  /** Extraído do path de hrefBinario/hrefTexto (últimos segmentos são o UUID do documento no Codex). */
+  id: string;
+  nome: string | null;
+  tipo: string | null;
+  dataHoraJuntada: string | null;
+  /** Path relativo (ex.: `/processos/{cnj}/documentos/{id}/binario`) — nunca buscado pelo CS, só repassado como link de download. */
+  hrefBinario: string | null;
+  /** Path relativo (ex.: `/processos/{cnj}/documentos/{id}/texto`) — é o único que o CS busca. */
+  hrefTexto: string | null;
+}
+
+/**
+ * Lê `detail.documentos[]` (confirmado via captura de tráfego real do
+ * Portal PDPJ, ver docs/roadmap) — cada item já vem com `hrefBinario` e
+ * `hrefTexto` oficiais, então não precisa mais adivinhar link por heurística.
+ */
+export function extractDocumentos(detail: Record<string, unknown>): PdpjDocumentoRef[] {
+  // Achado em log real (29/07/2026): `documentos` não fica no nível raiz da
+  // resposta — fica dentro de `tramitacaoAtual` (as chaves de topo são só
+  // nivelSigilo/numeroProcesso/siglaTribunal/tramitacaoAtual). Checa os
+  // dois lugares por segurança, caso o formato varie por tribunal/versão.
+  const tramitacaoAtual = isRecord(detail.tramitacaoAtual) ? detail.tramitacaoAtual : null;
+  const raw = tramitacaoAtual?.documentos ?? detail.documentos;
+  if (!Array.isArray(raw)) return [];
+  const out: PdpjDocumentoRef[] = [];
+  for (const item of raw) {
+    if (!isRecord(item)) continue;
+    const hrefBinario = typeof item.hrefBinario === 'string' ? item.hrefBinario : null;
+    const hrefTexto = typeof item.hrefTexto === 'string' ? item.hrefTexto : null;
+    if (!hrefBinario && !hrefTexto) continue;
+    const idSource = hrefBinario ?? hrefTexto ?? '';
+    const idMatch = /\/documentos\/([^/]+)\//.exec(idSource);
+    const id = idMatch?.[1] ?? String(out.length);
+    const tipoNome = isRecord(item.tipo) && typeof item.tipo.nome === 'string' ? item.tipo.nome : null;
+    out.push({
+      id,
+      nome: typeof item.nome === 'string' ? item.nome : null,
+      tipo: tipoNome,
+      dataHoraJuntada: typeof item.dataHoraJuntada === 'string' ? item.dataHoraJuntada : null,
+      hrefBinario,
+      hrefTexto,
+    });
+  }
+  return out;
+}

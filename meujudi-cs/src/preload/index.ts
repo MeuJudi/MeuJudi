@@ -17,9 +17,6 @@ const api: ElectronAPI = {
     disconnect: () => ipcRenderer.invoke('pdpj:disconnect'),
     openJus: () => ipcRenderer.invoke('pdpj:open-jus'),
     validateApi: () => ipcRenderer.invoke('pdpj:validate-api'),
-    getLinkedOabs: () => ipcRenderer.invoke('pdpj:linked-oabs'),
-    enqueueOabSync: (oabNumber, oabUf) => ipcRenderer.invoke('pdpj:enqueue-oab-sync', oabNumber, oabUf),
-    fetchProcessDetails: (cnj) => ipcRenderer.invoke('pdpj:process-details', cnj),
   },
   diagnostic: {
     run: () => ipcRenderer.invoke('diagnostic:run'),

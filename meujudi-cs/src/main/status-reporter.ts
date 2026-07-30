@@ -165,6 +165,10 @@ export class StatusReporter {
       this.lastHeartbeatAt = new Date().toISOString();
       this.lastError = null;
       this.revoked = false;
+
+      const body = await response.json().catch(() => null) as { realtime_token?: string } | null;
+      if (body?.realtime_token) this.pairing.setRealtimeToken(body.realtime_token);
+
       logger.debug(`[StatusReporter] Heartbeat enviado (${durationMs}ms)`);
       recordDiagnosticEvent('cs_heartbeat_sent', 'success', `Heartbeat OK`, { lastActivity: this.lastActivity }, durationMs);
     } catch (err) {

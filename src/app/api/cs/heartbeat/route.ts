@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { autenticarDevice } from "@/lib/cs/device-auth";
+import { mintDeviceRealtimeToken } from "@/lib/cs/realtime-token";
 
 /**
  * POST /api/cs/heartbeat
@@ -49,5 +50,6 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     receivedAt: now,
+    realtime_token: mintDeviceRealtimeToken(device.deviceId, device.tenantId),
   });
 }

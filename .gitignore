@@ -20,7 +20,7 @@ local/
 local-backups/
 instaladores/
 arquivos-antigos/
-release/
+release/*
 Investigação/
 tests/
 .next-dev-logs/
@@ -38,6 +38,7 @@ dev-local.cmd
 # kept too so historical releases already tracked stay tracked.
 !/meujudi-cs/release/MeuJudi-CS-Setup-v*.exe
 !/meujudi-cs/release/MeuJudi-Sync-Setup-v*.exe
+!/meujudi-cs/release/MeuJudi-Sync-Setup-v*.exe.blockmap
 # Chaves privadas e credenciais locais nunca entram no Git.
 meujudi-cs/*.private-key.pem
 meujudi-cs/*.pem

@@ -1,6 +1,5 @@
 node_modules/
 dist/
-release/
 out/
 .next/
 
@@ -38,6 +37,10 @@ cache/
 *.pdf
 *.tmp
 
-# electron-builder
-release/
+# electron-builder — instaladores publicados ficam rastreados (ver
+# .gitignore da raiz), só o resto do diretório de build (win-unpacked/,
+# builder-debug.yml etc.) e releases antigas fora do padrão v* ficam de fora.
+release/*
+!release/MeuJudi-Sync-Setup-v*.exe
+!release/MeuJudi-Sync-Setup-v*.exe.blockmap
 dist-electron/

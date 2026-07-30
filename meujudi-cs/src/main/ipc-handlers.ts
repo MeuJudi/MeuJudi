@@ -14,11 +14,11 @@ import { Pairing } from './pairing';
 import { MuralSync } from './mural-sync';
 import { MuralPush } from './mural-push';
 import { ConfirmADVService } from './confirmadv';
-import { PdpjExtractor } from './pdpj-extractor';
 import { TaskQueueClient } from './task-queue-client';
 import { SyncWorker } from './sync-worker';
 import { createPdpjTaskHandlers } from './pdpj-tasks';
 import { createMuralTaskHandlers, startMuralScheduledTasks } from './mural-tasks';
+import { DocumentRequests } from './document-requests';
 import type { StatusReporter, ConnectionStatus } from './status-reporter';
 import type { PdpjStatus, PublicSession, LogEntry, DiagnosticReport, ConfirmADVValidation, SyncTask, UnifiedSyncProgress } from '../shared/types';
 
@@ -26,11 +26,10 @@ import type { PdpjStatus, PublicSession, LogEntry, DiagnosticReport, ConfirmADVV
  * Registra todos os IPC handlers. Deve ser chamado uma vez no app.whenReady().
  */
 export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: StatusReporter) {
-  const auth = new PdpjAuth();
+  const auth = new PdpjAuth(pairing);
   const muralSync = new MuralSync(pairing);
   const muralPush = new MuralPush(pairing);
   const confirmAdv = new ConfirmADVService(pairing);
-  const pdpjExtractor = new PdpjExtractor(pairing, auth);
   const taskQueueClient = new TaskQueueClient(pairing);
   const syncWorker = new SyncWorker(taskQueueClient, statusReporter);
   const { handlePdpjOab, handlePdpjCnj } = createPdpjTaskHandlers(pairing, auth);
@@ -44,6 +43,9 @@ export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: St
   syncWorker.start();
   const muralScheduledTasks = startMuralScheduledTasks(taskQueueClient);
   confirmAdv.start();
+  auth.startAutoValidation();
+  const documentRequests = new DocumentRequests(pairing, auth);
+  documentRequests.start();
   const diagnostic = new Diagnostic();
 
   // ============================================================
@@ -77,26 +79,8 @@ export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: St
   ipcMain.handle('pdpj:open-jus', async () => auth.openJus());
   ipcMain.handle('pdpj:validate-api', async () => {
     logger.info('IPC: pdpj:validate-api');
-    return auth.ensureApiSession();
+    return auth.ensureApiSession(true);
   });
-
-  ipcMain.handle('pdpj:enqueue-oab-sync', async (_event, oabNumber: string, oabUf: string) => {
-    logger.info('IPC: pdpj:enqueue-oab-sync', { oabUf, oabNumber: '[redacted-number]' });
-    const normalizedNumber = oabNumber.replace(/\D/g, '');
-    const normalizedUf = oabUf.trim().toUpperCase();
-    return taskQueueClient.create({
-      source: 'pdpj',
-      type: 'pdpj_oab',
-      idempotencyKey: `pdpj_oab:${normalizedNumber}:${normalizedUf}:${Date.now()}`,
-      priority: 4,
-      cursor: { oabNumber: normalizedNumber, oabUf: normalizedUf, searchAfter: null, pageCount: 0 },
-    });
-  });
-  ipcMain.handle('pdpj:process-details', async (_event, cnj: string) => {
-    logger.info('IPC: pdpj:process-details', { cnjSuffix: cnj.replace(/\D/g, '').slice(-8) });
-    return pdpjExtractor.fetchProcessDetails(cnj);
-  });
-  ipcMain.handle('pdpj:linked-oabs', async () => pdpjExtractor.getLinkedOabs());
 
   ipcMain.handle('pairing:submit-code', async (_event, codigo: string) => pairing.pair(codigo));
   ipcMain.handle('pairing:status', async () => pairing.getStatus());
@@ -226,6 +210,8 @@ export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: St
       muralScheduledTasks.stop();
       confirmAdv.stop();
       syncWorker.stop();
+      auth.stopAutoValidation();
+      documentRequests.stop();
     },
     triggerSync: () => syncWorker.syncNow(),
   };

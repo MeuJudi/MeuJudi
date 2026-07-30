@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { mintDeviceRealtimeToken } from "@/lib/cs/realtime-token";
 
 const CODE_RE = /^[A-HJ-NP-Z2-9]{8}$/;
 
@@ -48,9 +49,11 @@ export async function POST(request: NextRequest) {
     ]);
     return NextResponse.json({
       device_token: token,
+      device_id: device.id,
       tenant_id: pairing.tenant_id,
       tenant_name: tenant?.name ?? "Escritorio",
       user_name: user?.name ?? "Usuário",
+      realtime_token: mintDeviceRealtimeToken(device.id, pairing.tenant_id),
     });
   } catch (error) {
     console.error("[cs/pair] erro:", error);
