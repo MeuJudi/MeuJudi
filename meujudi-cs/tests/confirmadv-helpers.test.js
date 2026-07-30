@@ -32,7 +32,7 @@ try {
 }
 
 const compiled = require(path.join(tmpDir, 'main/confirmadv-helpers.js'));
-const { inferEventFromUrl, extractRequestIdFromUrl, CONFIRMADV_BASE } = compiled;
+const { inferEventFromUrl, extractRequestIdFromUrl, verificacaoConcluida, CONFIRMADV_BASE } = compiled;
 
 let passed = 0;
 let failed = 0;
@@ -109,7 +109,17 @@ test('URL /code mapeia para code_pending', () => {
   assertEqual(inferEventFromUrl(`${CONFIRMADV_BASE}/code/abc`), 'code_pending');
 });
 
-// verified
+// code_pending — path real (waiting/{token}), confirmado em captura de
+// tráfego autorizada (ver Investigação/confirmadv.oab.org.br.har)
+test('URL /waiting mapeia para code_pending (path real do ConfirmADV)', () => {
+  assertEqual(inferEventFromUrl(`${CONFIRMADV_BASE}/waiting/abc-123`), 'code_pending');
+});
+
+// verified — path real (completed/{token})
+test('URL /completed mapeia para verified (path real do ConfirmADV)', () => {
+  assertEqual(inferEventFromUrl(`${CONFIRMADV_BASE}/completed/abc-123`), 'verified');
+});
+
 test('URL /success mapeia para verified', () => {
   assertEqual(inferEventFromUrl(`${CONFIRMADV_BASE}/success/abc`), 'verified');
 });
@@ -168,6 +178,24 @@ test('Devolve undefined para URL inválida', () => {
 
 test('Devolve undefined para URL vazia', () => {
   assertEqual(extractRequestIdFromUrl(''), undefined);
+});
+
+console.log('\nverificacaoConcluida:');
+
+test('isValidation "Validado" e concluida', () => {
+  assertEqual(verificacaoConcluida({ isValidation: 'Validado' }), true);
+});
+
+test('isValidation "InValidado" nao e concluida (ainda nao confirmou o codigo)', () => {
+  assertEqual(verificacaoConcluida({ isValidation: 'InValidado' }), false);
+});
+
+test('data null nao e concluida', () => {
+  assertEqual(verificacaoConcluida(null), false);
+});
+
+test('isValidation ausente nao e concluida', () => {
+  assertEqual(verificacaoConcluida({}), false);
 });
 
 console.log('\n========================================');

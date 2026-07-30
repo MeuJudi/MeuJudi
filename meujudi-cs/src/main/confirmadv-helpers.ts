@@ -21,8 +21,12 @@ export type ConfirmADVEventHint =
   | 'rejected';
 
 const REQUEST_PATTERNS = ['/confirm', '/solicitacao'];
-const CODE_PATTERNS = ['/verification', '/codigo', '/code'];
-const SUCCESS_PATTERNS = ['/success', '/aprovado', '/validado'];
+// /waiting/{token} e /completed/{token} são os paths reais observados numa
+// captura de tráfego autorizada (ver Investigação/confirmadv.oab.org.br.har)
+// — os nomes antigos (/verification, /success, /aprovado, /validado) eram
+// chute sem confirmação; mantidos como fallback caso o fluxo mude.
+const CODE_PATTERNS = ['/waiting', '/verification', '/codigo', '/code'];
+const SUCCESS_PATTERNS = ['/completed', '/success', '/aprovado', '/validado'];
 const REJECTION_PATTERNS = ['/error', '/recusado', '/rejeitado', '/invalid'];
 
 export function inferEventFromUrl(url: string): ConfirmADVEventHint | null {
@@ -46,4 +50,29 @@ export function extractRequestIdFromUrl(url: string): string | undefined {
     return undefined;
   }
   return undefined;
+}
+
+/**
+ * Forma real da resposta de `GET /api/lawyer/{token}/verification` — a
+ * mesma API que a própria página do ConfirmADV consulta pra saber se a
+ * pessoa já confirmou o código do e-mail (confirmado numa captura de
+ * tráfego autorizada, ver Investigação/confirmadv.oab.org.br.har).
+ */
+export interface ConfirmADVVerificationData {
+  name?: string;
+  register?: string;
+  status?: string;
+  email?: string;
+  isValidation?: string;
+  minutesForExpiration?: string;
+}
+
+/**
+ * `isValidation` só vira `"Validado"` depois que a pessoa confirma o
+ * código recebido no e-mail profissional — antes disso fica
+ * `"InValidado"` mesmo com a solicitação já criada. Só isso (não a URL
+ * sozinha) deve decidir se o CS reporta `verified` pro Web.
+ */
+export function verificacaoConcluida(data: ConfirmADVVerificationData | null): boolean {
+  return data?.isValidation === 'Validado';
 }

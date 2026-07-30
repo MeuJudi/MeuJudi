@@ -21,13 +21,19 @@ import { BrowserWindow, session as electronSession, Notification } from 'electro
 import { logger, recordDiagnosticEvent } from './logger';
 import { loadAppIcon } from './app-icon';
 import { MEUJUDI_WEB_URL } from '../shared/constants';
-import { inferEventFromUrl, extractRequestIdFromUrl, CONFIRMADV_BASE } from './confirmadv-helpers';
+import { inferEventFromUrl, extractRequestIdFromUrl, verificacaoConcluida, CONFIRMADV_BASE, type ConfirmADVVerificationData } from './confirmadv-helpers';
 import type { Pairing } from './pairing';
 import type { ConfirmADVValidation, ConfirmADVStatus } from '../shared/types';
 
 const POLLING_INTERVAL_MS = 15_000;
 const VALIDATION_TIMEOUT_MS = 15 * 60_000; // 15 min da abertura da janela
 const INACTIVITY_TIMEOUT_MS = 5 * 60_000; // 5 min sem navegação
+// Retry de reportarResultadoVerificacao quando a página chega em
+// /completed mas a API ainda não confirma o código (corrida). 5 tentativas
+// a cada 3s = até 15s de espera antes de desistir e deixar o timeout de
+// inatividade cobrir o caso.
+const VERIFICATION_RETRY_MAX = 5;
+const VERIFICATION_RETRY_DELAY_MS = 3_000;
 // C4 — auditoria: a partition era nomeada por validationId e nunca era
 // removida, só limpa. Após centenas de validações, o Electron acumulava
 // partitions vazias. Agora usamos uma partition fixa e limpamos no
@@ -105,6 +111,16 @@ export class ConfirmADVService {
   // S3: timestamp em que a validação atual começou, para medir
   // duração de cada etapa no log estruturado de lifecycle.
   private validationStartedAt: number | null = null;
+  // Evita reportar 'browser_opened' de novo a cada navegação de página
+  // inteira (o ConfirmADV navega por URL real, não é uma SPA — então
+  // `did-finish-load` refira em /waiting, /completed etc., e sem esse
+  // guard o status no Web regredia de volta pra "recaptcha_em_andamento"
+  // depois que o usuário já tinha avançado).
+  private browserOpenedReported = false;
+  // Timer da nova tentativa de `reportarResultadoVerificacao` quando a
+  // API do ConfirmADV ainda não confirmou o código (corrida entre a
+  // navegação pra /completed e o backend deles terminar de processar).
+  private verificationRetryTimer: NodeJS.Timeout | null = null;
 
   constructor(private readonly pairing: Pairing) {}
 
@@ -228,6 +244,11 @@ export class ConfirmADVService {
     // localStorage, indexedDB etc. — efetivamente "uma partition nova"
     // sem o overhead de manter o objeto Electron Session pra sempre.
     this.currentPartition = PARTITION;
+    this.browserOpenedReported = false;
+    if (this.verificationRetryTimer) {
+      clearTimeout(this.verificationRetryTimer);
+      this.verificationRetryTimer = null;
+    }
 
     // Garante que a partition começa limpa (sem cookies do ConfirmADV
     // de tentativas anteriores). O `await` não é estritamente necessário
@@ -275,6 +296,12 @@ export class ConfirmADVService {
     // Eventos da janela
     window.webContents.on('did-finish-load', () => {
       this.resetInactivityTimeout(validation.id);
+      // Só reporta na primeira carga. O ConfirmADV usa navegação real de
+      // página (confirmado no HAR), então isso refiraria em /waiting,
+      // /completed etc. e regrediria o status no Web se reportássemos de
+      // novo a cada vez.
+      if (this.browserOpenedReported) return;
+      this.browserOpenedReported = true;
       this.reportEvent(validation.id, 'browser_opened').catch(() => undefined);
       this.logLifecycle('browser_opened', 'info');
     });
@@ -284,8 +311,16 @@ export class ConfirmADVService {
       const hint = inferEventFromUrl(url);
       if (!hint) return;
       const externalId = extractRequestIdFromUrl(url);
-      this.reportEvent(validation.id, hint, { external_request_id: externalId }).catch(() => undefined);
       this.logLifecycle(`navigate_${hint}`, hint === 'verified' ? 'success' : 'info', { url, externalId });
+      if (hint === 'verified') {
+        // Chegar em /completed/{token} não é prova nenhuma por si só — a
+        // URL sozinha não diz se a pessoa terminou de confirmar o código
+        // do e-mail. Confirma direto na API oficial do ConfirmADV antes
+        // de reportar qualquer coisa como "verified" pro Web.
+        void this.reportarResultadoVerificacao(validation.id, externalId);
+        return;
+      }
+      this.reportEvent(validation.id, hint, { external_request_id: externalId }).catch(() => undefined);
       // Não chamamos closeWindow aqui: se o reportEvent receber status
       // terminal do Web (ex.: validada), ele já dispara o closeWindow
       // internamente. Antes havia um setTimeout que duplicava o close.
@@ -358,8 +393,10 @@ export class ConfirmADVService {
   private clearTimers(): void {
     if (this.validationTimeout) clearTimeout(this.validationTimeout);
     if (this.inactivityTimeout) clearTimeout(this.inactivityTimeout);
+    if (this.verificationRetryTimer) clearTimeout(this.verificationRetryTimer);
     this.validationTimeout = null;
     this.inactivityTimeout = null;
+    this.verificationRetryTimer = null;
   }
 
   private closeWindow(reason: 'cancelled' | 'verified' | 'expired' | 'failed'): void {
@@ -404,6 +441,76 @@ export class ConfirmADVService {
     if (this.currentWindow.isMinimized()) this.currentWindow.restore();
     this.currentWindow.show();
     this.currentWindow.focus();
+  }
+
+  /**
+   * Chega em /completed/{token} — confirma direto na API oficial do
+   * ConfirmADV (a mesma que a própria página consulta pra saber se a
+   * verificação terminou; confirmado numa captura de tráfego autorizada,
+   * ver Investigação/confirmadv.oab.org.br.har) em vez de confiar cego na
+   * URL. O CS só relata o resultado bruto (nome/status/e-mail retornados
+   * pelo ConfirmADV) — quem decide se aceita (nome bate, status é
+   * REGULAR) é o Web, nunca o CS (ver validacao-oab-confirmadv-cs.md:
+   * "o sistema nunca deve confiar em dado enviado pelo cliente").
+   */
+  private async reportarResultadoVerificacao(validationId: string, token: string | undefined, tentativa = 0): Promise<void> {
+    if (!token) {
+      await this.reportEvent(validationId, 'failed', { message: 'Não foi possível identificar a solicitação concluída.' });
+      this.closeWindow('failed');
+      return;
+    }
+
+    let data: ConfirmADVVerificationData | null = null;
+    try {
+      const response = await fetch(`${CONFIRMADV_BASE}/api/lawyer/${token}/verification`, {
+        headers: { Accept: 'application/json' },
+      });
+      if (response.ok) {
+        const body = (await response.json()) as { data?: ConfirmADVVerificationData };
+        data = body.data ?? null;
+      } else {
+        logger.warn('ConfirmADV: consulta de resultado retornou HTTP', response.status);
+      }
+    } catch (error) {
+      logger.warn('ConfirmADV: falha ao consultar resultado da verificação:', (error as Error).message);
+    }
+
+    if (!verificacaoConcluida(data)) {
+      // Chegou na página final mas a API ainda não confirma o código —
+      // não é erro definitivo, pode ser corrida entre a navegação e a
+      // confirmação terminar de processar do lado deles. Tenta de novo
+      // algumas vezes antes de desistir; se ainda assim não confirmar, o
+      // timeout de inatividade cobre o caso de travar aqui de vez.
+      logger.info('ConfirmADV: pagina /completed alcancada mas isValidation != Validado ainda', {
+        validationId,
+        status: data?.status,
+        tentativa,
+      });
+      if (tentativa >= VERIFICATION_RETRY_MAX) return;
+      this.verificationRetryTimer = setTimeout(() => {
+        this.verificationRetryTimer = null;
+        // Se a validação atual já mudou (janela fechada/nova validação
+        // aberta), não faz sentido continuar tentando a anterior.
+        if (this.currentValidation?.id !== validationId) return;
+        void this.reportarResultadoVerificacao(validationId, token, tentativa + 1);
+      }, VERIFICATION_RETRY_DELAY_MS);
+      return;
+    }
+
+    if (this.verificationRetryTimer) {
+      clearTimeout(this.verificationRetryTimer);
+      this.verificationRetryTimer = null;
+    }
+
+    await this.reportEvent(validationId, 'verified', {
+      external_request_id: token,
+      result: {
+        returned_name: data?.name,
+        returned_status: data?.status,
+        returned_email: data?.email,
+        is_validation: true,
+      },
+    });
   }
 
   private async reportEvent(

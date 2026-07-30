@@ -21,6 +21,42 @@ const EVENT_STATUS_MAP: Record<string, string | undefined> = {
   cancelled: "cancelada",
 };
 
+// Único status de OAB aceito automaticamente. Só confirmamos "REGULAR" —
+// qualquer outra coisa (suspensa, cancelada, licenciada, ou um valor que a
+// gente ainda não viu) é recusada por padrão. Mais seguro exigir uma
+// atualização explícita aqui do que aceitar um valor desconhecido.
+const STATUS_OAB_ACEITOS = new Set(["REGULAR"]);
+
+/** Remove acento/caixa/espaço duplicado pra comparar nome — mesmo idioma de src/lib/regex/patterns.ts. */
+function normalizarNome(valor: string): string {
+  return valor
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Compara o nome que o ConfirmADV devolveu (dono real da OAB) com o nome
+ * cadastrado da conta MeuJudi que está fazendo a validação — não com
+ * `requester_name` do formulário (esse campo é só "quem está pedindo",
+ * pode ser um secretário pedindo pela OAB de outra pessoa; ver
+ * docs/roadmap/validacao-oab-confirmadv-cs.md). Tolerante o bastante pra
+ * não recusar por causa de nome do meio faltando: todo termo do nome mais
+ * curto precisa aparecer no nome mais longo.
+ */
+function nomesCompativeis(nomeConta: string, nomeRetornado: string): boolean {
+  const a = normalizarNome(nomeConta);
+  const b = normalizarNome(nomeRetornado);
+  if (!a || !b) return false;
+  const termosA = a.split(" ").filter(Boolean);
+  const termosB = b.split(" ").filter(Boolean);
+  const [menor, maior] = termosA.length <= termosB.length ? [termosA, termosB] : [termosB, termosA];
+  if (menor.length === 0) return false;
+  return menor.every((termo) => maior.includes(termo));
+}
+
 const ALLOWED_EVENTS = Object.keys(EVENT_STATUS_MAP);
 const VALID_STATUSES = [
   "pendente", "aguardando_cs", "recaptcha_em_andamento", "aguardando_codigo",
@@ -58,11 +94,18 @@ export async function POST(request: NextRequest, context: { params: Promise<{ va
 
   const { data: current, error: currentError } = await supabase
     .from("oab_validations")
-    .select("status, tenant_id, user_id, oab_number, oab_uf")
+    .select("status, tenant_id, user_id, oab_number, oab_uf, users!oab_validations_user_id_fkey(name)")
     .eq("id", validationId)
     .eq("tenant_id", device.tenantId)
     .eq("user_id", device.userId)
-    .maybeSingle();
+    .maybeSingle<{
+      status: string;
+      tenant_id: string;
+      user_id: string;
+      oab_number: string;
+      oab_uf: string;
+      users: { name: string } | null;
+    }>();
   if (currentError) return NextResponse.json({ error: "solicitacao_nao_carregada" }, { status: 500 });
   if (!current) return NextResponse.json({ error: "solicitacao_nao_encontrada" }, { status: 404 });
 
@@ -78,9 +121,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ va
     return NextResponse.json({ ok: true, status: current.status });
   }
 
-  const nextStatus = body.status && VALID_STATUSES.includes(body.status) ? body.status : EVENT_STATUS_MAP[body.event_type];
+  let nextStatus = body.status && VALID_STATUSES.includes(body.status) ? body.status : EVENT_STATUS_MAP[body.event_type];
   const update: Record<string, unknown> = {};
-  if (nextStatus) update.status = nextStatus;
   if (body.external_request_id) update.external_request_id = body.external_request_id;
 
   // W8 — auditoria: log explícito quando o evento foi aceito mas não
@@ -92,6 +134,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ va
     console.info(`[cs/oab-validations] Evento '${body.event_type}' registrado sem mudança de status (intermediário)`);
   }
 
+  // O CS nunca decide sozinho se o resultado vale — ele só relata o que o
+  // ConfirmADV devolveu (ver comentário no CS: "o sistema nunca deve
+  // confiar em dado enviado pelo cliente"). Aqui é onde de fato se decide
+  // aceitar: nome bate com o dono da conta MeuJudi e a OAB está regular.
+  let validacaoAceita = false;
   if (body.event_type === "verified") {
     update.returned_name = body.result?.returned_name ?? null;
     update.returned_status = body.result?.returned_status ?? null;
@@ -99,42 +146,42 @@ export async function POST(request: NextRequest, context: { params: Promise<{ va
     update.is_validation = body.result?.is_validation ?? true;
     update.verified_at = new Date().toISOString();
     if (body.result?.expires_at) update.expires_at = body.result.expires_at;
+
+    const nomeConta = current.users?.name ?? "";
+    const nomeRetornado = body.result?.returned_name ?? "";
+    const statusRetornado = (body.result?.returned_status ?? "").toUpperCase();
+    const nomeBate = nomesCompativeis(nomeConta, nomeRetornado);
+    const statusOk = STATUS_OAB_ACEITOS.has(statusRetornado);
+    validacaoAceita = nomeBate && statusOk;
+
+    if (!validacaoAceita) {
+      console.warn("[cs/oab-validations] verificação recusada — nome ou status não bateram", {
+        validationId,
+        nomeBate,
+        statusOk,
+        statusRetornado: statusRetornado || null,
+      });
+      nextStatus = "recusada";
+      update.last_error = "Não foi possível confirmar essa OAB para esta conta. Confira os dados e tente novamente.";
+    }
   }
   if (body.event_type === "rejected") {
     update.returned_status = body.result?.returned_status ?? null;
     update.verified_at = new Date().toISOString();
   }
-
-  // Fase 4 — quando o resultado é positivo, liberamos a fonte. C2 da
-  // auditoria: os dois updates (users.oab_validated_at + tenants.access_status)
-  // são feitos atomicamente via RPC para evitar estado inconsistente
-  // em caso de falha parcial. O `service_role` é necessário porque a
-  // função é SECURITY DEFINER; o CS já foi autenticado pelo
-  // `autenticarDevice` e o escopo (tenant_id, user_id) foi validado
-  // acima no select do `current`.
-  if (body.event_type === "verified") {
-    const { error: rpcError } = await supabase.rpc("finalize_oab_validation", {
-      p_user_id: current.user_id,
-      p_tenant_id: current.tenant_id,
-      p_oab_number: current.oab_number,
-      p_oab_uf: current.oab_uf,
-    });
-    if (rpcError) {
-      // A auditoria não era transacional antes — agora qualquer falha
-      // aqui é um problema sério: a validação fica `validada` mas a
-      // fonte não foi liberada. Log e segue, mas o cliente recebe 500
-      // para que saiba que algo deu errado.
-      console.error("[cs/oab-validations] finalize_oab_validation falhou:", rpcError);
-      return NextResponse.json(
-        { error: "finalizacao_falhou", details: rpcError.message },
-        { status: 500 },
-      );
-    }
-  }
   if (body.event_type === "failed") {
     update.last_error = body.message?.slice(0, 500) || "Ocorreu um erro técnico durante a verificação.";
   }
+  if (nextStatus) update.status = nextStatus;
 
+  // Grava o resultado ANTES de chamar o RPC de liberação. Antes, essa
+  // gravação vinha depois do RPC e era pulada de vez (return early) se
+  // o RPC falhasse — ou seja, uma falha transitória no RPC perdia
+  // nome/status retornados e a validação ficava presa no status
+  // anterior (sem chegar a "validada" nem "erro"), até o timeout de
+  // inatividade marcar como "expirada" mesmo a pessoa tendo confirmado.
+  // Gravar antes garante que o resultado fica registrado mesmo se a
+  // liberação da fonte falhar.
   if (Object.keys(update).length > 0) {
     await supabase
       .from("oab_validations")
@@ -142,6 +189,32 @@ export async function POST(request: NextRequest, context: { params: Promise<{ va
       .eq("id", validationId)
       .eq("tenant_id", device.tenantId)
       .eq("user_id", device.userId);
+  }
+
+  // Fase 4 — quando o resultado é positivo (nome + status conferidos
+  // acima), liberamos a fonte. C2 da auditoria: os dois updates
+  // (users.oab_validated_at + tenants.access_status) são feitos
+  // atomicamente via RPC para evitar estado inconsistente em caso de
+  // falha parcial. O `service_role` é necessário porque a função é
+  // SECURITY DEFINER; o CS já foi autenticado pelo `autenticarDevice` e o
+  // escopo (tenant_id, user_id) foi validado acima no select do `current`.
+  if (body.event_type === "verified" && validacaoAceita) {
+    const { error: rpcError } = await supabase.rpc("finalize_oab_validation", {
+      p_user_id: current.user_id,
+      p_tenant_id: current.tenant_id,
+      p_oab_number: current.oab_number,
+      p_oab_uf: current.oab_uf,
+    });
+    if (rpcError) {
+      // O resultado já foi gravado acima (status "validada" +
+      // returned_name/status) — essa falha é só na liberação da fonte.
+      // Log e retorna 500 para o cliente saber que algo deu errado.
+      console.error("[cs/oab-validations] finalize_oab_validation falhou:", rpcError);
+      return NextResponse.json(
+        { error: "finalizacao_falhou", details: rpcError.message },
+        { status: 500 },
+      );
+    }
   }
 
   return NextResponse.json({ ok: true, status: nextStatus ?? current.status });
