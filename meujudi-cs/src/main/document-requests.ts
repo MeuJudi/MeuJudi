@@ -166,7 +166,8 @@ export class DocumentRequests {
       await this.ensureSession();
       const hrefBinario = `/processos/${claimed.cnj}/documentos/${claimed.pdpj_documento_id}/binario`;
       const base64 = await this.api.buscarBinarioDocumento(hrefBinario);
-      await this.complete(id, { status: 'done', base64 });
+      await this.uploadDireto(id, base64);
+      await this.complete(id, { status: 'done' });
 
       const durationMs = Date.now() - startedAt;
       recordDiagnosticEvent('document_request_fetched', 'success', 'Documento buscado sob demanda', { requestId: id }, durationMs);
@@ -200,7 +201,29 @@ export class DocumentRequests {
     return data.request;
   }
 
-  private async complete(id: string, body: { status: 'done'; base64: string } | { status: 'failed'; errorMessage: string }): Promise<void> {
+  /**
+   * Sobe o PDF direto pro Storage (CS -> Storage), sem passar o binário
+   * pelo corpo de uma rota do Next.js — só a URL/token de upload trafegam
+   * pelo Vercel, não o arquivo. Removeu um salto inteiro (CS->Vercel->
+   * Storage) que, medido em produção, levava ~0,8-1,2s sozinho.
+   */
+  private async uploadDireto(id: string, base64: string): Promise<void> {
+    const response = await fetch(`${MEUJUDI_WEB_URL}/api/cs/document-requests/${id}/upload-url`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.pairing.getDeviceToken()}` },
+    });
+    if (!response.ok) throw new Error(`Falha ao obter URL de upload (HTTP ${response.status}).`);
+    const { path, token } = await response.json() as { path: string; token: string };
+
+    if (!this.client) throw new Error('Client Realtime indisponivel pra fazer upload.');
+    const bytes = Buffer.from(base64, 'base64');
+    const { error } = await this.client.storage
+      .from('documentos-temp')
+      .uploadToSignedUrl(path, token, bytes, { contentType: 'application/pdf' });
+    if (error) throw new Error(`Falha ao subir o documento pro Storage: ${error.message}`);
+  }
+
+  private async complete(id: string, body: { status: 'done' } | { status: 'failed'; errorMessage: string }): Promise<void> {
     const response = await fetch(`${MEUJUDI_WEB_URL}/api/cs/document-requests/${id}/complete`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.pairing.getDeviceToken()}` },
