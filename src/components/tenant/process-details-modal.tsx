@@ -205,7 +205,7 @@ async function buscarDocumentoUrl(processoDocumentoId: string, modo: "visualizar
   return signed.url;
 }
 
-function DocumentoActions({ doc, onView }: { doc: ProcessDetails["documentos"][number]; onView: (url: string) => void }) {
+function DocumentoActions({ doc }: { doc: ProcessDetails["documentos"][number] }) {
   const [pending, setPending] = useState<"visualizar" | "baixar" | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -217,7 +217,9 @@ function DocumentoActions({ doc, onView }: { doc: ProcessDetails["documentos"][n
     try {
       const url = await buscarDocumentoUrl(doc.id, kind, setProgress);
       if (kind === "visualizar") {
-        onView(url);
+        // Visualizador nativo do navegador, numa aba/janela própria — não
+        // um iframe dentro do modal (testado e trocado a pedido).
+        window.open(url, "_blank", "noopener,noreferrer");
       } else {
         const link = window.document.createElement("a");
         link.href = url;
@@ -248,7 +250,7 @@ function DocumentoActions({ doc, onView }: { doc: ProcessDetails["documentos"][n
   );
 }
 
-function DocumentosList({ items, onView }: { items: ProcessDetails["documentos"]; onView: (url: string) => void }) {
+function DocumentosList({ items }: { items: ProcessDetails["documentos"] }) {
   return (
     <Panel title="Documentos" icon={<FileText className="h-4 w-4 text-[var(--tenant-brass)]" />}>
       {items.length === 0 ? (
@@ -270,7 +272,7 @@ function DocumentosList({ items, onView }: { items: ProcessDetails["documentos"]
                       {[doc.tipo, formatDate(doc.data_juntada ?? doc.descoberto_em)].filter(Boolean).join(" · ")}
                     </p>
                   </div>
-                  <DocumentoActions doc={doc} onView={onView} />
+                  <DocumentoActions doc={doc} />
                 </div>
                 {resumo.length > 0 ? (
                   <div className="mt-2 flex flex-wrap gap-1.5">
@@ -293,7 +295,6 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
   const [copied, setCopied] = useState(false);
   const [syncing, setSyncing] = useState<"datajud" | "mural" | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
-  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [state, setState] = useState<{ processId: string | null; details: ProcessDetails | null; error: string | null }>({ processId: null, details: null, error: null });
 
   useEffect(() => {
@@ -387,7 +388,6 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
   }
 
   return (
-    <>
     <Dialog open={!!processId} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="flex max-h-[92vh] max-w-[min(1100px,calc(100vw-24px))] flex-col gap-0 overflow-hidden border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-0 text-[var(--tenant-surface-foreground)] shadow-2xl">
         <DialogHeader className="shrink-0 border-b border-[var(--tenant-line)] px-5 py-5 pr-14 sm:px-7">
@@ -451,7 +451,7 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
               {activeTab === "movimentacoes" ? <TimelineList title="Movimentações do processo" icon={<FileText className="h-4 w-4 text-[var(--tenant-brass)]" />} empty="Nenhuma movimentação vinculada." items={details.movements.map((item) => ({ id: item.id, title: item.nome, subtitle: item.texto_completo, meta: formatDateTime(item.data_movimento), source: item.fonte, warning: Boolean(item.prazo_fatal) }))} /> : null}
               {activeTab === "agenda" ? <TimelineList title="Agenda vinculada" icon={<CalendarDays className="h-4 w-4 text-[var(--tenant-brass)]" />} empty="Nenhum evento vinculado." items={details.agenda.map((item) => ({ id: item.id, title: item.titulo, subtitle: item.descricao, meta: formatDateTime(item.data_inicio), source: item.fonte, warning: item.tipo === "prazo", link: item.link_videoconferencia }))} /> : null}
               {activeTab === "mural" ? <TimelineList title="Comunicações do Mural" icon={<FileText className="h-4 w-4 text-[var(--tenant-brass)]" />} empty="Nenhuma comunicação vinculada." items={details.mural.map((item) => ({ id: item.id, title: item.tipo_comunicacao, subtitle: item.texto, meta: `${formatDate(item.data_disponibilizacao)} · ${item.sigla_tribunal}`, source: "mural" }))} /> : null}
-              {activeTab === "documentos" ? <DocumentosList items={details.documentos} onView={setViewerUrl} /> : null}
+              {activeTab === "documentos" ? <DocumentosList items={details.documentos} /> : null}
             </div>
           </> : null}
         </div>
@@ -465,16 +465,6 @@ export function ProcessDetailsModal({ processId, onClose }: ProcessDetailsModalP
         </DialogFooter>
       </DialogContent>
     </Dialog>
-
-    <Dialog open={!!viewerUrl} onOpenChange={(open) => !open && setViewerUrl(null)}>
-      <DialogContent className="flex h-[85vh] max-w-4xl flex-col gap-0 overflow-hidden border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-0">
-        <DialogHeader className="shrink-0 border-b border-[var(--tenant-line)] px-4 py-3">
-          <DialogTitle className="text-sm font-semibold">Documento</DialogTitle>
-        </DialogHeader>
-        {viewerUrl ? <iframe src={viewerUrl} title="Visualizar documento" className="min-h-0 flex-1" /> : null}
-      </DialogContent>
-    </Dialog>
-    </>
   );
 }
 
