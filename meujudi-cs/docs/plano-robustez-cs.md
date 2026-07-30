@@ -198,9 +198,23 @@ necessidade de gerenciar/rotacionar token nenhum.
   "MeuJudi", repo: "MeuJudi-Sync-Releases" }`.
   `win.verifyUpdateCodeSignature: false` já estava setado (necessário
   porque o instalador ainda não é assinado, item 4).
-- Processo de release ainda é manual: `npm run dist:win` gera o `.exe` +
-  `latest.yml` em `release/`; sobem como assets de um Release novo
-  (tag `v<versão>`) no repo `MeuJudi-Sync-Releases`.
+- Processo de release ainda é manual, e **sempre exige as duas builds**
+  (descoberto ao testar: o instalador "assistido" mostra a janela do
+  wizard mesmo durante update automático, porque é assim que `oneClick:
+  false` funciona no NSIS — não tem como pular isso mantendo esse modo):
+  1. `npm run dist:win` — instalador assistido em `release/`, pro
+     download inicial (Super Admin / tenant). Não é usado pelo
+     autoUpdater.
+  2. `npm run dist:win:update` — instalador "um clique" (`oneClick:
+     true`, silencioso) em `release-update/`, nome
+     `MeuJudi-Sync-AutoUpdate-v<versão>.exe`. É esse + o `latest.yml`
+     dele que o autoUpdater de quem já tem o Sync consome.
+  3. Sobem os artefatos das duas builds (instalador assistido +
+     instalador silencioso + `latest.yml` da build silenciosa) juntos
+     no mesmo Release (tag `v<versão>`) no repo `MeuJudi-Sync-Releases`.
+  Esquecer a build silenciosa numa release quebra o auto-update de quem
+  já tem o Sync instalado (o `checkForUpdates()` falha sem `latest.yml`
+  no Release mais recente).
 - Erros de checagem/download de update só geram `recordDiagnosticEvent`
   (log local) — ainda não sobem pro Supabase nem aparecem pro Super
   Admin. Isso só fica coberto quando o item 15 (nenhum erro silencioso)

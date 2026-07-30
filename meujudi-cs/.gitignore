@@ -43,4 +43,8 @@ cache/
 # Super Admin quanto pelo autoUpdater do CS). Exceções antigas mantidas só
 # pra não desrastrear instaladores já commitados no histórico.
 release/*
+# Build "um clique" (silencioso) só pro feed do autoUpdater — nunca
+# commitado, sempre publicado direto no Release do GitHub via gh CLI
+# (ver npm run dist:win:update e docs/plano-robustez-cs.md, item 11).
+release-update/
 dist-electron/

@@ -1,6 +1,6 @@
 {
   "name": "meujudi-cs",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "MeuJudi Sync — app desktop (Electron) que sincroniza o escritório com o MeuJudi via Portal PDPJ/Jus.br e Mural Eletrônico.",
   "main": "dist/main/index.js",
   "author": "Caio",
@@ -20,6 +20,7 @@
     "test": "node tests/validate-pre-build.js && node tests/confirmadv-helpers.test.js && node tests/pdpj-api-helpers.test.js && node tests/classify-task-error.test.js && node tests/ipc-contract.test.js && node tests/no-secrets-no-pdf.test.js",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win",
+    "dist:win:update": "npm run build && electron-builder --win -c.nsis.oneClick=true -c.nsis.allowToChangeInstallationDirectory=false -c.directories.output=release-update -c.artifactName=\"MeuJudi-Sync-AutoUpdate-v${version}.${ext}\"",
     "pack": "npm run build && electron-builder --dir"
   },
   "dependencies": {

@@ -5,7 +5,7 @@
 
 export const APP_NAME = 'MeuJudi Sync';
 export const APP_FULL_NAME = 'Sincronização do escritório com o MeuJudi';
-export const APP_VERSION = '0.3.1';
+export const APP_VERSION = '0.3.2';
 export const USER_AGENT = 'MeuJudi-Sync/1.0 (compatible; Electron)';
 export const MEUJUDI_WEB_URL = process.env.MEUJUDI_WEB_URL || 'https://www.meujudi.com.br';
 

@@ -57,6 +57,12 @@ export default function Home() {
   return (
     <main className="min-h-screen flex items-center justify-center p-6">
       <div className="max-w-md w-full space-y-6">
+        {/* TESTE DE AUTO-UPDATE — remover na próxima versão real */}
+        <div className="rounded-lg bg-fuchsia-600 p-4 text-center text-white shadow-lg">
+          <p className="text-lg font-black uppercase tracking-wide">🚀 Versão de teste do auto-update</p>
+          <p className="text-xs opacity-90">Se você está vendo isso, a atualização automática funcionou!</p>
+        </div>
+
         <div className="text-center">
           <h1 className="text-3xl font-bold text-primary-700">MeuJudi Sync</h1>
           <p className="text-gray-500 mt-1 text-sm">Sincronização do escritório com o MeuJudi</p>

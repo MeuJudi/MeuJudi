@@ -14,11 +14,24 @@
  * package.json — sem isso o electron-updater recusaria aplicar o update
  * no Windows.
  *
- * Processo de release (manual, sem CI ainda):
- * 1. `npm run dist:win` gera o instalador + `latest.yml` em `release/`.
- * 2. Subir os dois arquivos como assets de um novo Release no repo
- *    `MeuJudi/MeuJudi-Sync-Releases`, com a tag `v<versão>` (igual ao
- *    `version` do package.json).
+ * Processo de release (manual, sem CI ainda) — SEMPRE gera as DUAS builds:
+ * 1. `npm run dist:win` — instalador "assistido" (wizard, escolhe pasta
+ *    etc.) em `release/`. É o que aparece pro tenant baixar pela primeira
+ *    vez (Super Admin / link de download). NÃO é usado pelo autoUpdater.
+ * 2. `npm run dist:win:update` — instalador "um clique" (silencioso,
+ *    sem UI nenhuma) em `release-update/`, nome `MeuJudi-Sync-AutoUpdate-
+ *    v<versão>.exe`. É esse (+ o `latest.yml` gerado junto) que o
+ *    autoUpdater de quem já tem o Sync instalado baixa e roda — por isso
+ *    não pode ter UI, ou o "silencioso" vira uma janela de instalador
+ *    pipocando sem aviso pro usuário.
+ * 3. Subir os artefatos das DUAS builds (instalador assistido + instalador
+ *    silencioso + o `latest.yml` da build silenciosa) como assets de um
+ *    mesmo Release no repo `MeuJudi/MeuJudi-Sync-Releases`, tag
+ *    `v<versão>` (igual ao `version` do package.json).
+ *
+ * Esquecer a build silenciosa numa release quebra o auto-update de quem
+ * já tem o Sync — o `electron-updater` depende de achar `latest.yml` no
+ * Release mais recente do repo; sem ele, `checkForUpdates()` falha.
  */
 
 import { app, Notification } from 'electron';
