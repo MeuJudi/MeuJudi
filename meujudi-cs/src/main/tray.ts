@@ -34,12 +34,13 @@ export function initTray(
   onDiagnostic: () => void,
   onLogs: () => void,
   onQuit: () => void,
-  onOpenApp: () => void
+  onOpenApp: () => void,
+  onCheckUpdate: () => void
 ): void {
   const icon = loadTrayIcon();
   tray = new Tray(icon);
   tray.setToolTip(APP_NAME);
-  rebuildMenu(onConnect, onSync, onDiagnostic, onLogs, onQuit, onOpenApp);
+  rebuildMenu(onConnect, onSync, onDiagnostic, onLogs, onQuit, onOpenApp, onCheckUpdate);
   logger.info('Tray icon inicializada');
 }
 
@@ -102,7 +103,8 @@ function rebuildMenu(
   onDiagnostic: () => void,
   onLogs: () => void,
   onQuit: () => void,
-  onOpenApp: () => void
+  onOpenApp: () => void,
+  onCheckUpdate: () => void
 ): void {
   if (!tray) return;
 
@@ -140,6 +142,11 @@ function rebuildMenu(
       id: 'logs',
       label: '📋 Ver logs',
       click: onLogs,
+    },
+    {
+      id: 'check-update',
+      label: '⬇️ Verificar atualização',
+      click: onCheckUpdate,
     },
     {
       id: 'about',
