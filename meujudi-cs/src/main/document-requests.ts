@@ -23,6 +23,7 @@
  */
 
 import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js';
+import WebSocket from 'ws';
 import { MEUJUDI_WEB_URL, SUPABASE_URL, SUPABASE_ANON_KEY } from '../shared/constants';
 import { logger, recordDiagnosticEvent } from './logger';
 import { PdpjApiClient, PdpjApiError } from './pdpj-api';
@@ -99,29 +100,47 @@ export class DocumentRequests {
       return;
     }
 
-    this.client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    this.client.realtime.setAuth(token);
-    this.lastAuthedToken = token;
-
-    this.channel = this.client
-      .channel(`document-fetch-requests:${tenantId}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'document_fetch_requests', filter: `tenant_id=eq.${tenantId}` },
-        (payload) => {
-          const id = (payload.new as { id?: string } | null)?.id;
-          if (id) void this.handleIncoming(id);
-        },
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          logger.info('DocumentRequests: assinatura Realtime ativa', { tenantId });
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          logger.warn('DocumentRequests: socket Realtime caiu, reconectando', { status });
-          this.teardown();
-          this.scheduleReconnect();
-        }
+    // Qualquer excecao aqui (ex.: falha ao montar o client/transporte) nao
+    // pode escapar pro processo main do Electron — sem o try/catch ela
+    // sobe crua ate o handler global e derruba a janela inteira com o
+    // dialog "A JavaScript error occurred in the main process".
+    try {
+      // O processo main do Electron roda num Node sem WebSocket global (só
+      // chegou nativo no Node 22+; Electron 33 embute o Node 20) — sem isso
+      // o realtime-js do Supabase lança "Node.js detected but native
+      // WebSocket not found" na hora de conectar.
+      this.client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        // O pacote `ws` não implementa o tipo DOM WebSocket exato que o
+        // realtime-js espera; é o transporte recomendado pra Node < 22.
+        realtime: { transport: WebSocket as any },
       });
+      this.client.realtime.setAuth(token);
+      this.lastAuthedToken = token;
+
+      this.channel = this.client
+        .channel(`document-fetch-requests:${tenantId}`)
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'document_fetch_requests', filter: `tenant_id=eq.${tenantId}` },
+          (payload) => {
+            const id = (payload.new as { id?: string } | null)?.id;
+            if (id) void this.handleIncoming(id);
+          },
+        )
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            logger.info('DocumentRequests: assinatura Realtime ativa', { tenantId });
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+            logger.warn('DocumentRequests: socket Realtime caiu, reconectando', { status });
+            this.teardown();
+            this.scheduleReconnect();
+          }
+        });
+    } catch (err: any) {
+      logger.warn('DocumentRequests: falha ao conectar no Realtime, tentando de novo em breve', { message: err?.message || String(err) });
+      this.teardown();
+      this.scheduleReconnect();
+    }
   }
 
   private scheduleReconnect(): void {
