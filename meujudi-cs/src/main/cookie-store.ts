@@ -82,6 +82,10 @@ export class CookieStore {
       session.expiresAt = new Date(session.expiresAt);
       session.createdAt = new Date(session.createdAt);
       session.lastUsedAt = new Date(session.lastUsedAt);
+      // tokenExpiresAt e opcional (sessao antiga pode nao ter) — sem essa
+      // revalidacao, virava string depois do JSON.parse e quebrava as
+      // comparacoes de tempo em isTokenNearExpiry (pdpj-auth.ts).
+      if (session.tokenExpiresAt) session.tokenExpiresAt = new Date(session.tokenExpiresAt);
 
       if (session.expiresAt <= new Date()) {
         logger.info('Sessão em disco expirada, limpando...');

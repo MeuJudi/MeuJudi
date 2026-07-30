@@ -71,6 +71,37 @@ const BEARER_PRIME_CNJ_FALLBACK = '0000001-01.2024.8.26.0100';
 // visivel; a home publica do jus.br nunca deve abrir sozinha na frente do
 // usuario. Ver docs/roadmap/23-meujudi-cs-v0.3.0-refatoracao.md Fase 5.
 const SHOW_PDPJ_VALIDATION_WINDOW = false;
+// A sessão de cookies (login no PJe/Keycloak) e o Bearer da API são coisas
+// diferentes, com tempos de vida diferentes — o Bearer é de propósito
+// curto (o `exp` real dele, lido do próprio JWT, costuma ser bem menor),
+// mas a sessão de cookies via SSO tende a durar bem mais. Antes os dois
+// eram tratados como a mesma coisa (8h fixas), e pior: quando esse prazo
+// inventado passava, `CookieStore.getValidSession()` deletava os cookies
+// junto — mesmo que a sessão real no PJe ainda estivesse válida. Agora só
+// os cookies têm um prazo generoso (achado real 30/07/2026); o Bearer usa
+// o `exp` de verdade do JWT, e a revalidação automática (`maybeValidateApi`)
+// passa a reagir a esse prazo real, não só a "token vazio".
+const SESSION_COOKIES_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias
+const TOKEN_FALLBACK_TTL_MS = 8 * 60 * 60 * 1000; // só se o JWT não puder ser decodificado
+const TOKEN_REFRESH_MARGIN_MS = 10 * 60 * 1000; // revalida um pouco antes do Bearer expirar de verdade
+
+/** Lê o `exp` de dentro do próprio JWT (payload base64url) — sem depender de suposição nossa sobre validade. */
+function decodeJwtExpiry(token: string): Date | null {
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return null;
+    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf-8'));
+    return typeof decoded.exp === 'number' ? new Date(decoded.exp * 1000) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Sem `tokenExpiresAt` (sessão antiga) trata como expirado — força revalidação em vez de confiar cego. */
+function isTokenNearExpiry(tokenExpiresAt?: Date): boolean {
+  if (!tokenExpiresAt) return true;
+  return tokenExpiresAt.getTime() - Date.now() <= TOKEN_REFRESH_MARGIN_MS;
+}
 
 interface QueryWindowSlot {
   window: BrowserWindow;
@@ -820,13 +851,13 @@ export class PdpjAuth {
       userId,
       cookies: cookies.map(this.serializeCookie),
       csrfToken: '',
-      expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000),
+      expiresAt: new Date(Date.now() + SESSION_COOKIES_TTL_MS),
       createdAt: new Date(),
       lastUsedAt: new Date(),
       provider: 'pdpj',
       accessToken,
       tokenType: 'Bearer',
-      tokenExpiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000),
+      tokenExpiresAt: accessToken ? (decodeJwtExpiry(accessToken) ?? new Date(Date.now() + TOKEN_FALLBACK_TTL_MS)) : undefined,
       apiValidated: Boolean(accessToken),
     };
 
@@ -1008,7 +1039,12 @@ export class PdpjAuth {
 
   private async maybeValidateApi(): Promise<void> {
     const session = this.store.getValidSession();
-    if (!session || session.accessToken) return; // sem sessão (precisa logar) ou já validado — nada a fazer
+    if (!session) return; // sem sessão de cookies salva — precisa logar, nada a fazer aqui
+    // Antes só reagia a "token vazio" — um Bearer capturado ficava marcado
+    // como "válido" pra sempre até alguém tomar 401 na prática. Agora
+    // revalida também quando o `exp` real do JWT está perto (ou passou),
+    // pegando a renovação silenciosa ANTES de qualquer requisição falhar.
+    if (session.accessToken && !isTokenNearExpiry(session.tokenExpiresAt)) return;
     // Não precisa de guard próprio contra execução simultânea — `ensureApiSession()`
     // já compartilha uma única execução entre todos os chamadores (ver seu comentário).
     try {
@@ -1078,8 +1114,10 @@ export class PdpjAuth {
       logger.warn('Validacao PDPJ cancelada: nenhuma sessao salva disponivel');
       return false;
     }
-    if (current.accessToken) {
-      logger.info('Validacao PDPJ ignorada: Bearer ja salvo');
+    if (current.accessToken && !isTokenNearExpiry(current.tokenExpiresAt)) {
+      logger.info('Validacao PDPJ ignorada: Bearer ja salvo e ainda valido', {
+        tokenExpiresAt: current.tokenExpiresAt?.toISOString(),
+      });
       return true;
     }
     if (this.authWindow && this.authWindow.isDestroyed()) this.authWindow = null;
