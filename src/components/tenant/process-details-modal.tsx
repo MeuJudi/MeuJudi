@@ -155,7 +155,7 @@ const DOCUMENT_REQUEST_FALLBACK_POLL_MS = 4_000;
  * Devolve uma signed URL de vida curta pro Storage temporário. Nunca
  * redireciona pro PDPJ.
  */
-async function buscarDocumentoUrl(processoDocumentoId: string, onProgress: (message: string) => void): Promise<string> {
+async function buscarDocumentoUrl(processoDocumentoId: string, modo: "visualizar" | "baixar", onProgress: (message: string) => void): Promise<string> {
   const { requestId } = await solicitarDocumento(processoDocumentoId);
   onProgress("Avisando o MeuJudi Sync...");
 
@@ -200,7 +200,7 @@ async function buscarDocumentoUrl(processoDocumentoId: string, onProgress: (mess
     }
   });
 
-  const signed = await getDocumentSignedUrl(requestId);
+  const signed = await getDocumentSignedUrl(requestId, modo);
   if (!signed.ok) throw new Error(signed.message);
   return signed.url;
 }
@@ -215,7 +215,7 @@ function DocumentoActions({ doc, onView }: { doc: ProcessDetails["documentos"][n
     setError(null);
     setProgress("Avisando o MeuJudi Sync...");
     try {
-      const url = await buscarDocumentoUrl(doc.id, setProgress);
+      const url = await buscarDocumentoUrl(doc.id, kind, setProgress);
       if (kind === "visualizar") {
         onView(url);
       } else {

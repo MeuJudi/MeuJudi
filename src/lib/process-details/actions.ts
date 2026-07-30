@@ -282,24 +282,29 @@ export async function getDocumentFetchRequest(requestId: string) {
  * service role) — por isso confirma a posse via RLS no client de sessão
  * antes de usar o client de service role só pra assinar a URL.
  */
-export async function getDocumentSignedUrl(requestId: string) {
+export async function getDocumentSignedUrl(requestId: string, modo: "visualizar" | "baixar" = "visualizar") {
   const { supabase, profile } = await requireAppUser();
   if (!profile.tenant_id) return { ok: false as const, message: "Usuário sem escritório vinculado." };
   const { data, error } = await supabase
     .from("document_fetch_requests")
-    .select("id, status, storage_path")
+    .select("id, status, storage_path, processo_documentos(nome)")
     .eq("id", requestId)
     .eq("tenant_id", profile.tenant_id)
-    .maybeSingle();
+    .maybeSingle<{ id: string; status: string; storage_path: string | null; processo_documentos: { nome: string | null } | null }>();
   if (error) return { ok: false as const, message: error.message };
   if (!data || data.status !== "done" || !data.storage_path) {
     return { ok: false as const, message: "Documento ainda não está pronto." };
   }
 
   const service = createServiceClient();
+  // "baixar" pede Content-Disposition: attachment pro Storage — sem isso o
+  // navegador ignora o atributo download de <a> em URL de outra origem e
+  // só abre o visualizador nativo de PDF (achado ao testar: apertar
+  // "Baixar" abria a mesma tela do "Visualizar" em vez de salvar o arquivo).
+  const nomeArquivo = data.processo_documentos?.nome || "documento.pdf";
   const { data: signed, error: signError } = await service.storage
     .from("documentos-temp")
-    .createSignedUrl(data.storage_path, 300);
+    .createSignedUrl(data.storage_path, 300, modo === "baixar" ? { download: nomeArquivo } : undefined);
   if (signError || !signed) return { ok: false as const, message: signError?.message ?? "Não foi possível gerar o link do documento." };
 
   return { ok: true as const, url: signed.signedUrl };
