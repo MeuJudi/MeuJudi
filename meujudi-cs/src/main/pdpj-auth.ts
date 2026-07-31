@@ -842,7 +842,7 @@ export class PdpjAuth {
   /**
    * Extrai cookies da BrowserWindow e monta PdpjSession.
    */
-  private async captureSession(accessToken?: string): Promise<PdpjSession> {
+  private async captureSession(accessToken?: string, preserveCreatedAt?: Date): Promise<PdpjSession> {
     if (!this.authWindow) {
       throw new Error('Janela de login não está aberta');
     }
@@ -897,7 +897,7 @@ export class PdpjAuth {
       cookies: cookies.map(this.serializeCookie),
       csrfToken: '',
       expiresAt: this.estimateExpiry(cookies),
-      createdAt: new Date(),
+      createdAt: preserveCreatedAt ?? new Date(),
       lastUsedAt: new Date(),
       provider: 'pdpj',
       accessToken,
@@ -1266,11 +1266,22 @@ export class PdpjAuth {
           path: cookie.path || '/',
           secure: cookie.secure,
           httpOnly: cookie.httpOnly,
+          // Sem isso, o cookie reaplicado vira "session cookie" (sem
+          // expirationDate) — estimateExpiry() então não acha nenhum cookie
+          // com expiração real e cai no palpite fixo de 7 dias a cada ciclo
+          // de revalidação (a cada 5min), fazendo a tela de "expira em Xh"
+          // parecer travada/resetando (achado 31/07/2026, relatado pelo Caio
+          // como "quando passa o tempo ele volta pra um tempo fixo").
+          expirationDate: cookie.expirationDate,
         });
       }
       const token = await this.ensurePortalBearer(() => this.capturedBearer);
       logger.info('Bearer PDPJ capturado em segundo plano; atualizando sessao local');
-      await this.captureSession(token);
+      // Passa `current.createdAt`: isso é revalidação de token em segundo
+      // plano, não um novo login — sem preservar a data original, cada
+      // ciclo de 5min reescrevia "Sessão criada em" pra agora, apagando o
+      // horário real do login.
+      await this.captureSession(token, current.createdAt);
       recordDiagnosticEvent('pdpj_session_upgraded', 'success', 'Sessao PDPJ antiga atualizada automaticamente para a API');
       await this.resumePausedTasks();
       return true;
