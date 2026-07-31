@@ -5,6 +5,7 @@
 // SyncWorker do CS reserva no próximo ciclo, busca no PJe e devolve via
 // /api/cs/sync/mural.
 
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 
@@ -39,6 +40,9 @@ export async function POST(req: NextRequest) {
   let erros = 0;
 
   const now = new Date();
+  // Um id por tenant nesta execução — agrupa a solicitação de várias OABs
+  // do mesmo escritório como um lote só na tela de fila do CS.
+  const batchIdPorTenant = new Map<string, string>();
 
   for (const oab of oabs) {
     try {
@@ -64,6 +68,7 @@ export async function POST(req: NextRequest) {
       // Chave de dedup: enquanto essa janela não for concluída, criar de
       // novo com a mesma chave é ignorado (409) — substitui a checagem
       // manual de "pedido pendente" que existia antes.
+      if (!batchIdPorTenant.has(oab.tenant_id)) batchIdPorTenant.set(oab.tenant_id, randomUUID());
       const { error: insertError } = await supabase.from("sync_tasks").insert({
         tenant_id: oab.tenant_id,
         source: "mural",
@@ -71,6 +76,7 @@ export async function POST(req: NextRequest) {
         idempotency_key: `mural_request:${oab.oab_number}:${oab.oab_uf}:${dataInicioStr}`,
         priority: 5,
         cursor: { oabNumber: oab.oab_number, oabUf: oab.oab_uf, dataInicio: dataInicioStr, dataFim: dataFimStr },
+        batch_id: batchIdPorTenant.get(oab.tenant_id),
       });
 
       if (insertError) {

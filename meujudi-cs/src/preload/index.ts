@@ -38,6 +38,8 @@ const api: ElectronAPI = {
   },
   queue: {
     listTasks: () => ipcRenderer.invoke('queue:list-tasks'),
+    listBatches: () => ipcRenderer.invoke('queue:list-batches'),
+    listBatchTasks: (batchKey) => ipcRenderer.invoke('queue:list-batch-tasks', batchKey),
   },
   sync: {
     now: () => ipcRenderer.invoke('sync:now'),

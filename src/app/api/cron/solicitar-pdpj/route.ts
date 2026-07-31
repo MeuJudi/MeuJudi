@@ -10,6 +10,7 @@
 // OAB inteira e cria as tarefas-filha pdpj_cnj automaticamente
 // (meujudi-cs/src/main/pdpj-tasks.ts::handlePdpjOab), sem mudança aqui.
 
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 
@@ -46,9 +47,13 @@ export async function POST(req: NextRequest) {
   let criados = 0;
   let pulados = 0;
   let erros = 0;
+  // Um id por tenant nesta execução — agrupa a descoberta de várias OABs
+  // do mesmo escritório como um lote só na tela de fila do CS.
+  const batchIdPorTenant = new Map<string, string>();
 
   for (const oab of oabs) {
     try {
+      if (!batchIdPorTenant.has(oab.tenant_id)) batchIdPorTenant.set(oab.tenant_id, randomUUID());
       const { error: insertError } = await supabase.from("sync_tasks").insert({
         tenant_id: oab.tenant_id,
         source: "pdpj",
@@ -56,6 +61,7 @@ export async function POST(req: NextRequest) {
         idempotency_key: `pdpj_oab:${oab.oab_number}:${oab.oab_uf}:${balde}`,
         priority: 5,
         cursor: { oabNumber: oab.oab_number, oabUf: oab.oab_uf },
+        batch_id: batchIdPorTenant.get(oab.tenant_id),
       });
 
       if (insertError) {

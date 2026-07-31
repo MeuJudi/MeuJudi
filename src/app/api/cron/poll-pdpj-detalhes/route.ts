@@ -8,6 +8,7 @@
 // restantes até 16h, pra terminar o "rodízio do dia" sem estourar tudo de
 // uma vez nem deixar sobra. Se não tem pendente, não faz nada nesse tenant.
 
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 
@@ -91,6 +92,10 @@ export async function POST(req: NextRequest) {
       if (!pendentes || pendentes === 0) continue;
 
       const loteDeHoje = Math.min(pendentes, Math.ceil(pendentes / horasRestantes));
+      // Um id só por tenant nesta execução — agrupa as tarefas criadas
+      // agora como "um lote" na tela de fila do CS (ver
+      // sync_tasks_batches no banco). Puramente visual, não afeta claim.
+      const batchId = randomUUID();
 
       let querySelecao = supabase
         .from("processos")
@@ -113,6 +118,7 @@ export async function POST(req: NextRequest) {
           priority: 6,
           cnj: processo.cnj,
           processo_id: processo.id,
+          batch_id: batchId,
         });
         if (insertError) {
           if (insertError.code === "23505") pulados++;

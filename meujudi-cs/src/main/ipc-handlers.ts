@@ -20,7 +20,7 @@ import { createPdpjTaskHandlers } from './pdpj-tasks';
 import { createMuralTaskHandlers, startMuralScheduledTasks } from './mural-tasks';
 import { DocumentRequests } from './document-requests';
 import type { StatusReporter, ConnectionStatus } from './status-reporter';
-import type { PdpjStatus, PublicSession, LogEntry, DiagnosticReport, ConfirmADVValidation, SyncTask, UnifiedSyncProgress } from '../shared/types';
+import type { PdpjStatus, PublicSession, LogEntry, DiagnosticReport, ConfirmADVValidation, SyncTask, TaskBatch, UnifiedSyncProgress } from '../shared/types';
 
 /**
  * Registra todos os IPC handlers. Deve ser chamado uma vez no app.whenReady().
@@ -100,6 +100,24 @@ export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: St
       return await taskQueueClient.list();
     } catch (err: any) {
       logger.warn('Falha ao listar fila de tarefas:', err.message);
+      return [];
+    }
+  });
+
+  ipcMain.handle('queue:list-batches', async (): Promise<TaskBatch[]> => {
+    try {
+      return await taskQueueClient.listBatches();
+    } catch (err: any) {
+      logger.warn('Falha ao listar lotes da fila:', err.message);
+      return [];
+    }
+  });
+
+  ipcMain.handle('queue:list-batch-tasks', async (_event, batchKey: string): Promise<SyncTask[]> => {
+    try {
+      return await taskQueueClient.listBatchTasks(batchKey);
+    } catch (err: any) {
+      logger.warn('Falha ao listar tarefas do lote:', err.message);
       return [];
     }
   });

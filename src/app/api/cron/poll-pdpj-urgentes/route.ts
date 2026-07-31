@@ -9,6 +9,7 @@
 // (pdpj_cnj:{cnj}:{data}) — se o Cron 2 já reescaneou esse processo hoje, a
 // tentativa daqui simplesmente colide (23505) e é ignorada, sem duplicar.
 
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 
@@ -67,8 +68,11 @@ export async function POST(req: NextRequest) {
         .or(`prazo_proxima_resposta.lte.${limiteFuturo},proxima_audiencia.lte.${limiteFuturo}`);
       if (filtroCnjAberto) queryProcessos = queryProcessos.not("cnj", "in", filtroCnjAberto);
       const { data: processos } = await queryProcessos;
+      if (!processos || processos.length === 0) continue;
 
-      for (const processo of processos ?? []) {
+      // Um id só por tenant nesta execução — agrupa na tela de fila do CS.
+      const batchId = randomUUID();
+      for (const processo of processos) {
         const { error: insertError } = await supabase.from("sync_tasks").insert({
           tenant_id: tenant.id,
           source: "pdpj",
@@ -77,6 +81,7 @@ export async function POST(req: NextRequest) {
           priority: 2,
           cnj: processo.cnj,
           processo_id: processo.id,
+          batch_id: batchId,
         });
         if (insertError) {
           if (insertError.code === "23505") pulados++;

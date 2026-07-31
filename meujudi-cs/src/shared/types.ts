@@ -52,9 +52,16 @@ export interface PublicSession {
   expiresAt: Date;
   createdAt: Date;
   lastUsedAt: Date;
-  timeRemainingMs: number;      // expiresAt - now
+  timeRemainingMs: number;      // expiresAt - now (sessão de cookies, ~7 dias)
   apiValidated?: boolean;
   apiStatus?: 'pending' | 'validated' | 'unavailable';
+  // Prazo real do token Bearer da API (JWT do PDPJ) — bem mais curto que
+  // a sessão de cookies acima. `apiValidated: true` só diz "existe um
+  // token salvo", não diz se ele ainda é válido; achado em produção
+  // (31/07/2026) que a tela mostrava só o prazo da sessão de cookies,
+  // escondendo que o token da API já tinha expirado havia horas.
+  apiTokenExpiresAt?: Date;
+  apiTokenTimeRemainingMs?: number;
 }
 
 /**
@@ -178,6 +185,8 @@ export interface ElectronAPI {
   };
   queue: {
     listTasks: () => Promise<SyncTask[]>;
+    listBatches: () => Promise<TaskBatch[]>;
+    listBatchTasks: (batchKey: string) => Promise<SyncTask[]>;
   };
   sync: {
     now: () => Promise<UnifiedSyncProgress>;
@@ -287,6 +296,24 @@ export interface SyncTask {
   started_at: string | null;
   last_activity_at: string | null;
   completed_at: string | null;
+  created_at: string;
+}
+
+/**
+ * Resumo agregado de um "lote" da fila (tarefas criadas juntas por uma
+ * execução de cron, ou tarefas-filha de pdpj_oab) — usado pela tela "Fila
+ * de tarefas" pra mostrar progresso sem listar cada linha. `batch_key` é
+ * `coalesce(batch_id, parent_task_id, id)`, calculado no banco (ver
+ * função `sync_tasks_batches`).
+ */
+export interface TaskBatch {
+  batch_key: string;
+  source: SyncTaskSource;
+  type: string;
+  total: number;
+  done: number;
+  failed: number;
+  paused: number;
   created_at: string;
 }
 

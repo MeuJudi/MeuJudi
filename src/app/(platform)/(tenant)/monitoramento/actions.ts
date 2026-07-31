@@ -351,6 +351,15 @@ export type MuralSyncStatus = {
   errorMessage?: string;
 };
 
+/**
+ * Lia de `cs_mural_requests` até 31/07/2026 — tabela órfã desde a
+ * migração do Mural pra fila unificada (Fase 7 de
+ * docs/roadmap/23-meujudi-cs-v0.3.0-refatoracao.md): nada escreve mais
+ * nela, então o card ficava preso mostrando o último registro de antes
+ * da migração ("há 2d") mesmo com sincronizações reais acontecendo o dia
+ * todo via `sync_tasks` (mural_push a cada 30min). Corrigido pra ler da
+ * fonte certa.
+ */
 export async function getMuralSyncStatus(): Promise<MuralSyncStatus> {
   try {
     const { supabase, profile } = await requireAppUser();
@@ -358,27 +367,36 @@ export async function getMuralSyncStatus(): Promise<MuralSyncStatus> {
 
     // Checa se há algum pedido em processamento
     const { data: processing } = await supabase
-      .from("cs_mural_requests")
-      .select("oab_number, oab_uf, claimed_at")
+      .from("sync_tasks")
+      .select("cursor, started_at")
       .eq("tenant_id", profile.tenant_id)
-      .eq("status", "processing")
-      .order("claimed_at", { ascending: false })
+      .eq("source", "mural")
+      .eq("type", "mural_request")
+      .in("status", ["claimed", "running"])
+      .order("started_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
     if (processing) {
+      const cursor = processing.cursor as { oabNumber?: string; oabUf?: string } | null;
       return {
         status: "syncing",
-        processing: { oabNumber: processing.oab_number, oabUf: processing.oab_uf, startedAt: processing.claimed_at },
+        processing: {
+          oabNumber: cursor?.oabNumber ?? "",
+          oabUf: cursor?.oabUf ?? "",
+          startedAt: processing.started_at ?? new Date().toISOString(),
+        },
       };
     }
 
     // Busca o último completado
     const { data: last } = await supabase
-      .from("cs_mural_requests")
-      .select("status, result, error_message, completed_at, created_at")
+      .from("sync_tasks")
+      .select("status, counters, error_message, completed_at, created_at")
       .eq("tenant_id", profile.tenant_id)
-      .in("status", ["completed", "failed"])
+      .eq("source", "mural")
+      .eq("type", "mural_request")
+      .in("status", ["completed", "completed_with_warnings", "failed"])
       .order("completed_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -389,14 +407,14 @@ export async function getMuralSyncStatus(): Promise<MuralSyncStatus> {
       return { status: "error", errorMessage: last.error_message || "Falha desconhecida" };
     }
 
-    const result = last.result as { recebidas?: number; novas?: number; erros?: number } | null;
+    const counters = last.counters as { recebidas?: number; novas?: number; erros?: number } | null;
     return {
       status: "idle",
       lastSync: {
-        completedAt: last.completed_at,
-        recebidas: result?.recebidas ?? 0,
-        novas: result?.novas ?? 0,
-        erros: result?.erros ?? 0,
+        completedAt: last.completed_at ?? last.created_at,
+        recebidas: counters?.recebidas ?? 0,
+        novas: counters?.novas ?? 0,
+        erros: counters?.erros ?? 0,
       },
     };
   } catch {

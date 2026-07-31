@@ -21,6 +21,7 @@ export default function PdpjSourcePage() {
   const session = isConnected ? status.session : null;
 
   const timeRemaining = useTimeAgo(session?.expiresAt);
+  const apiTokenTimeRemaining = useTimeAgo(session?.apiTokenExpiresAt);
 
   const handleSyncNow = async () => {
     setSyncing(true);
@@ -48,6 +49,7 @@ export default function PdpjSourcePage() {
         <ConnectedCard
           session={session}
           timeRemaining={timeRemaining}
+          apiTokenTimeRemaining={apiTokenTimeRemaining}
           onDisconnect={disconnect}
           onSyncNow={handleSyncNow}
           onOpenJus={() => window.meujudi.pdpj.openJus()}
@@ -71,6 +73,7 @@ export default function PdpjSourcePage() {
 function ConnectedCard({
   session,
   timeRemaining,
+  apiTokenTimeRemaining,
   onDisconnect,
   onSyncNow,
   onOpenJus,
@@ -78,6 +81,13 @@ function ConnectedCard({
   isLoading,
   syncing,
 }: any) {
+  // `apiStatus === 'validated'` só diz que existe um token salvo — não
+  // diz se ele ainda é válido. O prazo de baixo (apiTokenExpiresAt) é o
+  // que de fato importa pras tarefas do PDPJ; a sessão de cookies acima
+  // dura bem mais (~7 dias) e não reflete isso.
+  const apiTokenExpirado = session.apiTokenExpiresAt && new Date(session.apiTokenExpiresAt).getTime() <= Date.now();
+  const apiRealmenteValidada = session.apiStatus === 'validated' && !apiTokenExpirado;
+
   return (
     <div className="card space-y-4">
       <div className="flex items-center justify-between">
@@ -91,7 +101,7 @@ function ConnectedCard({
           <p className="font-mono text-base">{session.userId}</p>
         </div>
         <div>
-          <p className="text-gray-500">Expira</p>
+          <p className="text-gray-500">Sessão (cookies) expira</p>
           <p className="font-mono text-base">{timeRemaining}</p>
         </div>
         <div>
@@ -104,8 +114,11 @@ function ConnectedCard({
         </div>
       </div>
 
-      <div className={`rounded-lg border p-3 text-sm ${session.apiStatus === 'validated' ? 'border-green-200 bg-green-50 text-green-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
-        <strong>API PDPJ:</strong> {session.apiStatus === 'validated' ? 'validada e pronta para extracao' : 'aguardando validacao em segundo plano'}
+      <div className={`rounded-lg border p-3 text-sm ${apiRealmenteValidada ? 'border-green-200 bg-green-50 text-green-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+        <strong>API PDPJ:</strong> {apiRealmenteValidada ? 'validada e pronta para extração' : apiTokenExpirado ? 'token expirado — renovando em segundo plano' : 'aguardando validação em segundo plano'}
+        {session.apiTokenExpiresAt && (
+          <span className="ml-2 text-xs opacity-80">(token {apiTokenTimeRemaining})</span>
+        )}
       </div>
 
       <div className="border-t pt-4 flex flex-wrap gap-2">

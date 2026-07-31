@@ -9,7 +9,7 @@
 import { MEUJUDI_WEB_URL } from '../shared/constants';
 import { logger } from './logger';
 import type { Pairing } from './pairing';
-import type { SyncTask, SyncTaskFinalStatus, SyncTaskSource } from '../shared/types';
+import type { SyncTask, SyncTaskFinalStatus, SyncTaskSource, TaskBatch } from '../shared/types';
 
 const TIMEOUT_MS = 15_000;
 
@@ -40,6 +40,18 @@ export class TaskQueueClient {
   /** Lista as tarefas recentes do tenant pareado (tela de fila). Só leitura, não reserva nada. */
   async list(): Promise<SyncTask[]> {
     const data = await this.request<{ tasks: SyncTask[] }>('/api/cs/tasks', undefined, 'GET');
+    return data.tasks;
+  }
+
+  /** Resumo agregado por lote (tela de fila, visão agrupada). */
+  async listBatches(): Promise<TaskBatch[]> {
+    const data = await this.request<{ batches: TaskBatch[] }>('/api/cs/tasks/batches', undefined, 'GET');
+    return data.batches;
+  }
+
+  /** Tarefas individuais de um lote específico (expandir um card na tela de fila). */
+  async listBatchTasks(batchKey: string): Promise<SyncTask[]> {
+    const data = await this.request<{ tasks: SyncTask[] }>(`/api/cs/tasks?batch=${encodeURIComponent(batchKey)}`, undefined, 'GET');
     return data.tasks;
   }
 

@@ -663,11 +663,40 @@ export class PdpjAuth {
     let lastStorageDumpAt = 0;
     let domInspected = false;
     let consultationTriggered = false;
+    // Achado em produção (31/07/2026): a janela reutilizada às vezes fica
+    // presa na tela de SSO silencioso do Keycloak
+    // (sso.cloud.pje.jus.br/.../openid-connect/auth) — nunca completa o
+    // redirecionamento de volta pro portal, localStorage/sessionStorage
+    // ficam vazios pra sempre. O restante do loop então tenta clicar em
+    // campos de busca que não existem nessa página (sempre falha com
+    // "combobox-nao-encontrado"), gastando os 45s inteiros sem chance
+    // nenhuma de capturar o Bearer. Detecta esse estado e força 1 nova
+    // navegação — só uma vez por tentativa, pra não virar loop.
+    let reloadTentado = false;
     while (Date.now() - startedAt < BEARER_CAPTURE_TIMEOUT_MS) {
       const token = getBearerToken();
       if (token) {
         recordDiagnosticEvent('pdpj_api_validated', 'success', 'Bearer da API PDPJ capturado');
         return token;
+      }
+      if (!reloadTentado && Date.now() - startedAt > 12_000 && !this.authWindow.webContents.isLoading()) {
+        const urlAtual = this.authWindow.webContents.getURL();
+        if (/sso\.cloud\.pje\.jus\.br/.test(urlAtual)) {
+          reloadTentado = true;
+          logger.warn('PDPJ: janela presa na tela de SSO do Keycloak, forcando nova navegacao', { url: safeUrlForLog(urlAtual) });
+          recordDiagnosticEvent('pdpj_api_validation_keycloak_stuck', 'warning', 'Janela presa no SSO silencioso do Keycloak; recarregando', { url: safeHost(urlAtual) });
+          try {
+            await this.authWindow.loadURL(PDPJ_LOGIN_URL);
+          } catch (error: any) {
+            logger.warn('PDPJ: falha ao recarregar apos deteccao de SSO preso:', error?.message || error);
+          }
+          // A pagina mudou de verdade — os passos de clicar em "Consultar
+          // processos" e inspecionar o formulario precisam rodar de novo.
+          consultationTriggered = false;
+          domInspected = false;
+          await new Promise((resolve) => setTimeout(resolve, BEARER_CAPTURE_RETRY_MS));
+          continue;
+        }
       }
       // Diagnostico temporario (29/07/2026): achado em log real — depois do
       // clique em "Consultar processos", nenhuma requisicao autenticada
@@ -1528,6 +1557,9 @@ export class PdpjAuth {
   // ============================================================
 
   private toPublicSession(session: PdpjSession): PublicSession {
+    // `apiValidated`/`apiStatus` só checam se existe um token salvo, não
+    // se ele ainda é válido — por isso o campo separado abaixo, com o
+    // prazo real do JWT (bem mais curto que a sessão de cookies).
     return {
       userId: session.userId,
       expiresAt: session.expiresAt,
@@ -1536,6 +1568,8 @@ export class PdpjAuth {
       timeRemainingMs: session.expiresAt.getTime() - Date.now(),
       apiValidated: Boolean(session.accessToken),
       apiStatus: session.accessToken ? 'validated' : 'pending',
+      apiTokenExpiresAt: session.tokenExpiresAt,
+      apiTokenTimeRemainingMs: session.tokenExpiresAt ? session.tokenExpiresAt.getTime() - Date.now() : undefined,
     };
   }
 }
