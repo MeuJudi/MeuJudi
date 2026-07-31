@@ -29,6 +29,7 @@ const api: ElectronAPI = {
   app: {
     getVersion: () => ipcRenderer.invoke('app:get-version'),
     openLogsFolder: () => ipcRenderer.invoke('app:open-logs-folder'),
+    checkForUpdates: () => ipcRenderer.invoke('app:check-for-updates'),
   },
   pairing: {
     submitCode: (codigo) => ipcRenderer.invoke('pairing:submit-code', codigo),

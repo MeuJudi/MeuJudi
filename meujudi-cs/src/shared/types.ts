@@ -183,6 +183,7 @@ export interface ElectronAPI {
   app: {
     getVersion: () => Promise<string>;
     openLogsFolder: () => Promise<void>;
+    checkForUpdates: () => Promise<void>;
   };
   pairing: {
     submitCode: (codigo: string) => Promise<PairingInfo>;

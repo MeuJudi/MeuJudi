@@ -9,11 +9,10 @@
  * - Sair
  */
 
-import { Tray, Menu, nativeImage, app, NativeImage, BrowserWindow } from 'electron';
+import { Tray, Menu, nativeImage, app, NativeImage } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { logger } from './logger';
-import { loadAppIcon } from './app-icon';
 import { APP_NAME, TRAY_STATUS } from '../shared/constants';
 import type { TrayStatus } from '../shared/constants';
 
@@ -35,12 +34,13 @@ export function initTray(
   onLogs: () => void,
   onQuit: () => void,
   onOpenApp: () => void,
-  onCheckUpdate: () => void
+  onCheckUpdate: () => void,
+  onOpenAbout: () => void
 ): void {
   const icon = loadTrayIcon();
   tray = new Tray(icon);
   tray.setToolTip(APP_NAME);
-  rebuildMenu(onConnect, onSync, onDiagnostic, onLogs, onQuit, onOpenApp, onCheckUpdate);
+  rebuildMenu(onConnect, onSync, onDiagnostic, onLogs, onQuit, onOpenApp, onCheckUpdate, onOpenAbout);
   logger.info('Tray icon inicializada');
 }
 
@@ -104,7 +104,8 @@ function rebuildMenu(
   onLogs: () => void,
   onQuit: () => void,
   onOpenApp: () => void,
-  onCheckUpdate: () => void
+  onCheckUpdate: () => void,
+  onOpenAbout: () => void
 ): void {
   if (!tray) return;
 
@@ -151,31 +152,7 @@ function rebuildMenu(
     {
       id: 'about',
       label: `ℹ️ Sobre ${APP_NAME} v${app.getVersion()}`,
-      click: () => {
-        const about = new BrowserWindow({
-          width: 400,
-          height: 300,
-          title: `Sobre ${APP_NAME}`,
-          icon: loadAppIcon(),
-          autoHideMenuBar: true,
-        });
-        about.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
-          <html>
-            <body style="font-family: system-ui; padding: 20px; text-align: center;">
-              <h1>${APP_NAME}</h1>
-              <p>Versão: ${app.getVersion()}</p>
-              <p>Plataforma: ${process.platform} (${process.arch})</p>
-              <p>Electron: ${process.versions.electron}</p>
-              <p>Node: ${process.versions.node}</p>
-              <hr>
-              <p style="color: #6b7280; font-size: 12px;">
-                MeuJudi Sync — Sincronização do escritório<br>
-                © 2026 Caio
-              </p>
-            </body>
-          </html>
-        `)}`);
-      },
+      click: onOpenAbout,
     },
     { type: 'separator' },
     {

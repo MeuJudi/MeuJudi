@@ -9,6 +9,7 @@ import { ipcMain, app, shell } from 'electron';
 import { PdpjAuth } from './pdpj-auth';
 import { Diagnostic } from './diagnostic';
 import { getConcurrencyStatus, setMaxConcurrentPdpj } from './pdpj-concurrency';
+import { checkForUpdatesManually } from './auto-updater';
 import { logger, getRecentLogs } from './logger';
 import { enviarRelatorioSupabase } from './supabase-reporter';
 import { Pairing } from './pairing';
@@ -230,6 +231,13 @@ export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: St
   ipcMain.handle('app:open-logs-folder', async () => {
     const logsPath = `${app.getPath('userData')}\\logs`;
     await shell.openPath(logsPath);
+  });
+
+  // Antes só existia via menu da bandeja — agora a página "Sobre" também
+  // tem o botão (achado 31/07/2026: função que só existia na bandeja).
+  ipcMain.handle('app:check-for-updates', async () => {
+    logger.info('IPC: app:check-for-updates');
+    checkForUpdatesManually();
   });
 
   return {

@@ -71,7 +71,8 @@ if (!gotLock) {
         app.quit();
       },
       () => openAppWindow(),
-      () => checkForUpdatesManually()
+      () => checkForUpdatesManually(),
+      () => openAppWindow('about')
     );
 
     // Mantem o Web informado sobre a presenca deste dispositivo pareado.
@@ -177,9 +178,20 @@ async function openLoginWindow(): Promise<void> {
   }
 }
 
-/** Abre a interface principal local do CS, incluida no instalador. */
-function openAppWindow(): void {
+/**
+ * Abre a interface principal local do CS, incluida no instalador.
+ * `route` navega direto pra uma subpágina (ex.: 'about') — usado pela
+ * bandeja pra abrir "Sobre" na página de verdade do app, em vez de manter
+ * uma janela HTML separada e desatualizada (achado 31/07/2026: a bandeja
+ * tinha sua própria versão hardcoded de "Sobre", divergente da real).
+ */
+function openAppWindow(route: string = ''): void {
+  const rendererPath = path.join(app.getAppPath(), 'src', 'renderer', 'out', route, 'index.html');
+
   if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.loadFile(rendererPath).catch((error) => {
+      logger.error('Erro ao navegar na interface do CS:', error);
+    });
     mainWindow.show();
     mainWindow.focus();
     return;
@@ -200,7 +212,6 @@ function openAppWindow(): void {
     },
   });
 
-  const rendererPath = path.join(app.getAppPath(), 'src', 'renderer', 'out', 'index.html');
   mainWindow.loadFile(rendererPath).catch((error) => {
     logger.error('Erro ao abrir interface do CS:', error);
   });
