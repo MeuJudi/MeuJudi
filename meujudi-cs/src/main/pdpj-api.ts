@@ -122,6 +122,10 @@ export class PdpjApiClient {
           bearerLength: session.accessToken?.length ?? 0,
           attempt: attempt + 1,
         });
+        // Duracao por requisicao — antes só dava pra saber isso baixando
+        // HAR do DevTools manualmente. Com isso no log normal, o log já é
+        // um "HAR automático" pra tempo de resposta (achado 31/07/2026).
+        const inicioMs = Date.now();
         const authorization = `${session.tokenType ?? 'Bearer'} ${session.accessToken}`;
         const browserResponse = this.browserRequest
           ? await this.browserRequest(`${PDPJ_API_URL}${path}`, authorization)
@@ -155,6 +159,7 @@ export class PdpjApiClient {
             contentType,
             transport: browserResponse ? 'chromium' : 'node-fetch',
             bodyPreview: redactPdpjBody(body),
+            durationMs: Date.now() - inicioMs,
           });
           throw new PdpjApiError(`PDPJ respondeu HTTP ${status}.`, status, false, extractServerMessage(body));
         }
@@ -165,6 +170,7 @@ export class PdpjApiClient {
             path: redactPdpjPath(path),
             transport: browserResponse ? 'chromium' : 'node-fetch',
             bodyPreview: redactPdpjBody(body),
+            durationMs: Date.now() - inicioMs,
           });
           // 429 é sinal real de rate limit — trava a concorrência de volta
           // pra 1 (ver pdpj-concurrency.ts), independente de teste manual
@@ -180,6 +186,7 @@ export class PdpjApiClient {
           status,
           path: redactPdpjPath(path),
           transport: browserResponse ? 'chromium' : 'node-fetch',
+          durationMs: Date.now() - inicioMs,
         });
         return body;
       } catch (error) {
