@@ -70,17 +70,15 @@ const BEARER_PRIME_CNJ_FALLBACK = '0000001-01.2024.8.26.0100';
 // sem roubar foco. So a janela de LOGIN inicial (showLoginWindow) e
 // visivel; a home publica do jus.br nunca deve abrir sozinha na frente do
 // usuario. Ver docs/roadmap/23-meujudi-cs-v0.3.0-refatoracao.md Fase 5.
-// TEMPORARIO (31/07/2026) — ligado pra investigar ao vivo por que a
-// revalidacao automatica do Bearer fica travada (ver achado do dia:
-// 98% das tarefas pdpj_cnj falharam por sessao expirada). Mostra a janela
-// tecnica e abre o DevTools nela (aba Network) pra observar o que
-// realmente acontece na troca com o Keycloak. DESLIGAR (voltar pra
-// `false`) depois de capturar um ciclo de falha real — não é assim que
-// deve rodar em produção (a janela tecnica nunca deveria aparecer sozinha
-// na frente do usuário, ver docs/roadmap/23-meujudi-cs-v0.3.0-
-// refatoracao.md Fase 5).
-const SHOW_PDPJ_VALIDATION_WINDOW = true;
-const OPEN_DEVTOOLS_NA_JANELA_TECNICA = true;
+// Revertido pra producao (31/07/2026) apos a investigacao com DevTools
+// visivel: HAR real capturou 8 ciclos SEGUIDOS de revalidacao com 100% de
+// sucesso (token+userinfo+consulta, todos 200) — bem diferente dos ~2% de
+// sucesso em producao (janela sempre oculta). Suspeita agora e
+// `backgroundThrottling` (ver webPreferences da janela tecnica logo
+// abaixo, doEnsureApiSession) — mantém oculta, mas sem throttle, que é o
+// teste de verdade da hipotese.
+const SHOW_PDPJ_VALIDATION_WINDOW = false;
+const OPEN_DEVTOOLS_NA_JANELA_TECNICA = false;
 // A sessão de cookies (login no PJe/Keycloak) e o Bearer da API são coisas
 // diferentes, com tempos de vida diferentes — o Bearer é de propósito
 // curto (o `exp` real dele, lido do próprio JWT, costuma ser bem menor),
@@ -1290,7 +1288,16 @@ export class PdpjAuth {
         show: SHOW_PDPJ_VALIDATION_WINDOW,
         icon: loadAppIcon(),
         autoHideMenuBar: true,
-        webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
+        // `backgroundThrottling: false` — achado 31/07/2026 via HAR real:
+        // com a janela VISIVEL, 8 ciclos seguidos de revalidacao
+        // capturaram Bearer com sucesso (100%), contra ~2% em produção
+        // (janela sempre oculta, `show: false`). Suspeita forte: o
+        // Chromium por padrao throttla timers/rAF de janela em segundo
+        // plano pra economizar recurso — pode ser exatamente o que quebra
+        // o SSO silencioso do Keycloak (que depende de timers/iframe) só
+        // quando a janela fica escondida. Mantém oculta (nao e assim que
+        // deve rodar visivel em produção) mas sem o throttling.
+        webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false },
       });
       this.authWindow.setTitle('MeuJudi Sync - Diagnostico PDPJ');
       logger.info('Janela tecnica do Portal PDPJ criada para capturar o Bearer');
@@ -1582,7 +1589,10 @@ export class PdpjAuth {
       show: false,
       icon: loadAppIcon(),
       autoHideMenuBar: true,
-      webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
+      // Mesmo achado da janela tecnica de validacao (ver comentario lá) —
+      // este pool tambem e sempre oculto e o comentario logo abaixo já
+      // descreve o mesmo sintoma (ERR_ABORTED no SSO silencioso).
+      webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false },
     });
     window.setTitle('MeuJudi Sync - Consulta PDPJ');
     window.on('closed', () => {
