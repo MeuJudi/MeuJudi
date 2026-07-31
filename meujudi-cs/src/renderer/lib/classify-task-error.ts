@@ -28,6 +28,18 @@ export function classifyTaskError(task: TaskErrorInput): TaskErrorGuidance | nul
       proximoPasso: 'Refaça o login em "Portal PDPJ/Jus" — a tarefa retoma sozinha do ponto em que parou.',
     };
   }
+  if (/parou após \d+ tentativas/i.test(msg)) {
+    return {
+      causa: 'Essa tarefa pausou e foi destravada repetidamente sem nunca completar, até bater o teto de tentativas.',
+      proximoPasso: 'Confira "Logs" pra entender a causa original da pausa — não vai tentar de novo sozinha.',
+    };
+  }
+  if (/não possui acesso ao processo/i.test(msg)) {
+    return {
+      causa: 'O PDPJ reconhece o login, mas nega acesso a este processo específico (não a sessão inteira).',
+      proximoPasso: 'Confira se este escritório está mesmo registrado como parte/procurador desse processo no PDPJ — se não estiver, não há tarefa que resolva isso automaticamente.',
+    };
+  }
   if (/HTTP 404/.test(msg)) {
     return {
       causa: 'A fonte não encontrou o registro pedido — geralmente é só o fim natural da paginação.',

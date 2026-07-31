@@ -23,7 +23,7 @@
 import { MEUJUDI_WEB_URL } from '../shared/constants';
 import { logger, recordDiagnosticEvent } from './logger';
 import { PdpjApiClient, PdpjApiError, PDPJ_API_URL, extractCnj } from './pdpj-api';
-import { extractDocumentos, isRecord } from './pdpj-api-helpers';
+import { extractDocumentos, isAcessoNegadoProcessoEspecifico, isRecord } from './pdpj-api-helpers';
 import type { PdpjDocumentoRef } from './pdpj-api-helpers';
 import { CookieStore } from './cookie-store';
 import type { Pairing } from './pairing';
@@ -213,6 +213,12 @@ export function createPdpjTaskHandlers(pairing: Pairing, auth: PdpjAuth) {
       };
     } catch (err: any) {
       const apiError = err instanceof PdpjApiError ? err : new PdpjApiError(err.message);
+      if (isAcessoNegadoProcessoEspecifico(apiError)) {
+        // Bearer valido, só esse processo/OAB especifico que o PDPJ nega —
+        // nao é sessao morta, entao NAO limpa o Bearer (limpar aqui derrubava
+        // uma sessao que estava funcionando, achado 31/07/2026).
+        return { status: 'failed', errorCode: 'sem_acesso_pdpj', errorMessage: apiError.serverMessage ?? apiError.message };
+      }
       if (apiError.status === 401 || apiError.status === 403) {
         sessions.clearAccessToken();
         return { status: 'paused_login_required', errorCode: 'sessao_expirada', errorMessage: apiError.message };
@@ -292,6 +298,9 @@ export function createPdpjTaskHandlers(pairing: Pairing, auth: PdpjAuth) {
       return { status: 'completed', counters: { documentosEncontrados: documentosParaEnviar.length, textosLidos } };
     } catch (err: any) {
       const apiError = err instanceof PdpjApiError ? err : new PdpjApiError(err.message);
+      if (isAcessoNegadoProcessoEspecifico(apiError)) {
+        return { status: 'failed', errorCode: 'sem_acesso_pdpj', errorMessage: apiError.serverMessage ?? apiError.message };
+      }
       if (apiError.status === 401 || apiError.status === 403) {
         sessions.clearAccessToken();
         return { status: 'paused_login_required', errorCode: 'sessao_expirada', errorMessage: apiError.message };

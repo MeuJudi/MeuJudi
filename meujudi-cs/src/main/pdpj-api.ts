@@ -155,7 +155,7 @@ export class PdpjApiClient {
             transport: browserResponse ? 'chromium' : 'node-fetch',
             bodyPreview: redactPdpjBody(body),
           });
-          throw new PdpjApiError(`PDPJ respondeu HTTP ${status}.`, status);
+          throw new PdpjApiError(`PDPJ respondeu HTTP ${status}.`, status, false, extractServerMessage(body));
         }
         if (status < 200 || status >= 300) {
           const body = responseBody ?? await response!.text();
@@ -191,6 +191,16 @@ export class PdpjApiClient {
       }
     }
     throw lastError instanceof Error ? lastError : new Error('Falha desconhecida no PDPJ.');
+  }
+}
+
+/** Extrai o campo `message` do corpo de erro do PDPJ (ex.: `{"message":"Usuário não possui acesso ao processo X",...}`), se der pra parsear. */
+function extractServerMessage(body: string): string | undefined {
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    return isRecord(parsed) && typeof parsed.message === 'string' ? parsed.message : undefined;
+  } catch {
+    return undefined;
   }
 }
 

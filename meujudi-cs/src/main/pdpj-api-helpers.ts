@@ -13,10 +13,24 @@ export class PdpjApiError extends Error {
     message: string,
     public readonly status?: number,
     public readonly retryable = false,
+    // Mensagem literal que o PDPJ devolveu no corpo (ex.: "Usuário não
+    // possui acesso ao processo X") — diferente da `message` acima, que é
+    // só "PDPJ respondeu HTTP 401". Existe pra quem trata o erro poder
+    // diferenciar "Bearer realmente invalido" de "Bearer valido, mas sem
+    // permissao pra ESSE processo especifico" (achado 31/07/2026: os dois
+    // casos vinham como 401 e eram tratados igual, derrubando uma sessao
+    // que estava funcionando só porque um processo especifico negou
+    // acesso).
+    public readonly serverMessage?: string,
   ) {
     super(message);
     this.name = 'PdpjApiError';
   }
+}
+
+/** `true` quando o 401/403 é recusa de acesso a UM processo específico (Bearer válido), não sessão morta. */
+export function isAcessoNegadoProcessoEspecifico(error: PdpjApiError): boolean {
+  return Boolean(error.serverMessage && /não possui acesso ao processo/i.test(error.serverMessage));
 }
 
 export interface PdpjProcessPage {
