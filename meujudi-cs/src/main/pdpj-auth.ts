@@ -113,6 +113,12 @@ export const MAX_QUERY_WINDOWS = 2;
 
 export class PdpjAuth {
   private authWindow: BrowserWindow | null = null;
+  // Bearer capturado pelo listener onBeforeSendHeaders da authWindow —
+  // campo de instância (não variável local) porque, desde a correção do
+  // vazamento de listener (31/07/2026), os listeners só são registrados
+  // UMA VEZ, na criação da janela — precisam de um lugar persistente pra
+  // gravar o valor a cada nova tentativa de validação.
+  private capturedBearer: string | undefined;
   private store: CookieStore;
   private urlPollInterval: NodeJS.Timeout | null = null;
   private queryPool: QueryWindowSlot[] = [];
@@ -1132,9 +1138,64 @@ export class PdpjAuth {
       });
       this.authWindow.setTitle('MeuJudi Sync - Diagnostico PDPJ');
       logger.info('Janela tecnica do Portal PDPJ criada para capturar o Bearer');
+      // C5 (31/07/2026): os listeners abaixo SÓ são registrados aqui, na
+      // criação da janela — não a cada chamada de doEnsureApiSession. Antes
+      // eram reanexados toda vez que a janela era REUTILIZADA (branch
+      // `else` abaixo), sem nunca remover os anteriores — cada ciclo de
+      // validação (a cada 5min, INTERVALS.pdpjApiValidation) empilhava mais
+      // 4 listeners de did-navigate/did-navigate-in-page/did-finish-load/
+      // did-fail-load na mesma janela. Achado em produção: 13h de captura
+      // de Bearer falhando repetidamente acumularam listener suficiente
+      // pra gerar 23 mil linhas de log e monopolizar o processo principal,
+      // travando a fila de sincronização inteira (tarefas pdpj_cnj ficavam
+      // presas em "claimed" sem nunca progredir).
+      this.authWindow.webContents.on('did-navigate', (_event, url) => {
+        logger.info('PDPJ validacao did-navigate:', safeUrlForLog(url));
+      });
+      this.authWindow.webContents.on('did-navigate-in-page', (_event, url) => {
+        logger.info('PDPJ validacao did-navigate-in-page:', safeUrlForLog(url));
+      });
+      this.authWindow.webContents.on('did-finish-load', () => {
+        if (!this.authWindow || this.authWindow.isDestroyed()) return;
+        logger.info('PDPJ validacao did-finish-load:', safeUrlForLog(this.authWindow.webContents.getURL()));
+      });
+      this.authWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+        logger.warn('PDPJ validacao did-fail-load:', { errorCode, errorDescription, validatedURL: safeUrlForLog(validatedURL), isMainFrame });
+      });
+      this.authWindow.webContents.session.webRequest.onBeforeSendHeaders(
+        { urls: ['https://portaldeservicos.pdpj.jus.br/*'] },
+          (details, callback) => {
+            const authorization = details.requestHeaders.Authorization || details.requestHeaders.authorization;
+            if (authorization?.startsWith('Bearer ')) {
+              this.capturedBearer = authorization.slice(7).trim();
+              logger.info('PDPJ requisicao autenticada detectada', {
+                method: details.method,
+                url: safeUrlForLog(details.url),
+                headerNames: Object.keys(details.requestHeaders).sort(),
+                bearerLength: this.capturedBearer.length,
+              });
+            }
+            callback({ requestHeaders: details.requestHeaders });
+          },
+        );
+      this.authWindow.webContents.session.webRequest.onCompleted(
+        { urls: ['https://portaldeservicos.pdpj.jus.br/*'] },
+        (details) => {
+          logger.info('PDPJ requisicao concluida', {
+            method: details.method,
+            url: safeRequestUrlForLog(details.url),
+            statusCode: details.statusCode,
+            responseHeaderNames: Object.keys(details.responseHeaders ?? {}).sort(),
+          });
+        },
+      );
     } else {
       logger.info('Reutilizando janela autenticada do Portal PDPJ para capturar o Bearer');
     }
+    // Cada tentativa de validação começa sem Bearer capturado — evita usar
+    // por engano um valor de uma tentativa anterior que falhou antes de
+    // completar o fluxo.
+    this.capturedBearer = undefined;
     if (SHOW_PDPJ_VALIDATION_WINDOW) {
       this.authWindow.setAlwaysOnTop(true);
       this.authWindow.show();
@@ -1145,47 +1206,6 @@ export class PdpjAuth {
         if (this.authWindow && !this.authWindow.isDestroyed()) this.authWindow.setAlwaysOnTop(false);
       }, 3000);
     }
-    this.authWindow.webContents.on('did-navigate', (_event, url) => {
-      logger.info('PDPJ validacao did-navigate:', safeUrlForLog(url));
-    });
-    this.authWindow.webContents.on('did-navigate-in-page', (_event, url) => {
-      logger.info('PDPJ validacao did-navigate-in-page:', safeUrlForLog(url));
-    });
-    this.authWindow.webContents.on('did-finish-load', () => {
-      if (!this.authWindow || this.authWindow.isDestroyed()) return;
-      logger.info('PDPJ validacao did-finish-load:', safeUrlForLog(this.authWindow.webContents.getURL()));
-    });
-    this.authWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
-      logger.warn('PDPJ validacao did-fail-load:', { errorCode, errorDescription, validatedURL: safeUrlForLog(validatedURL), isMainFrame });
-    });
-    let bearer: string | undefined;
-    this.authWindow.webContents.session.webRequest.onBeforeSendHeaders(
-      { urls: ['https://portaldeservicos.pdpj.jus.br/*'] },
-        (details, callback) => {
-          const authorization = details.requestHeaders.Authorization || details.requestHeaders.authorization;
-          if (authorization?.startsWith('Bearer ')) {
-            bearer = authorization.slice(7).trim();
-            logger.info('PDPJ requisicao autenticada detectada', {
-              method: details.method,
-              url: safeUrlForLog(details.url),
-              headerNames: Object.keys(details.requestHeaders).sort(),
-              bearerLength: bearer.length,
-            });
-          }
-          callback({ requestHeaders: details.requestHeaders });
-        },
-      );
-    this.authWindow.webContents.session.webRequest.onCompleted(
-      { urls: ['https://portaldeservicos.pdpj.jus.br/*'] },
-      (details) => {
-        logger.info('PDPJ requisicao concluida', {
-          method: details.method,
-          url: safeRequestUrlForLog(details.url),
-          statusCode: details.statusCode,
-          responseHeaderNames: Object.keys(details.responseHeaders ?? {}).sort(),
-        });
-      },
-    );
 
     try {
       for (const cookie of current.cookies) {
@@ -1200,7 +1220,7 @@ export class PdpjAuth {
           httpOnly: cookie.httpOnly,
         });
       }
-      const token = await this.ensurePortalBearer(() => bearer);
+      const token = await this.ensurePortalBearer(() => this.capturedBearer);
       logger.info('Bearer PDPJ capturado em segundo plano; atualizando sessao local');
       await this.captureSession(token);
       recordDiagnosticEvent('pdpj_session_upgraded', 'success', 'Sessao PDPJ antiga atualizada automaticamente para a API');
