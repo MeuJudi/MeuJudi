@@ -1598,6 +1598,9 @@ export class PdpjAuth {
       webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false },
     });
     window.setTitle('MeuJudi Sync - Consulta PDPJ');
+    if (OPEN_DEVTOOLS_NA_JANELA_TECNICA) {
+      window.webContents.openDevTools({ mode: 'detach' });
+    }
     window.on('closed', () => {
       this.queryPool = this.queryPool.filter((slot) => slot.window !== window);
     });
