@@ -44,5 +44,14 @@ export interface MuralComunicacao {
   codigoClasse: string;
   destinatarios: MuralDestinatario[];
   destinatarioadvogados: MuralDestinatarioAdvogado[];
+  // Campos confirmados via chamada real à API (31/07/2026) — vinham na
+  // resposta mas nunca eram lidos, ver migração
+  // 20260731190000_mural_tipo_documento_cancelamento_orgao.sql.
+  tipoDocumento?: string;
+  ativo?: boolean;
+  status?: string;
+  data_cancelamento?: string | null;
+  motivo_cancelamento?: string | null;
+  idOrgao?: number;
 }
 

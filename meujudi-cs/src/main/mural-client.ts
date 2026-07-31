@@ -12,6 +12,15 @@ export type MuralComunicacao = {
   codigoClasse: string;
   destinatarios: Array<{ nome: string; comunicacao_id: number; polo: string }>;
   destinatarioadvogados: Array<{ advogado: { nome: string; numero_oab: string; uf_oab: string } }>;
+  // Campos confirmados via chamada real à API (31/07/2026) — vinham na
+  // resposta mas nunca eram lidos, ver migração
+  // 20260731190000_mural_tipo_documento_cancelamento_orgao.sql.
+  tipoDocumento?: string;
+  ativo?: boolean;
+  status?: string;
+  data_cancelamento?: string | null;
+  motivo_cancelamento?: string | null;
+  idOrgao?: number;
 };
 
 type MuralResponse = { items: MuralComunicacao[] };

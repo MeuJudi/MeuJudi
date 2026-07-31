@@ -17,14 +17,41 @@ function poloParaPt(polo: string): PoloParte | null {
   return null;
 }
 
+/** Mantém o catálogo id_orgao -> nome atualizado — não é por tenant, é global (mesmo id no PJe inteiro). Falha aqui não derruba o processamento da comunicação. */
+async function registrarOrgaoMural(supabase: SupabaseClient, com: MuralComunicacao): Promise<void> {
+  if (com.idOrgao == null || !com.nomeOrgao) return;
+  try {
+    await supabase.from("mural_orgaos").upsert(
+      { id_orgao: com.idOrgao, nome: com.nomeOrgao, sigla_tribunal: normalizarTribunalSigla(com.siglaTribunal) ?? com.siglaTribunal, atualizado_em: new Date().toISOString() },
+      { onConflict: "id_orgao" },
+    );
+  } catch (error) {
+    console.error(`[mural] falha ao registrar orgao ${com.idOrgao}:`, error);
+  }
+}
+
 export async function processarComunicacao(supabase: SupabaseClient, tenantId: string, com: MuralComunicacao): Promise<boolean> {
+  await registrarOrgaoMural(supabase, com);
+
   const { data: existente } = await supabase
     .from("comunicacoes_mural")
-    .select("id, processo_id, texto, valor_causa_extraido, data_audiencia, prazo_dias, data_prazo_fatal, link_videoconferencia")
+    .select("id, processo_id, texto, valor_causa_extraido, data_audiencia, prazo_dias, data_prazo_fatal, link_videoconferencia, data_cancelamento")
     .eq("tenant_id", tenantId)
     .eq("mural_id", com.id)
     .maybeSingle();
   if (existente) {
+    // Comunicação já importada foi cancelada/retificada depois — só
+    // registra pra visibilidade (não reverte prazo/audiência já aplicado
+    // na Agenda automaticamente; nunca visto acontecer de verdade ainda,
+    // ver comentário da migração).
+    if (!existente.data_cancelamento && (com.ativo === false || com.data_cancelamento)) {
+      await supabase.from("comunicacoes_mural").update({
+        ativo: com.ativo ?? false,
+        data_cancelamento: com.data_cancelamento ?? new Date().toISOString(),
+        motivo_cancelamento: com.motivo_cancelamento ?? null,
+      }).eq("id", existente.id).eq("tenant_id", tenantId);
+      console.warn(`[mural] comunicacao ${com.id} cancelada apos ja processada (processo_id=${existente.processo_id ?? "?"})`);
+    }
     // Reprocessa campos determinísticos que podem ter sido perdidos em
     // importações antigas (ex: regexes que não limpavam HTML). Não reabre
     // a comunicação nem sobrescreve valores já confirmados no processo.
@@ -158,10 +185,18 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
     });
   }
 
+  // Comunicação já vem cancelada/retificada do PJe — não aplica prazo nem
+  // audiência na Agenda a partir dela (mas ainda salva a linha, pra
+  // registro). Nunca visto acontecer de verdade na amostra testada
+  // (31/07/2026), mas o campo existe no schema da API, então trata.
+  const estaCancelada = com.ativo === false || Boolean(com.data_cancelamento);
+
   const dataFatal = prazoDias ? calcularPrazoFatal(new Date(com.data_disponibilizacao), prazoDias) : null;
   const { error: comunicacaoError } = await supabase.from("comunicacoes_mural").insert({
     tenant_id: tenantId, processo_id: processoId, mural_id: com.id, data_disponibilizacao: com.data_disponibilizacao,
-    sigla_tribunal: normalizarTribunalSigla(com.siglaTribunal) ?? com.siglaTribunal, tipo_comunicacao: com.tipoComunicacao, nome_orgao: com.nomeOrgao, texto: com.texto,
+    sigla_tribunal: normalizarTribunalSigla(com.siglaTribunal) ?? com.siglaTribunal, tipo_comunicacao: com.tipoComunicacao, tipo_documento: com.tipoDocumento ?? null,
+    nome_orgao: com.nomeOrgao, id_orgao: com.idOrgao ?? null, texto: com.texto,
+    ativo: com.ativo ?? true, status_comunicacao: com.status ?? null, data_cancelamento: com.data_cancelamento ?? null, motivo_cancelamento: com.motivo_cancelamento ?? null,
     meio: com.meio, link_processo: com.link, destinatarios: com.destinatarios,
     advogados: com.destinatarioadvogados?.map((d) => ({
       nome: d.advogado.nome,
@@ -222,7 +257,7 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
   if (processoError) throw new Error(`Falha ao atualizar processo ${processoId}: ${processoError.message}`);
   await vincularProcessoAoCatalogo(supabase, processoId, com.siglaTribunal, "mural");
 
-  if (dataAudienciaIso) await aplicarAudienciaEncontrada(supabase, {
+  if (dataAudienciaIso && !estaCancelada) await aplicarAudienciaEncontrada(supabase, {
     tenantId,
     processoId,
     dataAudienciaIso,
@@ -235,7 +270,7 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
     textoOrigem: com.texto,
     linkVideoconferencia,
   });
-  if (prazoDias) await aplicarPrazoEncontrado(supabase, {
+  if (prazoDias && !estaCancelada) await aplicarPrazoEncontrado(supabase, {
     tenantId,
     processoId,
     prazoDias,
