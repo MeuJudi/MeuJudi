@@ -16,6 +16,11 @@ export const maxDuration = 30;
 
 const DIAS_DE_ANTECEDENCIA = 3;
 
+// Mesmo motivo do poll-pdpj-detalhes: sem isso, CS offline por mais de 1
+// dia faz esse cron empilhar tarefa nova pro mesmo CNJ urgente a cada dia
+// (idempotency key com data só bloqueia dentro do mesmo dia).
+const STATUS_ABERTOS = ["pending", "claimed", "running", "waiting_external", "paused_login_required", "paused_rate_limit"];
+
 export async function POST(req: NextRequest) {
   const auth = req.headers.get("authorization");
   if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -43,12 +48,25 @@ export async function POST(req: NextRequest) {
 
   for (const tenant of tenants) {
     try {
-      const { data: processos } = await supabase
+      const { data: tarefasAbertas } = await supabase
+        .from("sync_tasks")
+        .select("cnj")
+        .eq("tenant_id", tenant.id)
+        .eq("source", "pdpj")
+        .eq("type", "pdpj_cnj")
+        .in("status", STATUS_ABERTOS)
+        .not("cnj", "is", null);
+      const cnjsComTarefaAberta = [...new Set((tarefasAbertas ?? []).map((t) => t.cnj as string))];
+      const filtroCnjAberto = cnjsComTarefaAberta.length > 0 ? `(${cnjsComTarefaAberta.join(",")})` : null;
+
+      let queryProcessos = supabase
         .from("processos")
         .select("id, cnj")
         .eq("tenant_id", tenant.id)
         .eq("status", "ativo")
         .or(`prazo_proxima_resposta.lte.${limiteFuturo},proxima_audiencia.lte.${limiteFuturo}`);
+      if (filtroCnjAberto) queryProcessos = queryProcessos.not("cnj", "in", filtroCnjAberto);
+      const { data: processos } = await queryProcessos;
 
       for (const processo of processos ?? []) {
         const { error: insertError } = await supabase.from("sync_tasks").insert({

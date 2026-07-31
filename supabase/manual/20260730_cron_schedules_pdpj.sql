@@ -1,8 +1,12 @@
--- SQL MANUAL — NÃO aplicado automaticamente pelo Claude, nem faz parte das
--- migrations versionadas (supabase/migrations/). Rode isso manualmente no
--- SQL Editor do Supabase depois do deploy em produção, substituindo:
---   [SEU-APP-URL]     -> URL de produção real (ex: https://meujudi.vercel.app)
---   [CRON_SECRET]     -> o mesmo valor configurado em CRON_SECRET na Vercel
+-- OBSOLETO (30/07/2026) — NÃO rodar. Os crons do MeuJudi rodam via
+-- cron-job.org (serviço externo), não via pg_cron do Supabase — decisão
+-- do Caio. Ver supabase/manual/20260730_remover_pg_cron_jobs.sql pra
+-- desfazer o que foi agendado aqui, e docs/roadmap/24-crons-
+-- sincronizacao-automatica-pdpj.md pra tabela de configuração do
+-- cron-job.org (URL, método, schedule, header de cada job).
+--
+-- Mantido só como referência do desenho (schedule/URL/frequência de cada
+-- cron), que continua igual — só o mecanismo de disparo mudou.
 --
 -- Cobre os 3 crons de sincronização automática do PDPJ — ver
 -- docs/roadmap/24-crons-sincronizacao-automatica-pdpj.md pro desenho

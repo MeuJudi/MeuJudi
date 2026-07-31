@@ -17,6 +17,13 @@ const HORA_INICIO = 9;
 const HORA_FIM = 16;
 const DIAS_PARA_REESCANEAR = 7;
 
+// Estados que NÃO bloqueiam recriar a tarefa — só o que ainda está "em
+// aberto" conta como já coberto. Sem essa exclusão, um CS offline por mais
+// de 1 dia faz o cron empilhar uma tarefa nova pro mesmo CNJ a cada
+// disparo (ultima_sync_pdpj só muda quando a tarefa CONCLUI, não quando é
+// criada) — descoberto ao revisar a lógica com o Caio, 30/07/2026.
+const STATUS_ABERTOS = ["pending", "claimed", "running", "waiting_external", "paused_login_required", "paused_rate_limit"];
+
 function horaAtualBrasilia(): number {
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Sao_Paulo",
@@ -60,18 +67,32 @@ export async function POST(req: NextRequest) {
 
   for (const tenant of tenants) {
     try {
-      const { count: pendentes } = await supabase
+      const { data: tarefasAbertas } = await supabase
+        .from("sync_tasks")
+        .select("cnj")
+        .eq("tenant_id", tenant.id)
+        .eq("source", "pdpj")
+        .eq("type", "pdpj_cnj")
+        .in("status", STATUS_ABERTOS)
+        .not("cnj", "is", null);
+      const cnjsComTarefaAberta = [...new Set((tarefasAbertas ?? []).map((t) => t.cnj as string))];
+      // PostgREST exige a lista entre parênteses pro operador "not in".
+      const filtroCnjAberto = cnjsComTarefaAberta.length > 0 ? `(${cnjsComTarefaAberta.join(",")})` : null;
+
+      let queryPendentes = supabase
         .from("processos")
         .select("id", { count: "exact", head: true })
         .eq("tenant_id", tenant.id)
         .eq("status", "ativo")
         .or(`ultima_sync_pdpj.is.null,ultima_sync_pdpj.lt.${limiteAntiguidade}`);
+      if (filtroCnjAberto) queryPendentes = queryPendentes.not("cnj", "in", filtroCnjAberto);
+      const { count: pendentes } = await queryPendentes;
 
       if (!pendentes || pendentes === 0) continue;
 
       const loteDeHoje = Math.min(pendentes, Math.ceil(pendentes / horasRestantes));
 
-      const { data: processos } = await supabase
+      let querySelecao = supabase
         .from("processos")
         .select("id, cnj")
         .eq("tenant_id", tenant.id)
@@ -79,6 +100,8 @@ export async function POST(req: NextRequest) {
         .or(`ultima_sync_pdpj.is.null,ultima_sync_pdpj.lt.${limiteAntiguidade}`)
         .order("ultima_sync_pdpj", { ascending: true, nullsFirst: true })
         .limit(loteDeHoje);
+      if (filtroCnjAberto) querySelecao = querySelecao.not("cnj", "in", filtroCnjAberto);
+      const { data: processos } = await querySelecao;
 
       let criadosTenant = 0;
       for (const processo of processos ?? []) {

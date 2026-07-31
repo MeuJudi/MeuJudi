@@ -156,6 +156,22 @@ já respeita prioridade).
 
 ---
 
+## Correção — tarefa duplicada com CS offline (30/07/2026)
+
+Achado ao revisar a lógica com o Caio: a seleção original dos Crons 2 e 3
+olhava só `processos.ultima_sync_pdpj` (quando a última sincronização
+**terminou**) pra decidir quem está pendente. Como essa coluna só muda
+quando a tarefa CONCLUI, um CS offline por mais de 1 dia fazia o cron
+empilhar uma tarefa `pdpj_cnj` nova pro mesmo CNJ a cada disparo — a chave
+de dedup com data só bloqueia repetição dentro do mesmo dia, não entre
+dias diferentes com a tarefa de ontem ainda `pending`.
+
+Corrigido: antes de selecionar candidatos, os dois crons agora consultam
+`sync_tasks` e excluem qualquer CNJ que já tenha uma tarefa `pdpj_cnj` em
+estado aberto (`pending`, `claimed`, `running`, `waiting_external`,
+`paused_login_required`, `paused_rate_limit`) — só entra na seleção quem
+não tem nada pendente de verdade.
+
 ## Pulo inteligente (compartilhado entre Cron 2 e Cron 3)
 
 Sem isso, todo processo reprocessado baixaria o texto de **todos** os
@@ -186,6 +202,40 @@ resposta: { conhecidos: string[] }  // subconjunto de urlHashes que já existe
 Autenticada por device-token, igual as outras rotas `/api/cs/*`.
 
 ---
+
+## Agendamento — cron-job.org, não pg_cron
+
+Decisão (30/07/2026): todos os crons do MeuJudi rodam via
+**cron-job.org** (serviço externo), não via `pg_cron`/`pg_net` do
+Supabase nem Vercel Cron. `pg_cron` chegou a ser usado por engano nesta
+sessão — desfeito em
+`supabase/manual/20260730_remover_pg_cron_jobs.sql`.
+
+Configuração de cada job no painel do cron-job.org — método sempre
+`POST`, header `Authorization: Bearer <CRON_SECRET>` (o mesmo valor da
+env var `CRON_SECRET` na Vercel), `Content-Type: application/json`, body
+`{}`:
+
+| Job | URL | Schedule |
+| --- | --- | --- |
+| poll-datajud | `/api/cron/poll-datajud` | a cada 1h (`0 * * * *`) |
+| processar-fila-lote | `/api/cron/processar-fila-lote` | 1x/dia, 22h (`0 22 * * *`) |
+| coletar-resultados-lote | `/api/cron/coletar-resultados-lote` | a cada 2h (`0 */2 * * *`) |
+| solicitar-mural | `/api/cron/solicitar-mural` | a cada 6h (`0 */6 * * *`) |
+| process-datajud-sync | `/api/cron/process-datajud-sync` | a cada 2min (proposta — nunca foi agendado, confirmar cadência) |
+| limpar-documentos-temp | `/api/cron/limpar-documentos-temp` | a cada 10-15min |
+| **solicitar-pdpj** | `/api/cron/solicitar-pdpj` | a cada 6h (`0 */6 * * *`) |
+| **poll-pdpj-detalhes** | `/api/cron/poll-pdpj-detalhes` | a cada 1h (`0 * * * *`) |
+| **poll-pdpj-urgentes** | `/api/cron/poll-pdpj-urgentes` | a cada 15min (`*/15 * * * *`) |
+
+URL base de produção: `https://www.meujudi.com.br`.
+
+Dois jobs (`process-datajud-sync`, `limpar-documentos-temp`) nunca
+tinham sido agendados em lugar nenhum — achados ao revisar tudo pra essa
+migração. `poll-datajud`, `processar-fila-lote` e `coletar-resultados-
+lote` já existiam registrados (agora no pg_cron, precisam ser recriados
+no cron-job.org). `solicitar-mural` substitui o antigo `poll-mural`
+(rota removida do código — Mural bloqueia IP de datacenter).
 
 ## Resumo — mudanças de banco (1 migration)
 
