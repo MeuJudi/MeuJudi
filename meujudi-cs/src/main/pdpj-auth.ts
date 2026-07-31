@@ -29,7 +29,7 @@
  * - Fornece callPJeAPI() que injeta cookies + XSRF automaticamente
  */
 
-import { BrowserWindow, session as electronSession } from 'electron';
+import { BrowserWindow, Notification, session as electronSession } from 'electron';
 import { CookieStore } from './cookie-store';
 import { loadAppIcon } from './app-icon';
 import { logger, recordDiagnosticEvent } from './logger';
@@ -70,7 +70,17 @@ const BEARER_PRIME_CNJ_FALLBACK = '0000001-01.2024.8.26.0100';
 // sem roubar foco. So a janela de LOGIN inicial (showLoginWindow) e
 // visivel; a home publica do jus.br nunca deve abrir sozinha na frente do
 // usuario. Ver docs/roadmap/23-meujudi-cs-v0.3.0-refatoracao.md Fase 5.
-const SHOW_PDPJ_VALIDATION_WINDOW = false;
+// TEMPORARIO (31/07/2026) — ligado pra investigar ao vivo por que a
+// revalidacao automatica do Bearer fica travada (ver achado do dia:
+// 98% das tarefas pdpj_cnj falharam por sessao expirada). Mostra a janela
+// tecnica e abre o DevTools nela (aba Network) pra observar o que
+// realmente acontece na troca com o Keycloak. DESLIGAR (voltar pra
+// `false`) depois de capturar um ciclo de falha real — não é assim que
+// deve rodar em produção (a janela tecnica nunca deveria aparecer sozinha
+// na frente do usuário, ver docs/roadmap/23-meujudi-cs-v0.3.0-
+// refatoracao.md Fase 5).
+const SHOW_PDPJ_VALIDATION_WINDOW = true;
+const OPEN_DEVTOOLS_NA_JANELA_TECNICA = true;
 // A sessão de cookies (login no PJe/Keycloak) e o Bearer da API são coisas
 // diferentes, com tempos de vida diferentes — o Bearer é de propósito
 // curto (o `exp` real dele, lido do próprio JWT, costuma ser bem menor),
@@ -126,6 +136,13 @@ export class PdpjAuth {
   private autoValidateTimer: NodeJS.Timeout | null = null;
   private ensureApiSessionPromise: Promise<boolean> | null = null;
   private linkedOabCache: { oabNumber: string; oabUf: string } | null = null;
+  // Rastreiam falhas seguidas da revalidacao automatica (maybeValidateApi)
+  // pra avisar o usuario quando a auto-recuperacao claramente parou de
+  // funcionar, em vez de tentar em silencio pra sempre (achado 31/07/2026:
+  // 98% das tarefas pdpj_cnj do dia pausaram por sessao expirada sem
+  // nenhum aviso visivel ate a fila inteira travar).
+  private falhaValidacaoDesdeMs: number | null = null;
+  private ultimaNotificacaoFalhaMs: number | null = null;
 
   constructor(private readonly pairing?: Pairing) {
     this.store = new CookieStore();
@@ -670,35 +687,49 @@ export class PdpjAuth {
     }
 
     const startedAt = Date.now();
-    let lastStorageDumpAt = 0;
+    let lastDiagnosticoAt = 0;
     let domInspected = false;
     let consultationTriggered = false;
     // Achado em produção (31/07/2026): a janela reutilizada às vezes fica
-    // presa na tela de SSO silencioso do Keycloak
-    // (sso.cloud.pje.jus.br/.../openid-connect/auth) — nunca completa o
-    // redirecionamento de volta pro portal, localStorage/sessionStorage
-    // ficam vazios pra sempre. O restante do loop então tenta clicar em
-    // campos de busca que não existem nessa página (sempre falha com
-    // "combobox-nao-encontrado"), gastando os 45s inteiros sem chance
-    // nenhuma de capturar o Bearer. Detecta esse estado e força 1 nova
-    // navegação — só uma vez por tentativa, pra não virar loop.
-    let reloadTentado = false;
+    // presa fora da area autenticada do Portal (SSO silencioso do Keycloak
+    // que nunca completa o redirecionamento de volta, ou a home publica do
+    // jus.br) — o resto do loop então tenta clicar em campos de busca que
+    // não existem nessa página, gastando os 45s inteiros sem chance
+    // nenhuma de capturar o Bearer.
+    //
+    // Detecção (revisada 31/07/2026, apos o 1o reload-por-regex-de-URL
+    // isolado pegar só 12 dos 335 casos reais do dia): agora combina dois
+    // sinais de pagina (link "Consultar processos" E o combobox de busca,
+    // os dois marcadores esperados da area autenticada — nenhum dos dois
+    // presente = "nao parece autenticado") e só age depois de 2 checagens
+    // SEGUIDAS (10s de intervalo) concordando, pra nao recarregar no meio
+    // de uma transicao normal que so ainda nao terminou de carregar. Até
+    // MAX_RELOADS_TENTATIVA tentativas por captura (antes era só 1).
+    let sinalNaoAutenticadoSeguido = 0;
+    let reloadsFeitos = 0;
+    const MAX_RELOADS_TENTATIVA = 2;
     while (Date.now() - startedAt < BEARER_CAPTURE_TIMEOUT_MS) {
       const token = getBearerToken();
       if (token) {
         recordDiagnosticEvent('pdpj_api_validated', 'success', 'Bearer da API PDPJ capturado');
         return token;
       }
-      if (!reloadTentado && Date.now() - startedAt > 12_000 && !this.authWindow.webContents.isLoading()) {
-        const urlAtual = this.authWindow.webContents.getURL();
-        if (/sso\.cloud\.pje\.jus\.br/.test(urlAtual)) {
-          reloadTentado = true;
-          logger.warn('PDPJ: janela presa na tela de SSO do Keycloak, forcando nova navegacao', { url: safeUrlForLog(urlAtual) });
-          recordDiagnosticEvent('pdpj_api_validation_keycloak_stuck', 'warning', 'Janela presa no SSO silencioso do Keycloak; recarregando', { url: safeHost(urlAtual) });
+      if (Date.now() - lastDiagnosticoAt > 10_000) {
+        lastDiagnosticoAt = Date.now();
+        const diag = await this.diagnosticarPagina();
+        logger.info('PDPJ: diagnostico da pagina tecnica', diag);
+        const pareceNaoAutenticado = !diag || (!diag.temLinkConsultarProcessos && !diag.temComboboxBusca);
+        sinalNaoAutenticadoSeguido = pareceNaoAutenticado ? sinalNaoAutenticadoSeguido + 1 : 0;
+
+        if (sinalNaoAutenticadoSeguido >= 2 && reloadsFeitos < MAX_RELOADS_TENTATIVA && !this.authWindow.webContents.isLoading()) {
+          reloadsFeitos += 1;
+          sinalNaoAutenticadoSeguido = 0;
+          logger.warn(`PDPJ: pagina parece fora da area autenticada em 2 checagens seguidas, recarregando (tentativa ${reloadsFeitos}/${MAX_RELOADS_TENTATIVA})`, diag);
+          recordDiagnosticEvent('pdpj_api_validation_stuck_reload', 'warning', 'Pagina tecnica parece travada fora da area autenticada; recarregando', { ...diag, tentativa: reloadsFeitos });
           try {
             await this.authWindow.loadURL(PDPJ_LOGIN_URL);
           } catch (error: any) {
-            logger.warn('PDPJ: falha ao recarregar apos deteccao de SSO preso:', error?.message || error);
+            logger.warn('PDPJ: falha ao recarregar apos deteccao de pagina nao autenticada:', error?.message || error);
           }
           // A pagina mudou de verdade — os passos de clicar em "Consultar
           // processos" e inspecionar o formulario precisam rodar de novo.
@@ -707,23 +738,6 @@ export class PdpjAuth {
           await new Promise((resolve) => setTimeout(resolve, BEARER_CAPTURE_RETRY_MS));
           continue;
         }
-      }
-      // Diagnostico temporario (29/07/2026): achado em log real — depois do
-      // clique em "Consultar processos", nenhuma requisicao autenticada
-      // aparece, mas uma chave `kc-callback-<state>` ficava presa no
-      // localStorage. Achado (29/07/2026, 2a rodada): recarregar a janela de
-      // novo enquanto o Keycloak JS ainda estava terminando o check-sso
-      // silencioso (via iframe interno) interrompia esse processo no meio —
-      // por isso agora so clicamos UMA VEZ e so ficamos observando depois,
-      // sem tocar na pagina de novo. So loga NOMES de chave, nunca valor.
-      if (Date.now() - lastStorageDumpAt > 10_000) {
-        lastStorageDumpAt = Date.now();
-        const storageKeys = await this.authWindow.webContents.executeJavaScript(`(() => {
-          try {
-            return { session: Object.keys(window.sessionStorage || {}), local: Object.keys(window.localStorage || {}) };
-          } catch (e) { return { error: String(e && e.message || e) }; }
-        })()`, true).catch((error: any) => ({ error: error?.message || String(error) }));
-        logger.info('PDPJ: chaves de armazenamento na pagina (diagnostico, so nomes)', storageKeys);
       }
       // Busca uma vez, alguns segundos depois do clique em "Consultar
       // processos", pra dar tempo da pagina renderizar o formulario.
@@ -831,8 +845,62 @@ export class PdpjAuth {
       await new Promise((resolve) => setTimeout(resolve, BEARER_CAPTURE_RETRY_MS));
     }
 
-    recordDiagnosticEvent('pdpj_api_validation_failed', 'error', 'Portal carregado, mas nao houve requisicao PDPJ com Bearer');
+    // Diagnostico final rico (31/07/2026) — antes só logava a mensagem
+    // genérica, sem estado nenhum da pagina no momento em que desistiu.
+    // Isso obrigava a proxima investigacao a adivinhar de novo em que
+    // etapa travou. Agora captura URL/titulo/marcadores da pagina e quantos
+    // cookies do PDPJ realmente estao na janela nesse instante (descarta a
+    // hipotese de "cookie nao foi aplicado" se o numero bater com o
+    // esperado).
+    const diagFinal = await this.diagnosticarPagina();
+    const cookiesPdpjNaJanela = await electronSession.defaultSession.cookies
+      .get({})
+      .then((cookies) => cookies.filter((c) => PDPJ_COOKIE_HOSTS.has((c.domain || '').replace(/^\./, ''))).length)
+      .catch(() => -1);
+    const contextoFalha = { ...diagFinal, cookiesPdpjNaJanela, reloadsFeitos };
+    logger.error('PDPJ: validacao da API expirou sem capturar Bearer — diagnostico final', contextoFalha);
+    recordDiagnosticEvent('pdpj_api_validation_failed', 'error', 'Portal carregado, mas nao houve requisicao PDPJ com Bearer', contextoFalha);
     throw new Error('Login concluido, mas a sessao da API PDPJ nao foi validada. Tente conectar novamente.');
+  }
+
+  /**
+   * Snapshot do estado da pagina tecnica no momento da checagem — usado
+   * tanto pra decidir se ela "parece autenticada" (ver loop acima) quanto
+   * pro diagnostico final de falha. Só nomes de chave de storage, nunca
+   * valor (pode conter token/dado sensivel).
+   */
+  private async diagnosticarPagina(): Promise<{
+    url: string;
+    title: string;
+    readyState: string;
+    temLinkConsultarProcessos: boolean;
+    temComboboxBusca: boolean;
+    temLinkLogin: boolean;
+    storage: { session: string[]; local: string[] } | { error: string };
+  } | null> {
+    if (!this.authWindow || this.authWindow.isDestroyed()) return null;
+    return this.authWindow.webContents.executeJavaScript(`(() => {
+      try {
+        const texto = (el) => (el.textContent || '').toLowerCase().replace(/\\s+/g, ' ');
+        const temLinkConsultarProcessos = Array.from(document.querySelectorAll('a,button,[role="button"],[role="link"]'))
+          .some((el) => texto(el).includes('consultar processos'));
+        const temComboboxBusca = Boolean(document.querySelector('[role="combobox"],mat-select'));
+        const temLinkLogin = Array.from(document.querySelectorAll('a,button'))
+          .some((el) => { const t = texto(el); return t.includes('entrar') || t.includes('login'); });
+        let storage;
+        try {
+          storage = { session: Object.keys(window.sessionStorage || {}), local: Object.keys(window.localStorage || {}) };
+        } catch (e) {
+          storage = { error: String(e && e.message || e) };
+        }
+        return { url: location.href, title: document.title, readyState: document.readyState, temLinkConsultarProcessos, temComboboxBusca, temLinkLogin, storage };
+      } catch (e) {
+        return { url: location.href, title: '', readyState: document.readyState, temLinkConsultarProcessos: false, temComboboxBusca: false, temLinkLogin: false, storage: { error: String(e && e.message || e) } };
+      }
+    })()`, true).catch((error: any) => ({
+      url: '', title: '', readyState: 'erro', temLinkConsultarProcessos: false, temComboboxBusca: false, temLinkLogin: false,
+      storage: { error: error?.message || String(error) },
+    }));
   }
 
   // ============================================================
@@ -1103,9 +1171,49 @@ export class PdpjAuth {
     // já compartilha uma única execução entre todos os chamadores (ver seu comentário).
     try {
       logger.info('Validacao automatica da API PDPJ (segundo plano) iniciada');
-      await this.ensureApiSession();
+      const ok = await this.ensureApiSession();
+      if (ok) {
+        this.falhaValidacaoDesdeMs = null;
+      } else {
+        this.registrarFalhaValidacaoENotificarSeNecessario();
+      }
     } catch (error: any) {
       logger.warn('Validacao automatica da API PDPJ falhou; tenta de novo no proximo ciclo', error?.message || error);
+      this.registrarFalhaValidacaoENotificarSeNecessario();
+    }
+  }
+
+  /**
+   * Avisa o usuario quando a revalidacao automatica fica falhando por muito
+   * tempo seguido — sem isso, a unica forma de descobrir que a sessao
+   * morreu de vez e a fila de tarefas travar silenciosamente (como
+   * aconteceu em 31/07/2026: 98% das tarefas pdpj_cnj do dia pausaram por
+   * sessao expirada, sem nenhum aviso visivel). So notifica 1x por janela
+   * de 30min, pra nao virar spam — o timer de 5min (INTERVALS.pdpjApiValidation)
+   * ja tenta de novo sozinho o tempo todo.
+   */
+  private registrarFalhaValidacaoENotificarSeNecessario(): void {
+    const agora = Date.now();
+    if (this.falhaValidacaoDesdeMs === null) this.falhaValidacaoDesdeMs = agora;
+    const falhandoHaMs = agora - this.falhaValidacaoDesdeMs;
+    const jaAvisouRecente = this.ultimaNotificacaoFalhaMs !== null && agora - this.ultimaNotificacaoFalhaMs < 30 * 60_000;
+    if (falhandoHaMs < 15 * 60_000 || jaAvisouRecente) return;
+
+    this.ultimaNotificacaoFalhaMs = agora;
+    logger.error('PDPJ: revalidacao automatica falhando ha mais de 15min seguidos; avisando o usuario', {
+      falhandoHaMinutos: Math.round(falhandoHaMs / 60_000),
+    });
+    recordDiagnosticEvent('pdpj_api_validation_stuck', 'error', 'Revalidacao automatica da API PDPJ falhando ha mais de 15min seguidos', {
+      falhandoHaMinutos: Math.round(falhandoHaMs / 60_000),
+    });
+    try {
+      new Notification({
+        title: `${APP_NAME} - Sessão PDPJ precisa de atenção`,
+        body: 'A renovação automática está falhando há um tempo. Abra o app e reconecte o Portal PDPJ/Jus pra sincronização voltar a funcionar.',
+        silent: false,
+      }).show();
+    } catch (error: any) {
+      logger.warn('PDPJ: falha ao mostrar notificacao de sessao travada:', error?.message || error);
     }
   }
 
@@ -1186,6 +1294,9 @@ export class PdpjAuth {
       });
       this.authWindow.setTitle('MeuJudi Sync - Diagnostico PDPJ');
       logger.info('Janela tecnica do Portal PDPJ criada para capturar o Bearer');
+      if (OPEN_DEVTOOLS_NA_JANELA_TECNICA) {
+        this.authWindow.webContents.openDevTools({ mode: 'detach' });
+      }
       // C5 (31/07/2026): os listeners abaixo SÓ são registrados aqui, na
       // criação da janela — não a cada chamada de doEnsureApiSession. Antes
       // eram reanexados toda vez que a janela era REUTILIZADA (branch

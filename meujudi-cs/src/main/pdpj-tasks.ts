@@ -20,7 +20,6 @@
  *   `src/lib/regex/pdpj-documentos.ts`.
  */
 
-import { createHash } from 'node:crypto';
 import { MEUJUDI_WEB_URL } from '../shared/constants';
 import { logger, recordDiagnosticEvent } from './logger';
 import { PdpjApiClient, PdpjApiError, PDPJ_API_URL, extractCnj } from './pdpj-api';
@@ -65,6 +64,7 @@ async function mapComConcorrencia<T, R>(items: T[], limite: number, fn: (item: T
 }
 
 interface DocumentoParaEnviar {
+  pdpjDocumentoId: string;
   url: string | null;
   nome: string | null;
   tipo: string | null;
@@ -74,18 +74,26 @@ interface DocumentoParaEnviar {
 
 /**
  * "Pulo inteligente" (docs/roadmap/24-crons-sincronizacao-automatica-
- * pdpj.md) — pergunta pro Web quais hashes de URL já são conhecidos antes
- * de gastar baixando texto de documento nenhum. Falha de rede aqui não
- * derruba a tarefa: devolve vazio (trata tudo como novo), o pior caso é
- * reprocessar documento que já tinha, nunca perder documento novo.
+ * pdpj.md) — pergunta pro Web quais documentos (por `pdpjDocumentoId`, o
+ * UUID estável do documento no Codex do PDPJ) já são conhecidos antes de
+ * gastar baixando texto de documento nenhum. Antes essa checagem usava
+ * hash da URL de `hrefBinario` — documento só com `hrefTexto` (sem link de
+ * binário) nunca tinha hash pra checar, então era rebuscado pra sempre, do
+ * zero, em toda sincronização do CNJ (achado 31/07/2026, apos o Caio pedir
+ * pra cada documento só ser extraido uma vez). `pdpjDocumentoId` existe
+ * pros dois casos, entao cobre 100% dos documentos agora.
+ *
+ * Falha de rede aqui não derruba a tarefa: devolve vazio (trata tudo como
+ * novo), o pior caso é reprocessar documento que já tinha, nunca perder
+ * documento novo.
  */
-async function buscarDocumentosConhecidos(deviceToken: string, cnj: string, urlHashes: string[]): Promise<Set<string>> {
-  if (urlHashes.length === 0) return new Set();
+async function buscarDocumentosConhecidos(deviceToken: string, cnj: string, documentIds: string[]): Promise<Set<string>> {
+  if (documentIds.length === 0) return new Set();
   try {
     const response = await fetch(`${MEUJUDI_WEB_URL}/api/cs/sync/pdpj/documentos-conhecidos`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deviceToken}` },
-      body: JSON.stringify({ cnj, urlHashes }),
+      body: JSON.stringify({ cnj, documentIds }),
     });
     if (!response.ok) return new Set();
     const data = (await response.json()) as { conhecidos?: string[] };
@@ -250,19 +258,11 @@ export function createPdpjTaskHandlers(pairing: Pairing, auth: PdpjAuth) {
       const token = pairing.getDeviceToken();
       if (!token) return { status: 'failed', errorCode: 'sem_pareamento', errorMessage: 'CS não está pareado.' };
 
-      // Pulo inteligente: documento sem hrefBinario nunca é dedupado do
-      // lado do Web (não tem URL pra hashear), então continua sendo
-      // buscado sempre, como já era — o pulo só vale pros que TÊM link,
-      // que são a maioria e o custo real da tarefa.
-      const hashPorDoc = new Map<PdpjDocumentoRef, string>();
-      for (const doc of documentos) {
-        if (doc.hrefBinario) hashPorDoc.set(doc, createHash('sha256').update(`${PDPJ_API_URL}${doc.hrefBinario}`, 'utf-8').digest('hex'));
-      }
-      const conhecidos = await buscarDocumentosConhecidos(token, cnj, [...hashPorDoc.values()]);
-      const documentosNovos = documentos.filter((doc) => {
-        const hash = hashPorDoc.get(doc);
-        return !hash || !conhecidos.has(hash);
-      });
+      // Pulo inteligente por `doc.id` (UUID estável do documento no Codex
+      // do PDPJ, extraído de hrefBinario OU hrefTexto) — cobre TODO
+      // documento, não só os que têm link de binário pra hashear.
+      const conhecidos = await buscarDocumentosConhecidos(token, cnj, documentos.map((doc) => doc.id));
+      const documentosNovos = documentos.filter((doc) => !conhecidos.has(doc.id));
 
       if (documentos.length > 0 && documentosNovos.length === 0) {
         // Nada novo — completa sem baixar texto de ninguém.
@@ -275,6 +275,7 @@ export function createPdpjTaskHandlers(pairing: Pairing, auth: PdpjAuth) {
       const textos = await mapComConcorrencia(documentosNovos, MAX_QUERY_WINDOWS, (doc) => buscarTextoComTolerancia(api, cnj, doc));
       const textosLidos = textos.filter(Boolean).length;
       const documentosParaEnviar: DocumentoParaEnviar[] = documentosNovos.map((doc, indice) => ({
+        pdpjDocumentoId: doc.id,
         url: doc.hrefBinario ? `${PDPJ_API_URL}${doc.hrefBinario}` : null,
         nome: doc.nome,
         tipo: doc.tipo,
