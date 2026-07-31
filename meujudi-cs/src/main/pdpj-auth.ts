@@ -886,7 +886,7 @@ export class PdpjAuth {
       userId,
       cookies: cookies.map(this.serializeCookie),
       csrfToken: '',
-      expiresAt: new Date(Date.now() + SESSION_COOKIES_TTL_MS),
+      expiresAt: this.estimateExpiry(cookies),
       createdAt: new Date(),
       lastUsedAt: new Date(),
       provider: 'pdpj',
@@ -959,14 +959,23 @@ export class PdpjAuth {
   }
 
   /**
-   * Estima expiração da sessão baseado no cookie XSRF-TOKEN.
+   * Estima expiração real da sessão a partir da data de expiração que o
+   * próprio PDPJ/Keycloak colocou nos cookies — em vez do palpite fixo de
+   * `SESSION_COOKIES_TTL_MS` (7 dias, nunca confirmado contra a validade
+   * real). Usa a mais próxima entre os cookies capturados: se qualquer um
+   * deles expirar, a sessão já não é mais utilizável, então o limite
+   * verdadeiro é o menor prazo entre eles, não o maior.
+   *
+   * Função existia sem nunca ser chamada (achado 31/07/2026, ao investigar
+   * por que a tela mostrava "expira em Xd" com a sessão já morta de
+   * verdade) — só media 1 cookie (XSRF-TOKEN); generalizada pra olhar
+   * todos os cookies da sessão.
    */
-  private estimateExpiry(xsrfCookie: Electron.Cookie): Date {
-    const EIGHT_HOURS = 8 * 60 * 60 * 1000;
-    if (xsrfCookie.expirationDate) {
-      return new Date(xsrfCookie.expirationDate * 1000);
-    }
-    return new Date(Date.now() + EIGHT_HOURS);
+  private estimateExpiry(cookies: Electron.Cookie[]): Date {
+    const comExpiracao = cookies.filter((c) => c.expirationDate);
+    if (comExpiracao.length === 0) return new Date(Date.now() + SESSION_COOKIES_TTL_MS);
+    const maisProxima = Math.min(...comExpiracao.map((c) => c.expirationDate! * 1000));
+    return new Date(maisProxima);
   }
 
   /**
