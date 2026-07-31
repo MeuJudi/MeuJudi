@@ -70,15 +70,18 @@ const BEARER_PRIME_CNJ_FALLBACK = '0000001-01.2024.8.26.0100';
 // sem roubar foco. So a janela de LOGIN inicial (showLoginWindow) e
 // visivel; a home publica do jus.br nunca deve abrir sozinha na frente do
 // usuario. Ver docs/roadmap/23-meujudi-cs-v0.3.0-refatoracao.md Fase 5.
-// Revertido pra producao (31/07/2026) apos a investigacao com DevTools
-// visivel: HAR real capturou 8 ciclos SEGUIDOS de revalidacao com 100% de
-// sucesso (token+userinfo+consulta, todos 200) — bem diferente dos ~2% de
-// sucesso em producao (janela sempre oculta). Suspeita agora e
-// `backgroundThrottling` (ver webPreferences da janela tecnica logo
-// abaixo, doEnsureApiSession) — mantém oculta, mas sem throttle, que é o
-// teste de verdade da hipotese.
+// Janela em si continua ESCONDIDA (`show: false`, comportamento de
+// producao) — mas o DevTools volta ligado (TEMPORARIO, 31/07/2026, 2a
+// rodada de investigacao) pra acompanhar ao vivo com backgroundThrottling
+// desligado. `openDevTools()` nao exige a janela visivel; são
+// independentes. Atenção: o Chromium desliga o throttling sozinho
+// enquanto uma pagina está sendo inspecionada pelo DevTools, então um
+// sucesso aqui não isola 100% se foi a flag `backgroundThrottling: false`
+// ou o próprio DevTools que resolveu — o teste "cego" (sem DevTools,
+// olhando só os logs depois) ainda é o que prova a flag de verdade.
+// DESLIGAR (`false`) depois de observar.
 const SHOW_PDPJ_VALIDATION_WINDOW = false;
-const OPEN_DEVTOOLS_NA_JANELA_TECNICA = false;
+const OPEN_DEVTOOLS_NA_JANELA_TECNICA = true;
 // A sessão de cookies (login no PJe/Keycloak) e o Bearer da API são coisas
 // diferentes, com tempos de vida diferentes — o Bearer é de propósito
 // curto (o `exp` real dele, lido do próprio JWT, costuma ser bem menor),
