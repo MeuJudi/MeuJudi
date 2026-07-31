@@ -11,6 +11,7 @@ const MAX_DOCUMENTOS_PER_REQUEST = 200;
 const MAX_TEXTO_CHARS = 200_000;
 
 interface DocumentoRecebido {
+  pdpjDocumentoId: string;
   url: string | null;
   nome: string | null;
   tipo: string | null;
@@ -25,10 +26,18 @@ interface DocumentoRecebido {
  * consultado no Portal PDPJ): garante que o processo existe na tabela
  * `processos` do tenant (`ultima_sync_pje` atualizado) e persiste os
  * documentos descobertos em `processo_documentos` (link + metadados), com
- * deduplicação por hash da URL — Fase 8 de
- * docs/roadmap/23-meujudi-cs-v0.3.0-refatoracao.md, estendida em 29/07/2026
- * com o texto do documento (via `hrefTexto` do PDPJ, confirmado por captura
- * de tráfego real — nunca `hrefBinario`, o CS nunca busca o PDF).
+ * deduplicação por `pdpj_documento_id` (UUID estável do documento no Codex
+ * do PDPJ) — Fase 8 de docs/roadmap/23-meujudi-cs-v0.3.0-refatoracao.md,
+ * estendida em 29/07/2026 com o texto do documento (via `hrefTexto` do
+ * PDPJ, confirmado por captura de tráfego real — nunca `hrefBinario`, o CS
+ * nunca busca o PDF).
+ *
+ * Antes deduplicava por hash de `hrefBinario`, e `url` era obrigatório —
+ * documento só com `hrefTexto` (sem link de binário) era descartado
+ * inteiro: texto já baixado jogado fora, regex de prazo/audiência nunca
+ * rodava nele, e ficava pra sempre "novo" pro pulo inteligente (achado
+ * 31/07/2026, ver migração 20260731170000). `pdpj_documento_id` cobre os
+ * dois casos, então documento só-texto agora é salvo e dedupado também.
  *
  * O texto recebido é transitório: grava a linha, roda o Regex
  * (`@/lib/regex/pdpj-documentos`) na mesma requisição, aplica prazo e
@@ -118,8 +127,8 @@ async function salvarDocumento(
   processoId: string,
   doc: DocumentoRecebido,
 ): Promise<string | null> {
-  if (!doc.url) return null;
-  const urlHash = createHash("sha256").update(doc.url, "utf-8").digest("hex");
+  if (!doc.pdpjDocumentoId) return null;
+  const urlHash = doc.url ? createHash("sha256").update(doc.url, "utf-8").digest("hex") : null;
   const { data, error } = await supabase
     .from("processo_documentos")
     .upsert(
@@ -127,6 +136,7 @@ async function salvarDocumento(
         tenant_id: tenantId,
         processo_id: processoId,
         fonte: "pdpj" as const,
+        pdpj_documento_id: doc.pdpjDocumentoId,
         url: doc.url,
         url_hash: urlHash,
         nome: doc.nome,
@@ -134,7 +144,7 @@ async function salvarDocumento(
         data_juntada: doc.dataHoraJuntada,
         texto: doc.texto,
       },
-      { onConflict: "tenant_id,processo_id,url_hash" },
+      { onConflict: "tenant_id,processo_id,pdpj_documento_id" },
     )
     .select("id")
     .maybeSingle();
@@ -232,26 +242,31 @@ async function processarTextoDocumento(
 }
 
 /**
- * Só aceita documentos com URL https do próprio domínio do Portal PDPJ que
- * aponte pra algo com cara de documento/peça — descarta links genéricos,
- * vazios ou de outros domínios. Trunca texto absurdamente grande como
- * proteção defensiva (o endpoint /texto nunca foi validado em produção).
+ * Exige `pdpjDocumentoId` (chave de dedup — sem ele o documento não tem
+ * como ser identificado de forma estável). URL só é aceita se https do
+ * próprio domínio do Portal PDPJ e com cara de documento/peça — descarta
+ * links genéricos, vazios ou de outros domínios, mas o documento continua
+ * sendo salvo mesmo sem URL (caso só-texto). Trunca texto absurdamente
+ * grande como proteção defensiva (o endpoint /texto nunca foi validado em
+ * produção).
  */
 function selecionarDocumentosValidos(value: unknown): DocumentoRecebido[] {
   if (!Array.isArray(value)) return [];
-  const vistos = new Set<string>();
+  const idsVistos = new Set<string>();
   const validos: DocumentoRecebido[] = [];
   for (const item of value) {
     if (validos.length >= MAX_DOCUMENTOS_PER_REQUEST || typeof item !== "object" || item === null) continue;
     const raw = item as Record<string, unknown>;
+    const pdpjDocumentoId = typeof raw.pdpjDocumentoId === "string" ? raw.pdpjDocumentoId.trim().slice(0, 200) : "";
+    if (!pdpjDocumentoId || idsVistos.has(pdpjDocumentoId)) continue;
+
     const urlRaw = typeof raw.url === "string" ? raw.url.trim() : "";
     let url: string | null = null;
-    if (urlRaw && !vistos.has(urlRaw)) {
+    if (urlRaw) {
       try {
         const parsed = new URL(urlRaw);
         if (parsed.protocol === "https:" && parsed.hostname.endsWith("pdpj.jus.br") && /documento/i.test(parsed.pathname)) {
           url = urlRaw;
-          vistos.add(urlRaw);
         }
       } catch {
         // url inválida — ignora, mas ainda pode aproveitar o texto abaixo.
@@ -259,8 +274,10 @@ function selecionarDocumentosValidos(value: unknown): DocumentoRecebido[] {
     }
     const textoRaw = typeof raw.texto === "string" ? raw.texto.trim() : "";
     const texto = textoRaw ? (textoRaw.length > MAX_TEXTO_CHARS ? textoRaw.slice(0, MAX_TEXTO_CHARS) : textoRaw) : null;
-    if (!url && !texto) continue;
+
+    idsVistos.add(pdpjDocumentoId);
     validos.push({
+      pdpjDocumentoId,
       url,
       nome: typeof raw.nome === "string" ? raw.nome.slice(0, 300) : null,
       tipo: typeof raw.tipo === "string" ? raw.tipo.slice(0, 200) : null,

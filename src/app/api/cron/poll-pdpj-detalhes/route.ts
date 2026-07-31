@@ -85,6 +85,7 @@ export async function POST(req: NextRequest) {
         .select("id", { count: "exact", head: true })
         .eq("tenant_id", tenant.id)
         .eq("status", "ativo")
+        .is("pdpj_acesso_negado_em", null)
         .or(`ultima_sync_pdpj.is.null,ultima_sync_pdpj.lt.${limiteAntiguidade}`);
       if (filtroCnjAberto) queryPendentes = queryPendentes.not("cnj", "in", filtroCnjAberto);
       const { count: pendentes } = await queryPendentes;
@@ -102,6 +103,7 @@ export async function POST(req: NextRequest) {
         .select("id, cnj")
         .eq("tenant_id", tenant.id)
         .eq("status", "ativo")
+        .is("pdpj_acesso_negado_em", null)
         .or(`ultima_sync_pdpj.is.null,ultima_sync_pdpj.lt.${limiteAntiguidade}`)
         .order("ultima_sync_pdpj", { ascending: true, nullsFirst: true })
         .limit(loteDeHoje);

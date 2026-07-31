@@ -8,8 +8,14 @@ import { autenticarDevice } from "@/lib/cs/device-auth";
  * "Pulo inteligente" (ver docs/roadmap/24-crons-sincronizacao-automatica-
  * pdpj.md) — antes de baixar o texto de cada documento de um processo
  * (chamada cara, via janela Chromium autenticada), o CS pergunta aqui quais
- * hashes de URL já existem em `processo_documentos`. O que vier de volta é
- * pulado — só documento genuinamente novo tem o texto baixado.
+ * `pdpjDocumentoId` (UUID estável do documento no Codex do PDPJ, extraído
+ * de hrefBinario OU hrefTexto) já existem em `processo_documentos`. O que
+ * vier de volta é pulado — só documento genuinamente novo tem o texto
+ * baixado.
+ *
+ * Antes checava por hash de `hrefBinario` — documento só com `hrefTexto`
+ * (sem link de binário) nunca tinha hash pra checar, então nunca era
+ * dedupado (achado 31/07/2026). `pdpjDocumentoId` cobre os dois casos.
  *
  * Sem processo encontrado (ex.: primeira sincronização de um CNJ recém-
  * descoberto), devolve lista vazia — tudo é tratado como novo, comportamento
@@ -28,10 +34,10 @@ export async function POST(request: NextRequest) {
   }
 
   const cnj = typeof body.cnj === "string" ? body.cnj.replace(/\D/g, "") : "";
-  const urlHashes = Array.isArray(body.urlHashes)
-    ? body.urlHashes.filter((h): h is string => typeof h === "string").slice(0, 500)
+  const documentIds = Array.isArray(body.documentIds)
+    ? body.documentIds.filter((h): h is string => typeof h === "string").slice(0, 500)
     : [];
-  if (cnj.length !== 20 || urlHashes.length === 0) {
+  if (cnj.length !== 20 || documentIds.length === 0) {
     return NextResponse.json({ conhecidos: [] });
   }
 
@@ -46,15 +52,15 @@ export async function POST(request: NextRequest) {
 
   const { data: existentes, error } = await supabase
     .from("processo_documentos")
-    .select("url_hash")
+    .select("pdpj_documento_id")
     .eq("tenant_id", device.tenantId)
     .eq("processo_id", processo.id)
-    .in("url_hash", urlHashes);
+    .in("pdpj_documento_id", documentIds);
 
   if (error) {
     console.error("[cs/sync/pdpj/documentos-conhecidos] falha ao consultar:", error);
     return NextResponse.json({ conhecidos: [] });
   }
 
-  return NextResponse.json({ conhecidos: (existentes ?? []).map((row) => row.url_hash) });
+  return NextResponse.json({ conhecidos: (existentes ?? []).map((row) => row.pdpj_documento_id) });
 }

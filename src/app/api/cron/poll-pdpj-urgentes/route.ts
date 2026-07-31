@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
         .select("id, cnj")
         .eq("tenant_id", tenant.id)
         .eq("status", "ativo")
+        .is("pdpj_acesso_negado_em", null)
         .or(`prazo_proxima_resposta.lte.${limiteFuturo},proxima_audiencia.lte.${limiteFuturo}`);
       if (filtroCnjAberto) queryProcessos = queryProcessos.not("cnj", "in", filtroCnjAberto);
       const { data: processos } = await queryProcessos;
