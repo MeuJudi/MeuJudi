@@ -157,6 +157,13 @@ export interface PJeError {
 /**
  * IPC API exposta pro renderer via preload.
  */
+export interface PdpjConcurrencyStatus {
+  configurado: number;
+  efetivo: number;
+  emCooldown: boolean;
+  cooldownAteMs: number | null;
+}
+
 export interface ElectronAPI {
   pdpj: {
     showLoginWindow: () => Promise<PublicSession>;
@@ -164,6 +171,8 @@ export interface ElectronAPI {
     disconnect: () => Promise<void>;
     openJus: () => Promise<void>;
     validateApi: () => Promise<boolean>;
+    getConcurrency: () => Promise<PdpjConcurrencyStatus>;
+    setConcurrency: (valor: number) => Promise<PdpjConcurrencyStatus>;
   };
   diagnostic: {
     run: () => Promise<DiagnosticReport>;

@@ -19,6 +19,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { logger, recordDiagnosticEvent } from './logger';
 import { APP_NAME } from '../shared/constants';
+import type { PdpjConcurrencyStatus } from '../shared/types';
 
 const CONFIG_FILE_NAME = 'pdpj-test-config.json';
 const DEFAULT_CONCURRENCY = 2;
@@ -43,10 +44,35 @@ function lerConcorrenciaConfigurada(): number {
   return DEFAULT_CONCURRENCY;
 }
 
+function emCooldown(): boolean {
+  return ultimoAviso429 !== null && Date.now() - ultimoAviso429 < COOLDOWN_MS;
+}
+
 /** Concorrência efetiva agora — respeita o arquivo de config, exceto durante o cooldown pós-429 (força 1). */
 export function getMaxConcurrentPdpj(): number {
-  if (ultimoAviso429 !== null && Date.now() - ultimoAviso429 < COOLDOWN_MS) return 1;
+  if (emCooldown()) return 1;
   return lerConcorrenciaConfigurada();
+}
+
+/** Estado completo pra exibir na UI (tela de Diagnóstico). */
+export function getConcurrencyStatus(): PdpjConcurrencyStatus {
+  const configurado = lerConcorrenciaConfigurada();
+  const cooldown = emCooldown();
+  return {
+    configurado,
+    efetivo: cooldown ? 1 : configurado,
+    emCooldown: cooldown,
+    cooldownAteMs: cooldown && ultimoAviso429 !== null ? ultimoAviso429 + COOLDOWN_MS : null,
+  };
+}
+
+/** Grava o novo valor no arquivo de config — chamado pela UI de Diagnóstico, não precisa reiniciar o app. */
+export function setMaxConcurrentPdpj(valor: number): PdpjConcurrencyStatus {
+  const limpo = Math.max(1, Math.min(MAX_CONCURRENCY_PERMITIDA, Math.floor(valor) || DEFAULT_CONCURRENCY));
+  fs.mkdirSync(app.getPath('userData'), { recursive: true });
+  fs.writeFileSync(configPath(), JSON.stringify({ maxConcurrentPdpj: limpo }, null, 2), 'utf-8');
+  logger.info('PDPJ: concorrencia de teste alterada pela UI de Diagnostico', { novoValor: limpo });
+  return getConcurrencyStatus();
 }
 
 /**

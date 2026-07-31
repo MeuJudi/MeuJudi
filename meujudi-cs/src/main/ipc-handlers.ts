@@ -8,6 +8,7 @@
 import { ipcMain, app, shell } from 'electron';
 import { PdpjAuth } from './pdpj-auth';
 import { Diagnostic } from './diagnostic';
+import { getConcurrencyStatus, setMaxConcurrentPdpj } from './pdpj-concurrency';
 import { logger, getRecentLogs } from './logger';
 import { enviarRelatorioSupabase } from './supabase-reporter';
 import { Pairing } from './pairing';
@@ -20,7 +21,7 @@ import { createPdpjTaskHandlers } from './pdpj-tasks';
 import { createMuralTaskHandlers, startMuralScheduledTasks } from './mural-tasks';
 import { DocumentRequests } from './document-requests';
 import type { StatusReporter, ConnectionStatus } from './status-reporter';
-import type { PdpjStatus, PublicSession, LogEntry, DiagnosticReport, ConfirmADVValidation, SyncTask, TaskBatch, UnifiedSyncProgress } from '../shared/types';
+import type { PdpjStatus, PublicSession, LogEntry, DiagnosticReport, ConfirmADVValidation, SyncTask, TaskBatch, UnifiedSyncProgress, PdpjConcurrencyStatus } from '../shared/types';
 
 /**
  * Registra todos os IPC handlers. Deve ser chamado uma vez no app.whenReady().
@@ -80,6 +81,14 @@ export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: St
   ipcMain.handle('pdpj:validate-api', async () => {
     logger.info('IPC: pdpj:validate-api');
     return auth.ensureApiSession(true);
+  });
+
+  // Teste controlado de concorrência (ver pdpj-concurrency.ts) — exposto
+  // na tela de Diagnóstico pra ajustar sem editar o arquivo na mão.
+  ipcMain.handle('pdpj:get-concurrency', async (): Promise<PdpjConcurrencyStatus> => getConcurrencyStatus());
+  ipcMain.handle('pdpj:set-concurrency', async (_event, valor: number): Promise<PdpjConcurrencyStatus> => {
+    logger.info('IPC: pdpj:set-concurrency', { valor });
+    return setMaxConcurrentPdpj(valor);
   });
 
   ipcMain.handle('pairing:submit-code', async (_event, codigo: string) => pairing.pair(codigo));
