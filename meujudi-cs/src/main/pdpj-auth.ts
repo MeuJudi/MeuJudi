@@ -256,6 +256,16 @@ export class PdpjAuth {
           });
           if (authorization?.startsWith('Bearer ')) {
             capturedBearerToken = authorization.slice(7).trim();
+            // Também grava no campo de instância — essa mesma authWindow é
+            // reutilizada depois por doEnsureApiSession() (validação em
+            // segundo plano), que só reanexa listener próprio quando CRIA
+            // a janela, não quando reutiliza uma já existente (fix do
+            // vazamento de listener, 31/07/2026). Sem isso, um Bearer
+            // capturado logo após o login manual nunca era visto pela
+            // validação em segundo plano, que ficava esperando um valor
+            // que nunca chegava até estourar o timeout — mesmo com a
+            // sessão de verdade já válida.
+            this.capturedBearer = capturedBearerToken;
             recordDiagnosticEvent('pdpj_api_request_seen', 'info', 'Requisicao autenticada do Portal PDPJ detectada', { method: details.method });
           }
           callback({ requestHeaders: details.requestHeaders });
