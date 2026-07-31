@@ -1,4 +1,5 @@
 import { logger } from './logger';
+import { registrar429PDPJ } from './pdpj-concurrency';
 import { PdpjApiError, normalizePage, redactPdpjPath, redactPdpjBody, isRecord, extractCnj } from './pdpj-api-helpers';
 import type { PdpjProcessPage } from './pdpj-api-helpers';
 import type { PdpjSession } from '../shared/types';
@@ -165,6 +166,10 @@ export class PdpjApiClient {
             transport: browserResponse ? 'chromium' : 'node-fetch',
             bodyPreview: redactPdpjBody(body),
           });
+          // 429 é sinal real de rate limit — trava a concorrência de volta
+          // pra 1 (ver pdpj-concurrency.ts), independente de teste manual
+          // de concorrência mais alta estar rolando ou não.
+          if (status === 429) registrar429PDPJ();
           throw new PdpjApiError(`PDPJ respondeu HTTP ${status}.`, status, status >= 500 || status === 429);
         }
 

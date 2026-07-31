@@ -27,7 +27,7 @@ import { extractDocumentos, isAcessoNegadoProcessoEspecifico, isRecord } from '.
 import type { PdpjDocumentoRef } from './pdpj-api-helpers';
 import { CookieStore } from './cookie-store';
 import type { Pairing } from './pairing';
-import { MAX_QUERY_WINDOWS } from './pdpj-auth';
+import { getMaxQueryWindows } from './pdpj-auth';
 import type { PdpjAuth } from './pdpj-auth';
 import type { TaskHandler, TaskHandlerResult } from './sync-worker';
 import type { SyncTask } from '../shared/types';
@@ -278,7 +278,7 @@ export function createPdpjTaskHandlers(pairing: Pairing, auth: PdpjAuth) {
         return { status: 'completed', counters: { documentosEncontrados: 0, textosLidos: 0, jaConhecidos: documentos.length } };
       }
 
-      const textos = await mapComConcorrencia(documentosNovos, MAX_QUERY_WINDOWS, (doc) => buscarTextoComTolerancia(api, cnj, doc));
+      const textos = await mapComConcorrencia(documentosNovos, getMaxQueryWindows(), (doc) => buscarTextoComTolerancia(api, cnj, doc));
       const textosLidos = textos.filter(Boolean).length;
       const documentosParaEnviar: DocumentoParaEnviar[] = documentosNovos.map((doc, indice) => ({
         pdpjDocumentoId: doc.id,

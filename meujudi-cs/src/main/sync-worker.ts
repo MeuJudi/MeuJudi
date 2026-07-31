@@ -14,6 +14,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { logger, recordDiagnosticEvent } from './logger';
+import { getMaxConcurrentPdpj } from './pdpj-concurrency';
 import type { TaskQueueClient } from './task-queue-client';
 import type { StatusReporter } from './status-reporter';
 import type { SyncTask, SyncTaskSource, SyncTaskFinalStatus, UnifiedSyncProgress } from '../shared/types';
@@ -110,7 +111,10 @@ export class SyncWorker {
   }
 
   private async pollSource(source: SyncTaskSource, run: UnifiedSyncProgress): Promise<void> {
-    const slots = SOURCE_CONCURRENCY[source] - this.running[source].size;
+    // pdpj é ajustável em teste controlado (ver pdpj-concurrency.ts) — os
+    // outros continuam fixos na constante.
+    const concorrenciaMaxima = source === 'pdpj' ? getMaxConcurrentPdpj() : SOURCE_CONCURRENCY[source];
+    const slots = concorrenciaMaxima - this.running[source].size;
     if (slots <= 0) return;
 
     let tasks: SyncTask[];

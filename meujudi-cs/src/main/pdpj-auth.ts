@@ -31,6 +31,7 @@
 
 import { BrowserWindow, Notification, session as electronSession } from 'electron';
 import { CookieStore } from './cookie-store';
+import { getMaxConcurrentPdpj } from './pdpj-concurrency';
 import { loadAppIcon } from './app-icon';
 import { logger, recordDiagnosticEvent } from './logger';
 import { PDPJ_LOGIN_URL, TIMEOUTS, INTERVALS, MEUJUDI_WEB_URL, APP_NAME } from '../shared/constants';
@@ -119,8 +120,13 @@ interface QueryWindowSlot {
   busy: boolean;
 }
 
-/** Teto de janelas ocultas dedicadas a consultas em paralelo — ver docs/roadmap/22-extracao-pdpj-e-fila-cs.md. */
-export const MAX_QUERY_WINDOWS = 2;
+/**
+ * Teto de janelas ocultas dedicadas a consultas em paralelo — ver
+ * docs/roadmap/22-extracao-pdpj-e-fila-cs.md. Ajustável em teste
+ * controlado via `getMaxConcurrentPdpj()` (pdpj-concurrency.ts) — não é
+ * mais uma constante fixa desde 31/07/2026.
+ */
+export { getMaxConcurrentPdpj as getMaxQueryWindows } from './pdpj-concurrency';
 
 export class PdpjAuth {
   private authWindow: BrowserWindow | null = null;
@@ -1552,7 +1558,7 @@ export class PdpjAuth {
     }
 
     this.queryPool = this.queryPool.filter((slot) => !slot.window.isDestroyed());
-    if (this.queryPool.length < MAX_QUERY_WINDOWS) {
+    if (this.queryPool.length < getMaxConcurrentPdpj()) {
       const window = await this.createQueryWindow(session);
       const slot: QueryWindowSlot = { window, busy: true };
       this.queryPool.push(slot);
