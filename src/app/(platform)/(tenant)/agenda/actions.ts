@@ -92,9 +92,14 @@ export async function createInternalReminderFromAgendaEvent(eventId: string, dat
   }
 
   const nextStart = applyDatePreservingTime(event.data_inicio, dateKey);
+  // timeZone explícito é obrigatório aqui: isso roda no servidor (Vercel,
+  // UTC por padrão) — sem isso o texto sai 3h errado e fica gravado assim
+  // pra sempre na descrição (achado 04/08/2026, o Caio reparou horário
+  // errado em vários lugares do produto).
   const officialDate = new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "short",
     timeStyle: "short",
+    timeZone: "America/Sao_Paulo",
   }).format(new Date(event.data_inicio));
 
   const { data: reminder, error: insertError } = await supabase
