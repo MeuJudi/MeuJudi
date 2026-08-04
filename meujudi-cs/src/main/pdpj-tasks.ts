@@ -73,6 +73,81 @@ interface DocumentoParaEnviar {
 }
 
 /**
+ * Metadados estruturados do processo, vindos direto de `tramitacaoAtual`
+ * no detalhe do PDPJ — nunca eram extraídos do lado do CS (só documentos),
+ * então processo descoberto via PDPJ ficava sem autor/réu/classe/tribunal
+ * até algum documento de texto mencionar isso (nem sempre acontece —
+ * achado 04/08/2026 investigando processos com "Sem partes cadastradas"
+ * mesmo tendo prazo/audiência). Shape de `tramitacaoAtual` confirmado via
+ * diagnóstico em log real (04/08/2026): `classe`/`assunto` vêm como array
+ * de 1 item, `partes` é array de `{nome, polo, ...}`.
+ */
+interface PdpjMetadata {
+  classeCodigo: number | null;
+  classeNome: string | null;
+  assuntos: Array<{ codigo: number | null; nome: string }>;
+  tribunalSigla: string | null;
+  valorCausa: number | null;
+  orgaoJulgador: string | null;
+  dataAjuizamento: string | null;
+  autor: string | null;
+  reu: string | null;
+}
+
+const METADATA_VAZIO: PdpjMetadata = {
+  classeCodigo: null, classeNome: null, assuntos: [], tribunalSigla: null,
+  valorCausa: null, orgaoJulgador: null, dataAjuizamento: null, autor: null, reu: null,
+};
+
+/** "ativo"/"a" -> autor, "passivo"/"p" -> réu — cobre as duas convenções mais comuns do ecossistema PJe/CNJ pro campo `polo`. Nunca visto o valor exato ao vivo (ver nota acima); se vier outra coisa, fica sem match, não escreve nada errado. */
+function normalizarPolo(polo: unknown): 'ativo' | 'passivo' | null {
+  if (typeof polo !== 'string') return null;
+  const v = polo.trim().toUpperCase();
+  if (v === 'ATIVO' || v === 'A') return 'ativo';
+  if (v === 'PASSIVO' || v === 'P') return 'passivo';
+  return null;
+}
+
+function extrairMetadadosPdpj(details: Record<string, unknown>): PdpjMetadata {
+  const tramitacaoAtual = isRecord(details.tramitacaoAtual) ? details.tramitacaoAtual : null;
+  if (!tramitacaoAtual) return METADATA_VAZIO;
+
+  const classe = Array.isArray(tramitacaoAtual.classe) && isRecord(tramitacaoAtual.classe[0]) ? tramitacaoAtual.classe[0] : null;
+  const distribuicao = Array.isArray(tramitacaoAtual.distribuicao) && isRecord(tramitacaoAtual.distribuicao[0]) ? tramitacaoAtual.distribuicao[0] : null;
+  const tribunal = isRecord(tramitacaoAtual.tribunal) ? tramitacaoAtual.tribunal : null;
+  const assuntosRaw = Array.isArray(tramitacaoAtual.assunto) ? tramitacaoAtual.assunto : [];
+  const partesRaw = Array.isArray(tramitacaoAtual.partes) ? tramitacaoAtual.partes : [];
+
+  const assuntos = assuntosRaw
+    .filter(isRecord)
+    .map((a) => ({ codigo: typeof a.codigo === 'number' ? a.codigo : null, nome: typeof a.descricao === 'string' ? a.descricao : '' }))
+    .filter((a) => a.nome);
+
+  // Ignora parte marcada como sigilosa — não usa o nome dela pra autor/réu,
+  // mesmo que o processo em si não esteja marcado como sigiloso.
+  let autor: string | null = null;
+  let reu: string | null = null;
+  for (const parteRaw of partesRaw) {
+    if (!isRecord(parteRaw) || parteRaw.sigilosa === true || typeof parteRaw.nome !== 'string') continue;
+    const polo = normalizarPolo(parteRaw.polo);
+    if (polo === 'ativo' && !autor) autor = parteRaw.nome;
+    if (polo === 'passivo' && !reu) reu = parteRaw.nome;
+  }
+
+  return {
+    classeCodigo: classe && typeof classe.codigo === 'number' ? classe.codigo : null,
+    classeNome: classe && typeof classe.descricao === 'string' ? classe.descricao : null,
+    assuntos,
+    tribunalSigla: tribunal && typeof tribunal.sigla === 'string' ? tribunal.sigla : null,
+    valorCausa: typeof tramitacaoAtual.valorAcao === 'number' ? tramitacaoAtual.valorAcao : null,
+    orgaoJulgador: distribuicao && typeof distribuicao.orgaoJulgador === 'string' ? distribuicao.orgaoJulgador : null,
+    dataAjuizamento: typeof tramitacaoAtual.dataHoraAjuizamento === 'string' ? tramitacaoAtual.dataHoraAjuizamento : null,
+    autor,
+    reu,
+  };
+}
+
+/**
  * "Pulo inteligente" (docs/roadmap/24-crons-sincronizacao-automatica-
  * pdpj.md) — pergunta pro Web quais documentos (por `pdpjDocumentoId`, o
  * UUID estável do documento no Codex do PDPJ) já são conhecidos antes de
@@ -104,11 +179,11 @@ async function buscarDocumentosConhecidos(deviceToken: string, cnj: string, docu
   }
 }
 
-async function enviarResultadoPdpj(deviceToken: string, cnj: string, documentos: DocumentoParaEnviar[]): Promise<void> {
+async function enviarResultadoPdpj(deviceToken: string, cnj: string, documentos: DocumentoParaEnviar[], metadata: PdpjMetadata): Promise<void> {
   const response = await fetch(`${MEUJUDI_WEB_URL}/api/cs/sync/pdpj`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deviceToken}` },
-    body: JSON.stringify({ cnj, documentos }),
+    body: JSON.stringify({ cnj, documentos, metadata }),
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({})) as Record<string, unknown>;
@@ -239,57 +314,7 @@ export function createPdpjTaskHandlers(pairing: Pairing, auth: PdpjAuth) {
 
     try {
       const details = await api.buscarDetalhes(cnj);
-      // Diagnostico temporario (29/07/2026, 2a rodada): a 1a hipotese
-      // (documentos dentro de tramitacaoAtual) tambem nao bateu —
-      // documentosEncontrados continuou 0. Em vez de adivinhar de novo,
-      // mapeia as chaves de CADA objeto/array aninhado (1 nivel), achando
-      // qualquer "documentos"/"anexos" por aí. Nunca loga valor, so nomes
-      // de chave e tamanho de array.
-      {
-        const mapaChaves = (value: unknown): unknown => {
-          if (Array.isArray(value)) {
-            return { tipo: 'array', tamanho: value.length, primeiroItemChaves: isRecord(value[0]) ? Object.keys(value[0]).sort() : typeof value[0] };
-          }
-          if (isRecord(value)) {
-            return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, Array.isArray(v) ? { tipo: 'array', tamanho: v.length } : isRecord(v) ? { tipo: 'objeto', chaves: Object.keys(v).sort() } : typeof v]));
-          }
-          return typeof value;
-        };
-        logger.info('PDPJ: mapa de chaves da resposta de detalhes (diagnostico)', {
-          cnjSuffix: cnj.slice(-8),
-          mapa: mapaChaves(details),
-        });
-        // Diagnostico temporario (04/08/2026): confirmar o shape de
-        // classe/assunto/partes/distribuicao/tribunal antes de extrair e
-        // gravar autor/reu/classe/tribunal em `processos` — hoje esses
-        // metadados nunca são extraídos do lado do CS (só documentos), então
-        // processo descoberto via PDPJ fica sem autor/reu até algum
-        // documento de texto mencionar as partes (nem sempre acontece).
-        // mapaChaves só expande 1 nível, então chamar de novo direto em
-        // tramitacaoAtual (em vez de details) dá o shape de CADA um desses
-        // campos, incluindo as chaves do primeiro item de partes[].
-        const tramitacaoAtual = isRecord(details.tramitacaoAtual) ? details.tramitacaoAtual : null;
-        if (tramitacaoAtual) {
-          logger.info('PDPJ: mapa de chaves de tramitacaoAtual (diagnostico)', {
-            cnjSuffix: cnj.slice(-8),
-            mapa: mapaChaves(tramitacaoAtual),
-          });
-          // 2a rodada (04/08/2026): classe/assunto/distribuicao/partes vieram
-          // como array na 1a rodada, então mapaChaves(tramitacaoAtual) só deu
-          // {tipo, tamanho} pra eles — chamar direto no array (em vez de no
-          // objeto que o contém) ativa o outro branch de mapaChaves, que
-          // inclui as chaves do primeiro item.
-          for (const campo of ['classe', 'assunto', 'distribuicao', 'partes'] as const) {
-            const valor = (tramitacaoAtual as Record<string, unknown>)[campo];
-            if (Array.isArray(valor) && valor.length > 0) {
-              logger.info(`PDPJ: mapa de chaves de tramitacaoAtual.${campo} (diagnostico)`, {
-                cnjSuffix: cnj.slice(-8),
-                mapa: mapaChaves(valor),
-              });
-            }
-          }
-        }
-      }
+      const metadata = extrairMetadadosPdpj(details);
       const documentos = extractDocumentos(details).slice(0, MAX_DOCUMENTOS_POR_PROCESSO);
       const token = pairing.getDeviceToken();
       if (!token) return { status: 'failed', errorCode: 'sem_pareamento', errorMessage: 'CS não está pareado.' };
@@ -301,7 +326,14 @@ export function createPdpjTaskHandlers(pairing: Pairing, auth: PdpjAuth) {
       const documentosNovos = documentos.filter((doc) => !conhecidos.has(doc.id));
 
       if (documentos.length > 0 && documentosNovos.length === 0) {
-        // Nada novo — completa sem baixar texto de ninguém.
+        // Nada novo — completa sem baixar texto de ninguém, mas ainda manda
+        // o metadata (classe/autor/réu/tribunal): documento não muda todo
+        // dia, mas o processo pode ter sido descoberto sem nenhum desses
+        // campos preenchidos ainda (achado 04/08/2026 — processo vindo da
+        // descoberta por OAB não tinha nada disso até o primeiro pdpj_cnj
+        // que passasse por aqui, e "sem documento novo" acontece logo na
+        // primeira sincronização real de muitos deles).
+        await enviarResultadoPdpj(token, cnj, [], metadata);
         recordDiagnosticEvent('pdpj_cnj_task_finished', 'success', `CNJ ${cnj.slice(-8)} sem documento novo, pulado`, {
           documentosVerificados: documentos.length,
         });
@@ -319,7 +351,7 @@ export function createPdpjTaskHandlers(pairing: Pairing, auth: PdpjAuth) {
         texto: textos[indice],
       }));
 
-      await enviarResultadoPdpj(token, cnj, documentosParaEnviar);
+      await enviarResultadoPdpj(token, cnj, documentosParaEnviar, metadata);
 
       recordDiagnosticEvent('pdpj_cnj_task_finished', 'success', `Detalhe do CNJ ${cnj.slice(-8)} sincronizado`, {
         documentosEncontrados: documentosParaEnviar.length,

@@ -6,6 +6,7 @@ import { autenticarDevice } from "@/lib/cs/device-auth";
 import { extrairDocumentoPdpj } from "@/lib/regex/pdpj-documentos";
 import { converterValorMonetario, normalizarTipoAudiencia } from "@/lib/regex/patterns";
 import { aplicarPrazoEncontrado, aplicarAudienciaEncontrada } from "@/lib/prazo/aplicar-prazo";
+import { normalizarTribunalSigla } from "@/lib/tribunais/normalizar";
 
 const MAX_DOCUMENTOS_PER_REQUEST = 200;
 const MAX_TEXTO_CHARS = 200_000;
@@ -17,6 +18,78 @@ interface DocumentoRecebido {
   tipo: string | null;
   dataHoraJuntada: string | null;
   texto: string | null;
+}
+
+/** Espelha PdpjMetadata do CS (meujudi-cs/src/main/pdpj-tasks.ts) — vindo de tramitacaoAtual no detalhe do PDPJ. */
+interface MetadadosPdpjRecebidos {
+  classeCodigo: number | null;
+  classeNome: string | null;
+  assuntos: Array<{ codigo: number | null; nome: string }>;
+  tribunalSigla: string | null;
+  valorCausa: number | null;
+  orgaoJulgador: string | null;
+  dataAjuizamento: string | null;
+  autor: string | null;
+  reu: string | null;
+}
+
+function selecionarMetadados(value: unknown): MetadadosPdpjRecebidos | null {
+  if (typeof value !== "object" || value === null) return null;
+  const raw = value as Record<string, unknown>;
+  const assuntos = Array.isArray(raw.assuntos)
+    ? raw.assuntos
+        .filter((a): a is Record<string, unknown> => typeof a === "object" && a !== null)
+        .map((a) => ({ codigo: typeof a.codigo === "number" ? a.codigo : null, nome: typeof a.nome === "string" ? a.nome.slice(0, 300) : "" }))
+        .filter((a) => a.nome)
+        .slice(0, 20)
+    : [];
+  return {
+    classeCodigo: typeof raw.classeCodigo === "number" ? raw.classeCodigo : null,
+    classeNome: typeof raw.classeNome === "string" ? raw.classeNome.slice(0, 300) : null,
+    assuntos,
+    tribunalSigla: typeof raw.tribunalSigla === "string" ? raw.tribunalSigla.slice(0, 20) : null,
+    valorCausa: typeof raw.valorCausa === "number" ? raw.valorCausa : null,
+    orgaoJulgador: typeof raw.orgaoJulgador === "string" ? raw.orgaoJulgador.slice(0, 300) : null,
+    dataAjuizamento: typeof raw.dataAjuizamento === "string" ? raw.dataAjuizamento : null,
+    autor: typeof raw.autor === "string" ? raw.autor.slice(0, 300) : null,
+    reu: typeof raw.reu === "string" ? raw.reu.slice(0, 300) : null,
+  };
+}
+
+/**
+ * Preenche classe/assuntos/tribunal/valor/órgão julgador/autor/réu no
+ * processo — só quando o campo ainda está vazio (nunca sobrescreve um
+ * valor já confirmado por outra fonte, mesma regra de
+ * `processarTextoDocumento` logo abaixo). PDPJ vira uma fonte de metadados
+ * estruturados a mais, não a autoridade única — DataJud/Mural continuam
+ * podendo já ter preenchido isso antes.
+ */
+async function aplicarMetadadosPdpj(supabase: SupabaseClient, tenantId: string, processoId: string, metadata: MetadadosPdpjRecebidos): Promise<void> {
+  const { data: processo } = await supabase
+    .from("processos")
+    .select("tribunal, classe_nome, assuntos, valor_causa, orgao_julgador, data_ajuizamento, autor, reu")
+    .eq("id", processoId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (!processo) return;
+
+  const tribunalNormalizado = metadata.tribunalSigla ? normalizarTribunalSigla(metadata.tribunalSigla) : null;
+  const update: Record<string, unknown> = {};
+  if (metadata.classeNome && !processo.classe_nome) {
+    update.classe_nome = metadata.classeNome;
+    if (metadata.classeCodigo != null) update.classe_codigo = metadata.classeCodigo;
+  }
+  if (metadata.assuntos.length > 0 && (!Array.isArray(processo.assuntos) || processo.assuntos.length === 0)) update.assuntos = metadata.assuntos;
+  if (tribunalNormalizado && !processo.tribunal) update.tribunal = tribunalNormalizado;
+  if (metadata.valorCausa != null && processo.valor_causa == null) update.valor_causa = metadata.valorCausa;
+  if (metadata.orgaoJulgador && !processo.orgao_julgador) update.orgao_julgador = metadata.orgaoJulgador;
+  if (metadata.dataAjuizamento && !processo.data_ajuizamento) update.data_ajuizamento = metadata.dataAjuizamento;
+  if (metadata.autor && !processo.autor) update.autor = metadata.autor;
+  if (metadata.reu && !processo.reu) update.reu = metadata.reu;
+
+  if (Object.keys(update).length === 0) return;
+  const { error } = await supabase.from("processos").update(update).eq("id", processoId).eq("tenant_id", tenantId);
+  if (error) console.error("[cs/sync/pdpj] falha ao aplicar metadados do PDPJ:", error.message);
 }
 
 /**
@@ -103,6 +176,9 @@ export async function POST(request: NextRequest) {
       processoId = inserted?.id;
     }
   }
+
+  const metadata = selecionarMetadados(body.metadata);
+  if (processoId && metadata) await aplicarMetadadosPdpj(supabase, device.tenantId, processoId, metadata);
 
   let documentosSalvos = 0;
   let textosProcessados = 0;
