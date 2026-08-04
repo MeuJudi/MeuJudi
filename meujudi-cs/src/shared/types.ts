@@ -158,7 +158,15 @@ export interface PJeError {
  * IPC API exposta pro renderer via preload.
  */
 export interface PdpjConcurrencyStatus {
-  configurado: number;
+  /** Resultado do cálculo automático (RAM + CPU), sem considerar teto manual nem cooldown. */
+  automatico: number;
+  /** Quantas janelas cabem no orçamento de RAM livre estimado. */
+  limiteRam: number;
+  /** Quantas janelas cabem deixando 1 núcleo de CPU de folga. */
+  limiteCpu: number;
+  /** Teto manual opcional gravado na UI de Diagnóstico — null se não configurado (usa só o automático). */
+  tetoManual: number | null;
+  /** Valor realmente em uso agora — automático, limitado pelo teto manual se houver, ou 1 se em cooldown de 429. */
   efetivo: number;
   emCooldown: boolean;
   cooldownAteMs: number | null;
@@ -172,7 +180,8 @@ export interface ElectronAPI {
     openJus: () => Promise<void>;
     validateApi: () => Promise<boolean>;
     getConcurrency: () => Promise<PdpjConcurrencyStatus>;
-    setConcurrency: (valor: number) => Promise<PdpjConcurrencyStatus>;
+    /** `valor: null` remove o teto manual (volta a usar só o cálculo automático). */
+    setConcurrency: (valor: number | null) => Promise<PdpjConcurrencyStatus>;
   };
   diagnostic: {
     run: () => Promise<DiagnosticReport>;

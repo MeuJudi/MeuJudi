@@ -61,13 +61,32 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ta
 
   const now = new Date().toISOString();
   let excedeuTentativas = false;
+  const { data: atual } = await supabase
+    .from("sync_tasks")
+    .select("attempt, processo_id")
+    .eq("id", taskId)
+    .eq("tenant_id", device.tenantId)
+    .maybeSingle();
   if (status === "paused_login_required" || status === "paused_rate_limit") {
-    const { data: atual } = await supabase.from("sync_tasks").select("attempt").eq("id", taskId).eq("tenant_id", device.tenantId).maybeSingle();
     if (atual && (atual.attempt ?? 0) >= MAX_TENTATIVAS_ANTES_DE_FALHAR) {
       excedeuTentativas = true;
       status = "failed";
     }
   }
+
+  // Roteamento por OAB restritiva (docs/roadmap/
+  // 26-pdpj-concorrencia-inteligente.md Parte C): PDPJ recusou acesso a ESSE
+  // processo especifico (Bearer valido, ver isAcessoNegadoProcessoEspecifico
+  // no CS). Antes de deixar a tarefa morrer como `failed`, checa se alguma
+  // OAB validada do escritório tem acesso a este processo — se tiver, a
+  // tarefa volta pra `pending`, mas só o device do dono dessa OAB consegue
+  // reivindicar de novo (ver filtro required_user_id em claim/route.ts).
+  let roteamentoOab: { userId: string; oabNumber: string; oabUf: string } | null = null;
+  if (status === "failed" && body.errorCode === "sem_acesso_pdpj" && atual?.processo_id) {
+    roteamentoOab = await encontrarDonoDeOabComAcesso(supabase, device.tenantId, atual.processo_id);
+    if (roteamentoOab) status = "pending";
+  }
+
   const isTerminal = status === "completed" || status === "completed_with_warnings" || status === "failed" || status === "cancelled";
 
   const update: Record<string, unknown> = {
@@ -86,6 +105,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ta
     // enviados no corpo — sucesso nunca envia, então nunca limpava).
     update.error_code = null;
     update.error_message = null;
+  } else if (roteamentoOab) {
+    update.error_code = "aguardando_oab_especifica";
+    update.error_message = `Só a OAB ${roteamentoOab.oabNumber}/${roteamentoOab.oabUf} tem acesso a este processo — aguardando o dispositivo daquela conta processar.`;
   } else if (excedeuTentativas) {
     update.error_code = "excesso_tentativas";
     update.error_message = `Pausou repetidamente (${body.errorCode ?? "motivo desconhecido"}) sem resolver — parou após ${MAX_TENTATIVAS_ANTES_DE_FALHAR} tentativas seguidas.`;
@@ -93,6 +115,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ta
     if (body.errorCode !== undefined) update.error_code = String(body.errorCode).slice(0, 60);
     if (body.errorMessage !== undefined) update.error_message = String(body.errorMessage).slice(0, 500);
   }
+  // required_* só faz sentido enquanto a tarefa está esperando o dono certo
+  // — some assim que ela sai desse estado (sucesso, falha normal, ou já foi
+  // reivindicada e vai rodar de novo).
+  update.required_user_id = roteamentoOab?.userId ?? null;
+  update.required_oab_number = roteamentoOab?.oabNumber ?? null;
+  update.required_oab_uf = roteamentoOab?.oabUf ?? null;
 
   const { data: updated, error } = await supabase
     .from("sync_tasks")
@@ -110,10 +138,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ta
   }
   if (!updated) return NextResponse.json({ error: "tarefa_nao_reservada_por_este_device" }, { status: 409 });
 
-  // PDPJ recusou acesso a ESSE processo especifico (Bearer valido, ver
-  // isAcessoNegadoProcessoEspecifico no CS) — marca pra poll-pdpj-detalhes/
-  // poll-pdpj-urgentes pararem de recriar tarefa pra ele pra sempre.
-  if (status === "failed" && body.errorCode === "sem_acesso_pdpj" && updated.processo_id) {
+  // Ninguém no escritório tem uma OAB validada com acesso a este processo —
+  // marca pra poll-pdpj-detalhes/poll-pdpj-urgentes pararem de recriar
+  // tarefa pra ele pra sempre. Só marca aqui (falha definitiva mesmo), não
+  // quando foi roteado pra uma OAB específica (aí ainda pode dar certo).
+  if (status === "failed" && body.errorCode === "sem_acesso_pdpj" && !roteamentoOab && updated.processo_id) {
     const { error: processoError } = await supabase
       .from("processos")
       .update({ pdpj_acesso_negado_em: now })
@@ -123,4 +152,44 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ta
   }
 
   return NextResponse.json({ ok: true, status: updated.status });
+}
+
+/**
+ * Cruza processos.advogados (OABs listadas naquele processo, vindas do
+ * DataJud/PDPJ) com oab_validations (OABs validadas e pareadas a um user_id
+ * deste tenant) — devolve a primeira OAB validada que aparece no processo,
+ * ou null se nenhuma OAB do processo está validada no escritório.
+ */
+async function encontrarDonoDeOabComAcesso(
+  supabase: ReturnType<typeof createServiceClient>,
+  tenantId: string,
+  processoId: string,
+): Promise<{ userId: string; oabNumber: string; oabUf: string } | null> {
+  const { data: processo } = await supabase
+    .from("processos")
+    .select("advogados")
+    .eq("id", processoId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  const advogados = Array.isArray(processo?.advogados) ? (processo.advogados as Array<{ oab?: string; uf?: string }>) : [];
+  if (advogados.length === 0) return null;
+
+  const normalizarNumero = (v: string | undefined) => (v ?? "").replace(/\D/g, "");
+  const normalizarUf = (v: string | undefined) => (v ?? "").trim().toUpperCase();
+
+  const { data: validadas } = await supabase
+    .from("oab_validations")
+    .select("user_id, oab_number, oab_uf")
+    .eq("tenant_id", tenantId)
+    .eq("status", "validada");
+  if (!validadas || validadas.length === 0) return null;
+
+  for (const adv of advogados) {
+    const numeroAdv = normalizarNumero(adv.oab);
+    const ufAdv = normalizarUf(adv.uf);
+    if (!numeroAdv || !ufAdv) continue;
+    const match = validadas.find((v) => normalizarNumero(v.oab_number) === numeroAdv && normalizarUf(v.oab_uf) === ufAdv);
+    if (match) return { userId: match.user_id, oabNumber: match.oab_number, oabUf: match.oab_uf };
+  }
+  return null;
 }

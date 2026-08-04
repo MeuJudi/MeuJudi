@@ -84,10 +84,11 @@ export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: St
     return auth.ensureApiSession(true);
   });
 
-  // Teste controlado de concorrência (ver pdpj-concurrency.ts) — exposto
-  // na tela de Diagnóstico pra ajustar sem editar o arquivo na mão.
+  // Concorrência auto-ajustada por RAM/CPU (ver pdpj-concurrency.ts) —
+  // exposta na tela de Diagnóstico pra mostrar o cálculo e permitir travar
+  // um teto manual opcional sem editar arquivo na mão.
   ipcMain.handle('pdpj:get-concurrency', async (): Promise<PdpjConcurrencyStatus> => getConcurrencyStatus());
-  ipcMain.handle('pdpj:set-concurrency', async (_event, valor: number): Promise<PdpjConcurrencyStatus> => {
+  ipcMain.handle('pdpj:set-concurrency', async (_event, valor: number | null): Promise<PdpjConcurrencyStatus> => {
     logger.info('IPC: pdpj:set-concurrency', { valor });
     return setMaxConcurrentPdpj(valor);
   });

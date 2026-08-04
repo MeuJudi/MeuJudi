@@ -42,6 +42,10 @@ export async function POST(request: NextRequest) {
     .select("id, status, attempt, started_at")
     .eq("tenant_id", device.tenantId)
     .or(`status.eq.pending,${expiredClause}`)
+    // Roteamento por OAB restritiva (docs/roadmap/26-pdpj-concorrencia-inteligente.md
+    // Parte C): tarefa com required_user_id preenchido só pode ser
+    // reivindicada pelo device do dono daquela OAB.
+    .or(`required_user_id.is.null,required_user_id.eq.${device.userId}`)
     .order("priority", { ascending: true })
     .order("created_at", { ascending: true })
     .limit(limit * 3);

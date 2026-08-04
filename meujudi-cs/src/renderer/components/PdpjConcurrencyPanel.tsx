@@ -1,11 +1,12 @@
 /**
- * PdpjConcurrencyPanel — controle de teste da concorrência de janelas PDPJ
- * (ver meujudi-cs/src/main/pdpj-concurrency.ts) direto na tela de
- * Diagnóstico, sem precisar editar o arquivo de config na mão.
+ * PdpjConcurrencyPanel — mostra o cálculo automático de concorrência de
+ * janelas PDPJ (RAM livre + CPUs, ver meujudi-cs/src/main/pdpj-concurrency.ts,
+ * docs/roadmap/26-pdpj-concorrencia-inteligente.md Parte A) e permite travar
+ * um teto manual opcional, direto na tela de Diagnóstico.
  *
  * Mostra também um resumo das últimas chamadas ao PDPJ (sucesso/erro por
- * status), puxado dos logs recentes — pra acompanhar o teste sem abrir a
- * tela de Logs separada.
+ * status), puxado dos logs recentes — pra acompanhar sem abrir a tela de
+ * Logs separada.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -47,7 +48,7 @@ function formatarContagem(ms: number): string {
 
 export function PdpjConcurrencyPanel() {
   const [status, setStatus] = useState<PdpjConcurrencyStatus | null>(null);
-  const [valorInput, setValorInput] = useState('2');
+  const [valorInput, setValorInput] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [resumo, setResumo] = useState<ResumoChamadas>({ total: 0, porStatus: {}, ultimoRateLimit: null });
 
@@ -56,7 +57,7 @@ export function PdpjConcurrencyPanel() {
     try {
       const s = await window.meujudi.pdpj.getConcurrency();
       setStatus(s);
-      setValorInput(String(s.configurado));
+      setValorInput(s.tetoManual !== null ? String(s.tetoManual) : '');
     } catch {
       // silencioso — painel opcional, nao trava a tela de diagnostico
     }
@@ -82,13 +83,24 @@ export function PdpjConcurrencyPanel() {
     return () => clearInterval(interval);
   }, [carregarStatus, carregarResumo]);
 
-  async function aplicar() {
+  async function aplicarTeto() {
     const n = Number(valorInput);
     if (!Number.isFinite(n) || n < 1) return;
     setSalvando(true);
     try {
       const s = await window.meujudi.pdpj.setConcurrency(n);
       setStatus(s);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function removerTeto() {
+    setSalvando(true);
+    try {
+      const s = await window.meujudi.pdpj.setConcurrency(null);
+      setStatus(s);
+      setValorInput('');
     } finally {
       setSalvando(false);
     }
@@ -102,7 +114,7 @@ export function PdpjConcurrencyPanel() {
   return (
     <div className="card space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">🧪 Teste de concorrência do PDPJ</h2>
+        <h2 className="text-lg font-semibold">🧠 Concorrência do PDPJ (auto-ajustada)</h2>
         {status.emCooldown && status.cooldownAteMs && (
           <span className="text-xs rounded-full bg-red-50 text-red-700 px-2 py-1">
             ⚠️ Travado em 1 (429 recente) — volta ao normal {formatarContagem(status.cooldownAteMs - Date.now())}
@@ -110,21 +122,39 @@ export function PdpjConcurrencyPanel() {
         )}
       </div>
 
+      <div className="text-sm text-gray-600">
+        Calculado agora por este PC: RAM permite <span className="font-mono font-semibold">{status.limiteRam}</span>,
+        CPU permite <span className="font-mono font-semibold">{status.limiteCpu}</span> → automático{' '}
+        <span className="font-mono font-semibold">{status.automatico}</span>
+        {status.tetoManual !== null && (
+          <>
+            {' '}, limitado pelo teto manual pra <span className="font-mono font-semibold">{status.tetoManual}</span>
+          </>
+        )}
+        .
+      </div>
+
       <div className="flex items-end gap-3">
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Janelas simultâneas (config)</label>
+          <label className="block text-xs text-gray-500 mb-1">Teto manual (opcional)</label>
           <input
             type="number"
             min={1}
             max={10}
+            placeholder="sem teto"
             value={valorInput}
             onChange={(e) => setValorInput(e.target.value)}
-            className="border rounded px-2 py-1 w-20 text-sm"
+            className="border rounded px-2 py-1 w-24 text-sm"
           />
         </div>
-        <button onClick={aplicar} disabled={salvando} className="btn-primary text-sm">
-          {salvando ? 'Aplicando...' : 'Aplicar'}
+        <button onClick={aplicarTeto} disabled={salvando} className="btn-primary text-sm">
+          {salvando ? 'Aplicando...' : 'Aplicar teto'}
         </button>
+        {status.tetoManual !== null && (
+          <button onClick={removerTeto} disabled={salvando} className="btn-secondary text-sm">
+            Remover teto
+          </button>
+        )}
         <div className="text-sm text-gray-500">
           Efetivo agora: <span className="font-mono font-semibold">{status.efetivo}</span>
           {status.emCooldown && <span className="text-red-600"> (forçado por 429)</span>}

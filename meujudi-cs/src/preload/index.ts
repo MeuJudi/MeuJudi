@@ -18,7 +18,7 @@ const api: ElectronAPI = {
     openJus: () => ipcRenderer.invoke('pdpj:open-jus'),
     validateApi: () => ipcRenderer.invoke('pdpj:validate-api'),
     getConcurrency: () => ipcRenderer.invoke('pdpj:get-concurrency'),
-    setConcurrency: (valor: number) => ipcRenderer.invoke('pdpj:set-concurrency', valor),
+    setConcurrency: (valor: number | null) => ipcRenderer.invoke('pdpj:set-concurrency', valor),
   },
   diagnostic: {
     run: () => ipcRenderer.invoke('diagnostic:run'),
