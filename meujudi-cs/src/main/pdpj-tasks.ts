@@ -274,6 +274,20 @@ export function createPdpjTaskHandlers(pairing: Pairing, auth: PdpjAuth) {
             cnjSuffix: cnj.slice(-8),
             mapa: mapaChaves(tramitacaoAtual),
           });
+          // 2a rodada (04/08/2026): classe/assunto/distribuicao/partes vieram
+          // como array na 1a rodada, então mapaChaves(tramitacaoAtual) só deu
+          // {tipo, tamanho} pra eles — chamar direto no array (em vez de no
+          // objeto que o contém) ativa o outro branch de mapaChaves, que
+          // inclui as chaves do primeiro item.
+          for (const campo of ['classe', 'assunto', 'distribuicao', 'partes'] as const) {
+            const valor = (tramitacaoAtual as Record<string, unknown>)[campo];
+            if (Array.isArray(valor) && valor.length > 0) {
+              logger.info(`PDPJ: mapa de chaves de tramitacaoAtual.${campo} (diagnostico)`, {
+                cnjSuffix: cnj.slice(-8),
+                mapa: mapaChaves(valor),
+              });
+            }
+          }
         }
       }
       const documentos = extractDocumentos(details).slice(0, MAX_DOCUMENTOS_POR_PROCESSO);
