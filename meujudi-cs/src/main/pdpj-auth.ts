@@ -114,7 +114,18 @@ function isTokenNearExpiry(tokenExpiresAt?: Date): boolean {
 interface QueryWindowSlot {
   window: BrowserWindow;
   busy: boolean;
+  /** Quando ficou livre pela última vez (Date.now()) — usado pelo sweep de ociosidade. Só é lido quando `busy = false`. */
+  idleSince: number;
 }
+
+// Docs/roadmap/26-pdpj-concorrencia-inteligente.md Parte A, extensão
+// 04/08/2026: o pool crescia sozinho até o teto calculado, mas nunca
+// encolhia — nem fechava janela parada, nem devolvia RAM se o teto caísse
+// depois (RAM ficou mais escassa) ou se o volume de tarefas baixasse. O
+// sweep (chamado no mesmo timer de 5min de `maybeValidateApi`) resolve os
+// dois casos: fecha janela livre ociosa há mais de `POOL_IDLE_TIMEOUT_MS`, e
+// fecha o excedente livre se o teto atual for menor que o pool de agora.
+const POOL_IDLE_TIMEOUT_MS = 5 * 60_000;
 
 /**
  * Teto de janelas ocultas dedicadas a consultas em paralelo — ver
@@ -1173,6 +1184,7 @@ export class PdpjAuth {
     // revalidar o Bearer ou não — o backoff em si (resume/route.ts) já
     // decide quem está pronto pra tentar de novo.
     void this.resumePausedTasks();
+    this.sweepQueryPool();
 
     const session = this.store.getValidSession();
     if (!session) return; // sem sessão de cookies salva — precisa logar, nada a fazer aqui
@@ -1567,7 +1579,7 @@ export class PdpjAuth {
     this.queryPool = this.queryPool.filter((slot) => !slot.window.isDestroyed());
     if (this.queryPool.length < getMaxConcurrentPdpj()) {
       const window = await this.createQueryWindow(session);
-      const slot: QueryWindowSlot = { window, busy: true };
+      const slot: QueryWindowSlot = { window, busy: true, idleSince: Date.now() };
       this.queryPool.push(slot);
       return { window, release: () => this.releaseQueryWindow(slot) };
     }
@@ -1577,8 +1589,49 @@ export class PdpjAuth {
     return this.acquireQueryWindow(session);
   }
 
+  /**
+   * Fecha janela livre ociosa há mais de `POOL_IDLE_TIMEOUT_MS`, e encolhe o
+   * excedente livre se o teto calculado agora (RAM/CPU, ver
+   * pdpj-concurrency.ts) for menor que o tamanho atual do pool — chamado
+   * periodicamente por `maybeValidateApi`. Nunca mexe em janela ocupada;
+   * reabre sozinho na próxima consulta (`acquireQueryWindow`), então fechar
+   * aqui não perde nada — sessão/token continuam salvos no CookieStore,
+   * independente da janela (ver dúvida do Caio, 04/08/2026).
+   */
+  private sweepQueryPool(): void {
+    this.queryPool = this.queryPool.filter((slot) => !slot.window.isDestroyed());
+    if (this.queryPool.length === 0) return;
+
+    const teto = getMaxConcurrentPdpj();
+    const agora = Date.now();
+    let excedente = Math.max(0, this.queryPool.length - teto);
+
+    const restantes: QueryWindowSlot[] = [];
+    for (const slot of this.queryPool) {
+      if (slot.busy) {
+        restantes.push(slot);
+        continue;
+      }
+      const ociosaDemais = agora - slot.idleSince > POOL_IDLE_TIMEOUT_MS;
+      const encolhePool = excedente > 0;
+      if (ociosaDemais || encolhePool) {
+        if (encolhePool) excedente -= 1;
+        if (!slot.window.isDestroyed()) slot.window.close();
+        logger.info('PDPJ API: janela do pool de consultas fechada', {
+          motivo: ociosaDemais ? 'ociosidade' : 'encolhendo pra caber no teto atual',
+          poolAntes: this.queryPool.length,
+          tetoAtual: teto,
+        });
+        continue;
+      }
+      restantes.push(slot);
+    }
+    this.queryPool = restantes;
+  }
+
   private releaseQueryWindow(slot: QueryWindowSlot): void {
     slot.busy = false;
+    slot.idleSince = Date.now();
     const next = this.queryWaiters.shift();
     if (next) next();
   }
