@@ -105,7 +105,8 @@ function BatchDetails({ batchKey }: { batchKey: string }) {
 function BatchCard({ batch }: { batch: TaskBatch }) {
   const [expanded, setExpanded] = useState(false);
   const pending = Math.max(0, batch.total - batch.done - batch.failed - batch.paused);
-  const percent = batch.total > 0 ? Math.round((batch.done / batch.total) * 100) : 0;
+  const percentDone = batch.total > 0 ? (batch.done / batch.total) * 100 : 0;
+  const percentFailed = batch.total > 0 ? (batch.failed / batch.total) * 100 : 0;
   const temAtencao = batch.failed > 0 || batch.paused > 0;
 
   return (
@@ -125,8 +126,9 @@ function BatchCard({ batch }: { batch: TaskBatch }) {
           )}
           {batch.total > 1 && (
             <div className="mt-2">
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
-                <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${percent}%` }} />
+              <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+                <div className="h-full bg-emerald-500 transition-all" style={{ width: `${percentDone}%` }} />
+                <div className="h-full bg-red-500 transition-all" style={{ width: `${percentFailed}%` }} />
               </div>
               <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-500">
                 <span>✅ {batch.done} concluída{batch.done === 1 ? '' : 's'}</span>

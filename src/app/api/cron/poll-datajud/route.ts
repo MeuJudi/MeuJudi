@@ -125,6 +125,21 @@ export async function POST(req: NextRequest) {
 
             if (!achado) {
               resultado.erros++;
+              // Sem isso, `ultima_sync_datajud` ficava null pra sempre pra
+              // quem o DataJud nunca encontra (arquivado, sigiloso, CNJ com
+              // tribunal candidato errado etc.) — como a fila é ordenada
+              // "nunca sincronizado primeiro" (nullsFirst), os mesmos
+              // processos que sempre falham ficavam eternamente na frente,
+              // monopolizando o lote de cada execução e travando os outros
+              // pra sempre serem tentados (achado 04/08/2026: 562 processos
+              // deste jeito, os mais antigos desde 21/07). Marcar a
+              // tentativa aqui devolve rotatividade justa pra fila — quem
+              // falhou volta pro fim, não fica preso na frente.
+              const { error: tentativaError } = await supabase
+                .from("processos")
+                .update({ ultima_sync_datajud: new Date().toISOString() })
+                .eq("id", processo.id);
+              if (tentativaError) console.error(`[poll-datajud] falha ao marcar tentativa sem sucesso do processo ${processo.cnj}:`, tentativaError.message);
               return;
             }
 

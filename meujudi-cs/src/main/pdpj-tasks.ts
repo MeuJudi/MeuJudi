@@ -259,6 +259,22 @@ export function createPdpjTaskHandlers(pairing: Pairing, auth: PdpjAuth) {
           cnjSuffix: cnj.slice(-8),
           mapa: mapaChaves(details),
         });
+        // Diagnostico temporario (04/08/2026): confirmar o shape de
+        // classe/assunto/partes/distribuicao/tribunal antes de extrair e
+        // gravar autor/reu/classe/tribunal em `processos` — hoje esses
+        // metadados nunca são extraídos do lado do CS (só documentos), então
+        // processo descoberto via PDPJ fica sem autor/reu até algum
+        // documento de texto mencionar as partes (nem sempre acontece).
+        // mapaChaves só expande 1 nível, então chamar de novo direto em
+        // tramitacaoAtual (em vez de details) dá o shape de CADA um desses
+        // campos, incluindo as chaves do primeiro item de partes[].
+        const tramitacaoAtual = isRecord(details.tramitacaoAtual) ? details.tramitacaoAtual : null;
+        if (tramitacaoAtual) {
+          logger.info('PDPJ: mapa de chaves de tramitacaoAtual (diagnostico)', {
+            cnjSuffix: cnj.slice(-8),
+            mapa: mapaChaves(tramitacaoAtual),
+          });
+        }
       }
       const documentos = extractDocumentos(details).slice(0, MAX_DOCUMENTOS_POR_PROCESSO);
       const token = pairing.getDeviceToken();
