@@ -171,7 +171,12 @@ Seguiu o desenho quase à risca, com uma peça a mais descoberta na hora:
   bruto disponível pra buscar o dicionário) não foi tocado — mesmo padrão
   da Audiência, sem regressão.
 
-### 3.3 Centralizar a decisão em vez de duplicar por chamador
+### 3.3 Centralizar a decisão em vez de duplicar por chamador — **[implementado]**
+
+Feito nas duas implementações acima: `titulo` é decidido dentro de
+`aplicarAudienciaEncontrada`/`aplicarPrazoEncontrado` (`aplicar-prazo.ts`),
+não mais montado por cada chamador. Nenhum chamador novo precisa lembrar
+dessa lógica — só passar o valor normalizado (ou nada, e cai no genérico).
 
 Hoje cada um dos 4-5 chamadores monta seu próprio `titulo` manualmente.
 Proposta: mover a lógica de "título específico se tiver, genérico se não"
@@ -206,7 +211,10 @@ todos os lugares").
   nessa parte, nunca "alta", e dicionário fechado (nunca escreve texto bruto
   não reconhecido no título) — a mitigação de risco já estava no plano,
   então seguiu direto pra implementação.
-- **Quem herda o benefício automaticamente** — como isso é regex puro (sem
-  IA), roda tanto no Mural quanto no PDPJ quanto no DataJud (movimentos),
-  já que todos passam pelas mesmas funções `extrairAudienciaV2`/
-  `extrairPrazoDias` em `patterns.ts`. Não precisa duplicar por fonte.
+- **Quem herda o benefício automaticamente** — **[corrigido 04/08/2026, era
+  impreciso]** vale pra **Prazo** nos 3 (Mural, PDPJ, DataJud) — confirmado,
+  os 4 chamadores reais cobrem as 3 fontes. Pra **Audiência** só vale Mural e
+  PDPJ: o DataJud (`poll-datajud`/`sincronizar-processo.ts`) nunca extraiu
+  audiência de movimentação, só prazo — nunca chamou
+  `aplicarAudienciaEncontrada`, mesmo antes desta sessão. A nota original
+  ("todos passam pelas mesmas funções") misturava os dois casos.
