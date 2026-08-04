@@ -63,6 +63,15 @@ export async function aplicarAudienciaEncontrada(
     fonte: string;
     fonteId?: string | null;
     titulo?: string | null;
+    /**
+     * Natureza da audiência já normalizada (ver `normalizarTipoAudiencia`
+     * em `@/lib/regex/patterns`) — quando presente, vira o título em vez de
+     * `titulo` (docs/roadmap/27-nomear-prazo-audiencia.md). Decisão
+     * centralizada aqui pra todo chamador (Mural/PDPJ/fila de lote) ganhar
+     * o título específico automaticamente, sem duplicar a lógica de
+     * fallback em cada um.
+     */
+    tipoAudiencia?: string | null;
     descricao?: string | null;
     extracaoOrigem?: string | null;
     extracaoConfianca?: string | null;
@@ -82,7 +91,7 @@ export async function aplicarAudienciaEncontrada(
       tenant_id: params.tenantId,
       processo_id: params.processoId,
       tipo: "audiencia",
-      titulo: params.titulo ?? "Audiência",
+      titulo: params.tipoAudiencia ?? params.titulo ?? "Audiência",
       descricao: params.descricao ?? null,
       data_inicio: params.dataAudienciaIso,
       fonte: params.fonte,

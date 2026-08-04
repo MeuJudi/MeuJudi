@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MuralComunicacao } from "./client";
-import { converterValorMonetario, extrairAudienciaV2, extrairLinkVideoconferencia, extrairPrazoDias, extrairPrazoHoras, extrairValor } from "@/lib/regex/patterns";
+import { converterValorMonetario, extrairAudienciaV2, extrairLinkVideoconferencia, extrairPrazoDias, extrairPrazoHoras, extrairValor, normalizarTipoAudiencia } from "@/lib/regex/patterns";
 import { aplicarAudienciaEncontrada, aplicarPrazoEncontrado } from "@/lib/prazo/aplicar-prazo";
 import { calcularPrazoFatal } from "@/lib/prazo/calcular-prazo-fatal";
 import { extrairCampo } from "@/lib/extracao/pipeline";
@@ -119,6 +119,7 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
               tenantId, processoId: existente.processo_id, dataAudienciaIso,
               fonte: "mural", fonteId: String(com.id),
               titulo: `${com.tipoComunicacao} - ${com.siglaTribunal}`, descricao: com.nomeOrgao,
+              tipoAudiencia: normalizarTipoAudiencia(novaAudiencia?.tipo, novaAudiencia?.texto_completo),
               extracaoOrigem: "regex_reprocessada", extracaoConfianca: "alta", textoOrigem: com.texto,
               linkVideoconferencia: extrairLinkVideoconferencia(existente.texto),
             });
@@ -265,6 +266,7 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
     fonteId: String(com.id),
     titulo: `${com.tipoComunicacao} - ${com.siglaTribunal}`,
     descricao: com.nomeOrgao,
+    tipoAudiencia: normalizarTipoAudiencia(audiencia?.tipo, audiencia?.texto_completo),
     extracaoOrigem: "regex",
     extracaoConfianca: "alta",
     textoOrigem: com.texto,

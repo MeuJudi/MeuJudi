@@ -4,7 +4,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { autenticarDevice } from "@/lib/cs/device-auth";
 import { extrairDocumentoPdpj } from "@/lib/regex/pdpj-documentos";
-import { converterValorMonetario } from "@/lib/regex/patterns";
+import { converterValorMonetario, normalizarTipoAudiencia } from "@/lib/regex/patterns";
 import { aplicarPrazoEncontrado, aplicarAudienciaEncontrada } from "@/lib/prazo/aplicar-prazo";
 
 const MAX_DOCUMENTOS_PER_REQUEST = 200;
@@ -219,6 +219,7 @@ async function processarTextoDocumento(
       fonte: "pdpj",
       fonteId: documentoId,
       titulo: `Audiência — ${doc.tipo ?? doc.nome ?? "Documento PDPJ"}`,
+      tipoAudiencia: normalizarTipoAudiencia(primeiraAudiencia.valor, primeiraAudiencia.contexto),
       extracaoOrigem: "regex",
       extracaoConfianca: "media",
       textoOrigem: primeiraAudiencia.contexto,

@@ -29,7 +29,17 @@ export default function Home() {
 
   const isConnected = status.state === 'connected';
   const session = isConnected ? status.session : null;
-  const timeRemaining = useTimeAgo(session?.expiresAt);
+  // `session.expiresAt` é a sessão de cookies (~7 dias) — quase nunca é o
+  // que expira de verdade. O que importa pras tarefas do PDPJ é o Bearer
+  // (apiTokenExpiresAt, bem mais curto), e só reflete algo real quando a
+  // API está de fato validada agora — sem isso, o Bearer pode ter sido
+  // invalidado por um 401 (revalidação automática falhando) e o card
+  // continuava mostrando uma contagem de dias, como se nada tivesse
+  // acontecido (achado 04/08/2026, a pedido do Caio — mesma correção que a
+  // tela de Diagnóstico do Portal PDPJ/Jus já tinha).
+  const apiTokenExpirado = session?.apiTokenExpiresAt ? new Date(session.apiTokenExpiresAt).getTime() <= Date.now() : true;
+  const apiRealmenteValidada = isConnected && session?.apiStatus === 'validated' && !apiTokenExpirado;
+  const timeRemaining = useTimeAgo(session?.apiTokenExpiresAt);
 
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
@@ -87,7 +97,13 @@ export default function Home() {
             <span className="text-gray-500">Portal PDPJ/Jus</span>
             <span className="flex items-center gap-2">
               <StatusIndicator status={status} size="sm" />
-              {isConnected ? `expira ${timeRemaining}` : isLoading || status.state === 'connecting' ? 'conectando...' : 'desconectado'}
+              {apiRealmenteValidada
+                ? `expira ${timeRemaining}`
+                : isConnected
+                  ? 'revalidando sessão...'
+                  : isLoading || status.state === 'connecting'
+                    ? 'conectando...'
+                    : 'desconectado'}
             </span>
           </div>
         </div>

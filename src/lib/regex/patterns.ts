@@ -269,7 +269,13 @@ export function extrairAudienciaV2(texto: string): AudienciaExtraida | null {
   for (const p of REGEX_AUDIENCIA_V2) {
     const m = limpo.match(p.regex);
     if (m) {
-      const result: AudienciaExtraida = { regex_usado: p.nome };
+      // Texto do match inteiro, não só os grupos capturados — vários
+      // padrões (ex. "audiência designada para data") mencionam a natureza
+      // da audiência (conciliação/instrução/etc.) no meio do texto casado
+      // sem capturar isso num grupo. Guardar `m[0]` permite achar essa
+      // natureza depois (ver `normalizarTipoAudiencia`) sem precisar editar
+      // regex por regex pra virar grupo capturante.
+      const result: AudienciaExtraida = { regex_usado: p.nome, texto_completo: m[0] };
       for (const [key, idx] of Object.entries(p.grupo)) {
         if (typeof idx === "number" && m[idx]) result[key] = m[idx].trim();
         if (typeof idx === "string" && idx.includes("+")) {
@@ -295,6 +301,47 @@ export function extrairAudienciaV2(texto: string): AudienciaExtraida | null {
         }
       }
       return result;
+    }
+  }
+  return null;
+}
+
+/**
+ * Reconhece a natureza da audiência (conciliação, instrução, custódia...)
+ * num texto qualquer — usado sobre `AudienciaExtraida.tipo` (quando o regex
+ * já capturou) ou `.texto_completo` (fallback, cobre os padrões que só
+ * mencionam a natureza sem capturar num grupo próprio). Dicionário fechado:
+ * só reconhece o que está na lista — texto bruto nunca vaza pro título
+ * (docs/roadmap/27-nomear-prazo-audiencia.md). `null` quando não reconhece
+ * nada, e quem chamar cai no título genérico de sempre.
+ */
+const TIPOS_AUDIENCIA_CONHECIDOS: Array<{ padrao: RegExp; titulo: string }> = [
+  { padrao: /instrucao\s+e\s+julgamento/i, titulo: "Audiência de Instrução e Julgamento" },
+  { padrao: /encerramento\s+de\s+instrucao/i, titulo: "Audiência de Encerramento de Instrução" },
+  { padrao: /instrucao/i, titulo: "Audiência de Instrução" },
+  { padrao: /concilia[cç]ao/i, titulo: "Audiência de Conciliação" },
+  { padrao: /media[cç]ao/i, titulo: "Audiência de Mediação" },
+  { padrao: /custodia/i, titulo: "Audiência de Custódia" },
+  { padrao: /admonitoria/i, titulo: "Audiência Admonitória" },
+  { padrao: /\buna\b/i, titulo: "Audiência Una" },
+  { padrao: /preliminar/i, titulo: "Audiência Preliminar" },
+  { padrao: /sessao\s+(?:de\s+)?julgamento/i, titulo: "Sessão de Julgamento" },
+  { padrao: /pauta\s+de\s+julgamento/i, titulo: "Sessão de Julgamento" },
+  // Padrão "sessão de julgamento" (patterns.ts) grava `tipo: 'sessao'` fixo
+  // sem a palavra "julgamento" no texto real (regex só casa "sessão
+  // ordinária/extraordinária") — sem esse fallback mais solto, esse caso
+  // nunca bateria em nenhum padrão acima e cairia sempre no título genérico.
+  { padrao: /\bsessao\b/i, titulo: "Sessão de Julgamento" },
+  { padrao: /art(?:igo)?\.?\s*334/i, titulo: "Audiência de Conciliação (Art. 334 CPC)" },
+  { padrao: /\binicial\b/i, titulo: "Audiência Inicial" },
+];
+
+export function normalizarTipoAudiencia(...textosBrutos: Array<string | null | undefined>): string | null {
+  for (const bruto of textosBrutos) {
+    if (!bruto) continue;
+    const limpo = bruto.normalize("NFD").replace(/[̀-ͯ]/g, "");
+    for (const { padrao, titulo } of TIPOS_AUDIENCIA_CONHECIDOS) {
+      if (padrao.test(limpo)) return titulo;
     }
   }
   return null;

@@ -16,6 +16,13 @@ const STATUS_CONFIG: Record<PdpjStatus['state'], { color: string; label: string;
   error:        { color: 'bg-status-error',        label: 'Erro',          icon: '🔴', pulse: false },
 };
 
+// Sessão de cookies válida (`state: 'connected'`) não significa que a API
+// do PDPJ está de fato utilizável — o Bearer pode ter sido invalidado por
+// um 401 e a revalidação automática pode estar falhando há minutos (achado
+// 04/08/2026, a pedido do Caio: o indicador continuava verde "Conectado"
+// nesse cenário, sem nenhum sinal visual de que algo estava errado).
+const STATUS_API_INDISPONIVEL = { color: 'bg-status-connecting', label: 'Revalidando API...', icon: '🟡', pulse: true };
+
 const SIZE_CONFIG = {
   sm: { dot: 'w-2 h-2', text: 'text-xs' },
   md: { dot: 'w-3 h-3', text: 'text-sm' },
@@ -23,7 +30,11 @@ const SIZE_CONFIG = {
 };
 
 export function StatusIndicator({ status, size = 'md' }: StatusIndicatorProps) {
-  const config = STATUS_CONFIG[status.state];
+  const apiTokenExpirado = status.state === 'connected' && status.session.apiTokenExpiresAt
+    ? new Date(status.session.apiTokenExpiresAt).getTime() <= Date.now()
+    : true;
+  const apiIndisponivel = status.state === 'connected' && (status.session.apiStatus !== 'validated' || apiTokenExpirado);
+  const config = apiIndisponivel ? STATUS_API_INDISPONIVEL : STATUS_CONFIG[status.state];
   const sizing = SIZE_CONFIG[size];
 
   return (
