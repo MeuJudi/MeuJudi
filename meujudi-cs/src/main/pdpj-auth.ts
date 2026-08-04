@@ -1163,6 +1163,17 @@ export class PdpjAuth {
   }
 
   private async maybeValidateApi(): Promise<void> {
+    // Achado 04/08/2026: `resumePausedTasks()` só era chamado dentro do
+    // fluxo COMPLETO de revalidação (abaixo) — com a sessão saudável (Bearer
+    // ainda válido, sem precisar revalidar), esse fluxo nunca roda, e
+    // `paused_login_required` nunca é destravada de novo. Resultado: fila
+    // zerada em `pending`, sessão 100% saudável, e ainda assim 1000+
+    // tarefas paradas esperando um gatilho que não vinha mais. Agora roda
+    // a cada ciclo (mesmo timer de 5min), independente de precisar
+    // revalidar o Bearer ou não — o backoff em si (resume/route.ts) já
+    // decide quem está pronto pra tentar de novo.
+    void this.resumePausedTasks();
+
     const session = this.store.getValidSession();
     if (!session) return; // sem sessão de cookies salva — precisa logar, nada a fazer aqui
     // Antes só reagia a "token vazio" — um Bearer capturado ficava marcado
