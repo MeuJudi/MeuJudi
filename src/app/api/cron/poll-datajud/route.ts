@@ -70,9 +70,14 @@ export async function POST(req: NextRequest) {
   // vezes por hora pra cobrir todo mundo — ajustar a frequência no
   // cron-job.org de acordo com o volume real de processos.
   const LIMITE_PROCESSOS_POR_TENANT = 15;
-  // Margem de segurança abaixo do maxDuration=60s — corta ANTES da Vercel
-  // matar a função no meio de um tenant, pra sempre terminar com log limpo.
-  const ORCAMENTO_TEMPO_MS = 45_000;
+  // Antes era 45s (só girando em torno do maxDuration=60s da Vercel) — mas
+  // o cron-job.org desiste de esperar resposta com 30s de timeout de
+  // requisição, e reporta "falha (timeout)" mesmo quando a função termina
+  // certinho do lado da Vercel (achado 04/08/2026, a pedido do Caio: alinhar
+  // o orçamento interno ao timeout do cron-job.org, não ao da Vercel, pra
+  // parar de gerar falso alarme no painel). 28s (não 30s cravado) deixa uma
+  // margem pra rede + serialização da resposta HTTP não estourar o corte.
+  const ORCAMENTO_TEMPO_MS = 28_000;
 
   const { data: tenants, error: tenantsError } = await supabase
     .from("tenants")
