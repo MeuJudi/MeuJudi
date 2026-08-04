@@ -1,8 +1,8 @@
 # 27 — Nomear prazo e audiência (título específico em vez de genérico)
 
-> **Status (04/08/2026): a parte de Audiência (seção 3.1) foi implementada.**
-> A parte de Prazo (seção 3.2) continua só planejada — implementar com pedido
-> explícito.
+> **Status (04/08/2026): Audiência (3.1) e Prazo (3.2) implementadas.**
+> Documento completo — ver "Implementado" em cada seção pro que mudou do
+> desenho original pro código real.
 
 ## 1. Objetivo
 
@@ -134,6 +134,43 @@ no título genérico, sem regressão.
 3. Mesmo fallback: não reconheceu nada do dicionário → título genérico
    `"Prazo: N dias"` de hoje, sem regressão.
 
+#### Implementado (04/08/2026)
+
+Seguiu o desenho quase à risca, com uma peça a mais descoberta na hora:
+
+- `encontrarMatchPrazoDigitos()` (novo, privado) extraído do corpo de
+  `extrairPrazoDias` — mesmo loop sobre `REGEX_PRAZO_DIAS`, só que devolve o
+  `RegExpMatchArray` inteiro (com `.index`) em vez de só o número.
+  `extrairPrazoDias` continua com o comportamento idêntico de antes (só
+  chama a função nova por dentro); zero risco de regressão nele.
+- `extrairNaturezaPrazo(texto)`: acha a posição do match (via
+  `encontrarMatchPrazoDigitos`, com fallback pro padrão por extenso), recorta
+  ±80 caracteres ao redor e busca o dicionário de atos processuais
+  (`ATOS_PROCESSUAIS_CONHECIDOS`, `patterns.ts`) — mesma técnica de
+  acento-insensível usada em `normalizarTipoAudiencia`. Ordem importa: termos
+  compostos antes da forma genérica (ex. "embargos de declaração" antes de
+  "embargos" solto, "recurso especial/extraordinário" antes de "recurso").
+- **Peça a mais**: a busca do dicionário virou uma função própria exportada,
+  `normalizarAtoProcessual(textoJanela)` — porque o motor de extração do
+  PDPJ (`pdpj-documentos.ts`) já entrega um `contexto` pronto (janela de
+  ~100 antes + 180 depois do prazo, calculada por ele mesmo) e não faz
+  sentido `extrairNaturezaPrazo` re-achar a posição do zero num texto que já
+  é só a janela. O chamador do PDPJ (`cs/sync/pdpj/route.ts`) usa
+  `normalizarAtoProcessual(primeiroPrazo.contexto)` direto; os outros 3
+  chamadores (2x Mural, DataJud) usam `extrairNaturezaPrazo(textoCompleto)`.
+- Confiança forçada pra "media" dentro de `aplicarPrazoEncontrado` sempre
+  que `naturezaPrazo` está presente — mesmo que o chamador tenha passado
+  "alta" (o dia continua com a confiança que o chamador decidiu; só a
+  natureza do ato é que nunca é tratada como certeza alta).
+- Título final: `"Prazo para {natureza}"` (ex. `"Prazo para Contestação"`)
+  quando reconhece algo, senão o genérico `"Prazo: N dias"` de sempre.
+- Conectado nos 4 chamadores reais com texto disponível:
+  `mural/processar-comunicacao.ts` (2x), `cs/sync/pdpj/route.ts`,
+  `cron/poll-datajud/route.ts`, `lib/datajud/sincronizar-processo.ts`.
+  `cron/coletar-resultados-lote/route.ts` (resultado vem da IA, sem texto
+  bruto disponível pra buscar o dicionário) não foi tocado — mesmo padrão
+  da Audiência, sem regressão.
+
 ### 3.3 Centralizar a decisão em vez de duplicar por chamador
 
 Hoje cada um dos 4-5 chamadores monta seu próprio `titulo` manualmente.
@@ -163,10 +200,12 @@ todos os lugares").
   um ponto de partida baseado no que já aparece nos 16 regex existentes;
   vale revisar contra uma amostra maior de textos reais antes de fechar
   (mesmo processo usado nas auditorias anteriores de regex desta sessão).
-- **Prazo: vale a pena mesmo?** — dado que a precisão vai ser
-  estruturalmente pior que audiência (texto mais variado, sem âncora
-  regex forte), pode valer a pena avaliar depois de ver o resultado de
-  audiência primeiro, em vez de comprometer a implementar já.
+- **Prazo: vale a pena mesmo?** — **[respondido 04/08/2026]** o Caio pediu
+  pra implementar direto, sem esperar validar Audiência primeiro em produção.
+  Fica valendo o mesmo cuidado do design original: confiança sempre "media"
+  nessa parte, nunca "alta", e dicionário fechado (nunca escreve texto bruto
+  não reconhecido no título) — a mitigação de risco já estava no plano,
+  então seguiu direto pra implementação.
 - **Quem herda o benefício automaticamente** — como isso é regex puro (sem
   IA), roda tanto no Mural quanto no PDPJ quanto no DataJud (movimentos),
   já que todos passam pelas mesmas funções `extrairAudienciaV2`/

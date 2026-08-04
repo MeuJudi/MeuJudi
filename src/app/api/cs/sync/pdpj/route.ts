@@ -4,7 +4,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { autenticarDevice } from "@/lib/cs/device-auth";
 import { extrairDocumentoPdpj } from "@/lib/regex/pdpj-documentos";
-import { converterValorMonetario, normalizarTipoAudiencia } from "@/lib/regex/patterns";
+import { converterValorMonetario, normalizarAtoProcessual, normalizarTipoAudiencia } from "@/lib/regex/patterns";
 import { aplicarPrazoEncontrado, aplicarAudienciaEncontrada } from "@/lib/prazo/aplicar-prazo";
 import { normalizarTribunalSigla } from "@/lib/tribunais/normalizar";
 
@@ -281,6 +281,7 @@ async function processarTextoDocumento(
       fonte: "pdpj",
       fonteId: documentoId,
       descricao: doc.tipo ?? doc.nome ?? "Documento PDPJ",
+      naturezaPrazo: normalizarAtoProcessual(primeiroPrazo.contexto),
       extracaoOrigem: "regex",
       extracaoConfianca: "media",
       textoOrigem: primeiroPrazo.contexto,

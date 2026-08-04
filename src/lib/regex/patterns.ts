@@ -347,16 +347,82 @@ export function normalizarTipoAudiencia(...textosBrutos: Array<string | null | u
   return null;
 }
 
+/** Acha o match dos padrões de prazo-em-dígitos — compartilhado entre extrairPrazoDias (só o número) e extrairNaturezaPrazo (posição, pra olhar o texto ao redor). */
+function encontrarMatchPrazoDigitos(textoLimpo: string): RegExpMatchArray | null {
+  for (const re of REGEX_PRAZO_DIAS) {
+    const m = textoLimpo.match(re);
+    if (m) return m;
+  }
+  return null;
+}
+
 export function extrairPrazoDias(texto: string): number | null {
   // Limpa HTML antes de buscar — textos do Mural vêm em HTML puro
   const limpo = stripHtml(texto);
-  for (const re of REGEX_PRAZO_DIAS) {
-    const m = limpo.match(re);
-    if (m) return parseInt(m[1]);
-  }
+  const m = encontrarMatchPrazoDigitos(limpo);
+  if (m) return parseInt(m[1]);
   // Nenhum dígito no texto ("em cinco dias", "prazo de quinze dias") —
   // achado revisando dados reais, 24/07/2026.
   return extrairPrazoDiasExtenso(limpo);
+}
+
+/**
+ * Dicionário fechado de atos processuais comuns perto de um prazo — mais
+ * arriscado que `normalizarTipoAudiencia` porque não tem âncora de regex
+ * forte (é heurística de proximidade, não um padrão específico do ato em
+ * si), por isso quem usa isso marca confiança "media", nunca "alta"
+ * (docs/roadmap/27-nomear-prazo-audiencia.md). Ordem importa: termos
+ * compostos antes da forma genérica (ex. "embargos de declaração" antes de
+ * "embargos" solto), senão o genérico sempre ganha primeiro.
+ */
+const ATOS_PROCESSUAIS_CONHECIDOS: Array<{ padrao: RegExp; nome: string }> = [
+  { padrao: /embargos\s+de\s+declara[cç][aã]o/i, nome: 'Embargos de Declaração' },
+  { padrao: /embargos\s+(?:a|à)\s+execu[cç][aã]o/i, nome: 'Embargos à Execução' },
+  { padrao: /embargos/i, nome: 'Embargos' },
+  { padrao: /recurso\s+especial/i, nome: 'Recurso Especial' },
+  { padrao: /recurso\s+extraordin[aá]rio/i, nome: 'Recurso Extraordinário' },
+  { padrao: /agravo\s+(?:de\s+)?instrumento/i, nome: 'Agravo de Instrumento' },
+  { padrao: /agravo/i, nome: 'Agravo' },
+  { padrao: /apela[cç][aã]o/i, nome: 'Apelação' },
+  { padrao: /recurso/i, nome: 'Recurso' },
+  { padrao: /contesta[cç][aã]o/i, nome: 'Contestação' },
+  { padrao: /r[eé]plica/i, nome: 'Réplica' },
+  { padrao: /impugna[cç][aã]o/i, nome: 'Impugnação' },
+  { padrao: /cumprimento\s+de\s+senten[cç]a/i, nome: 'Cumprimento de Sentença' },
+  { padrao: /emenda\s+(?:a|à)\s+inicial/i, nome: 'Emenda à Inicial' },
+  { padrao: /manifesta[cç][aã]o/i, nome: 'Manifestação' },
+  { padrao: /comprova[cç][aã]o/i, nome: 'Comprovação' },
+  { padrao: /pagamento/i, nome: 'Pagamento' },
+];
+
+const JANELA_CONTEXTO_PRAZO = 80;
+
+/** Busca o dicionário de atos processuais num texto qualquer — usado tanto por `extrairNaturezaPrazo` (janela calculada aqui) quanto direto sobre o `contexto` que o motor de extração do PDPJ já entrega pronto (`pdpj-documentos.ts`, mesma janela, calculada lá). */
+export function normalizarAtoProcessual(textoJanela: string | null | undefined): string | null {
+  if (!textoJanela) return null;
+  const limpo = textoJanela.normalize('NFD').replace(/[̀-ͯ]/g, '');
+  for (const { padrao, nome } of ATOS_PROCESSUAIS_CONHECIDOS) {
+    if (padrao.test(limpo)) return nome;
+  }
+  return null;
+}
+
+/**
+ * Reconhece o ato processual associado a um prazo (contestação,
+ * manifestação, embargos...), buscando numa janela de texto perto de onde
+ * o prazo foi encontrado — nunca no documento inteiro (pode mencionar
+ * "contestação" num parágrafo e o prazo ser de outra coisa em outro).
+ * `null` quando não reconhece nada ou não acha nem o prazo — quem chama
+ * cai no título genérico de sempre.
+ */
+export function extrairNaturezaPrazo(texto: string): string | null {
+  const limpo = stripHtml(texto);
+  const m = encontrarMatchPrazoDigitos(limpo) ?? limpo.match(REGEX_PRAZO_DIAS_EXTENSO);
+  if (!m || m.index === undefined) return null;
+
+  const inicio = Math.max(0, m.index - JANELA_CONTEXTO_PRAZO);
+  const fim = Math.min(limpo.length, m.index + m[0].length + JANELA_CONTEXTO_PRAZO);
+  return normalizarAtoProcessual(limpo.slice(inicio, fim));
 }
 
 export function extrairPrazoHoras(texto: string): number | null {

@@ -18,6 +18,16 @@ export async function aplicarPrazoEncontrado(
     fonte: string;
     fonteId?: string | null;
     descricao?: string | null;
+    /**
+     * Ato processual já normalizado (ver `extrairNaturezaPrazo` em
+     * `@/lib/regex/patterns`) — quando presente, vira o título em vez do
+     * genérico "Prazo: N dias" (docs/roadmap/27-nomear-prazo-audiencia.md).
+     * É uma heurística de proximidade (não uma regex ancorada como a de
+     * audiência), então força `extracaoConfianca` pra "media" mesmo que o
+     * chamador tenha passado "alta" — nunca superestima a confiança nessa
+     * parte específica da extração.
+     */
+    naturezaPrazo?: string | null;
     extracaoOrigem?: string | null;
     extracaoConfianca?: string | null;
     textoOrigem?: string | null;
@@ -36,13 +46,13 @@ export async function aplicarPrazoEncontrado(
       tenant_id: params.tenantId,
       processo_id: params.processoId,
       tipo: "prazo",
-      titulo: `Prazo: ${params.prazoDias} dias`,
+      titulo: params.naturezaPrazo ? `Prazo para ${params.naturezaPrazo}` : `Prazo: ${params.prazoDias} dias`,
       descricao: params.descricao ?? null,
       data_inicio: dataFatal,
       fonte: params.fonte,
       fonte_id: params.fonteId ?? null,
       extracao_origem: params.extracaoOrigem ?? null,
-      extracao_confianca: params.extracaoConfianca ?? null,
+      extracao_confianca: params.naturezaPrazo ? "media" : (params.extracaoConfianca ?? null),
       texto_origem: params.textoOrigem ?? null,
     },
     { onConflict: "tenant_id,fonte,fonte_id" },

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MuralComunicacao } from "./client";
-import { converterValorMonetario, extrairAudienciaV2, extrairLinkVideoconferencia, extrairPrazoDias, extrairPrazoHoras, extrairValor, normalizarTipoAudiencia } from "@/lib/regex/patterns";
+import { converterValorMonetario, extrairAudienciaV2, extrairLinkVideoconferencia, extrairNaturezaPrazo, extrairPrazoDias, extrairPrazoHoras, extrairValor, normalizarTipoAudiencia } from "@/lib/regex/patterns";
 import { aplicarAudienciaEncontrada, aplicarPrazoEncontrado } from "@/lib/prazo/aplicar-prazo";
 import { calcularPrazoFatal } from "@/lib/prazo/calcular-prazo-fatal";
 import { extrairCampo } from "@/lib/extracao/pipeline";
@@ -129,6 +129,7 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
               tenantId, processoId: existente.processo_id, prazoDias: novoPrazoDias,
               dataReferencia: new Date(com.data_disponibilizacao),
               fonte: "mural", fonteId: String(com.id), descricao: com.tipoComunicacao,
+              naturezaPrazo: extrairNaturezaPrazo(existente.texto),
               extracaoOrigem: "regex_reprocessada", extracaoConfianca: "alta", textoOrigem: com.texto,
             });
           }
@@ -280,6 +281,7 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
     fonte: "mural",
     fonteId: String(com.id),
     descricao: com.tipoComunicacao,
+    naturezaPrazo: extrairNaturezaPrazo(com.texto),
     extracaoOrigem: "regex",
     extracaoConfianca: "alta",
     textoOrigem: com.texto,

@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buscarProcessoEmTribunais, normalizarDataJudData } from "./client";
 import { extrairTribunaisCandidatos } from "./tribunal-from-cnj";
-import { extrairPrazoDias, extrairPrazoHoras } from "@/lib/regex/patterns";
+import { extrairNaturezaPrazo, extrairPrazoDias, extrairPrazoHoras } from "@/lib/regex/patterns";
 import { aplicarPrazoEncontrado } from "@/lib/prazo/aplicar-prazo";
 import { normalizarTribunalSigla } from "@/lib/tribunais/normalizar";
 import { normalizarSistemaNome } from "@/lib/sistemas/normalizar";
@@ -93,6 +93,7 @@ export async function sincronizarProcessoDataJud(
         fonte: "datajud",
         fonteId: inserted?.id ?? null,
         descricao: mov.nome,
+        naturezaPrazo: extrairNaturezaPrazo(texto),
         extracaoOrigem: "regex",
         extracaoConfianca: "alta",
         textoOrigem: texto,

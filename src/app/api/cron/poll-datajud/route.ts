@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { extrairTribunaisCandidatos } from "@/lib/datajud/tribunal-from-cnj";
 import { buscarProcessoEmTribunais, normalizarDataJudData } from "@/lib/datajud/client";
-import { extrairPrazoDias, extrairPrazoHoras } from "@/lib/regex/patterns";
+import { extrairNaturezaPrazo, extrairPrazoDias, extrairPrazoHoras } from "@/lib/regex/patterns";
 import { aplicarPrazoEncontrado } from "@/lib/prazo/aplicar-prazo";
 import { extrairCampo } from "@/lib/extracao/pipeline";
 import { detectarSinalFracoDeUrgencia } from "@/lib/extracao/detectar-sinal-urgencia";
@@ -250,6 +250,7 @@ export async function POST(req: NextRequest) {
                   fonte: "datajud",
                   fonteId: movInserida?.id ?? null,
                   descricao: mov.nome,
+                  naturezaPrazo: extrairNaturezaPrazo(textoCompleto),
                   extracaoOrigem: "regex",
                   extracaoConfianca: "alta",
                   textoOrigem: textoCompleto,
