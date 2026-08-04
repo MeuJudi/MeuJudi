@@ -58,6 +58,7 @@ import {
   getTenantDataJudSyncJob,
   startTenantDataJudSyncJob,
   startTenantMuralSyncNow,
+  startTenantPdpjSyncNow,
   getMuralSyncStatus,
   type MuralSyncStatus,
 } from "./actions";
@@ -808,9 +809,10 @@ export function MonitoramentoView({
   function syncNow() {
     setSyncMessage(null);
     startTransition(async () => {
-      const [dataJudResult, muralResult] = await Promise.all([
+      const [dataJudResult, muralResult, pdpjResult] = await Promise.all([
         startTenantDataJudSyncJob(),
         startTenantMuralSyncNow(),
+        startTenantPdpjSyncNow(),
       ]);
       const messages: string[] = [];
 
@@ -826,6 +828,12 @@ export function MonitoramentoView({
         setMuralStatus({ status: muralResult.criados > 0 ? "syncing" : "idle" });
       } else {
         messages.push(`Mural: ${muralResult.message}`);
+      }
+
+      if (pdpjResult.ok) {
+        messages.push(`PDPJ enfileirado (${pdpjResult.criados} processos${pdpjResult.pulados ? `, ${pdpjResult.pulados} ja em andamento` : ""})`);
+      } else {
+        messages.push(`PDPJ: ${pdpjResult.message}`);
       }
 
       setSyncMessage(messages.join(" · "));

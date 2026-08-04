@@ -1,10 +1,12 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireWritableTenantDataAccess as requireAppUser } from "@/lib/auth/tenant-access";
 import { createServiceClient } from "@/lib/supabase/service";
 import { sincronizarProcessoDataJud } from "@/lib/datajud/sincronizar-processo";
+import { buscarCnjsComTarefaAberta, buscarProcessosCandidatosPdpj } from "@/lib/tribunais/pdpj-tarefas-abertas";
 
 const allowedStatuses = ["ativo", "suspenso", "arquivado", "concluido"] as const;
 const columnColors = ["#9a6a22", "#4b6b4e", "#7a2e2e", "#2563eb", "#7c3aed", "#0e7490"];
@@ -459,7 +461,17 @@ export async function syncTenantDataJudNow() {
   }
 }
 
-/** Sincroniza um lote curto para evitar timeout de Server Action em escritórios grandes. */
+/**
+ * Enfileira `mural_request` em `sync_tasks` — mesmo mecanismo do cron
+ * `solicitar-mural` (Fase 7, fila unificada), só disparado na hora em vez
+ * de esperar o cron. Antes disso (até 04/08/2026) inseria em
+ * `cs_mural_requests`, tabela órfã desde a migração pra `sync_tasks` —
+ * nada mais processa linha nova lá (`getMuralSyncStatus` acima já lê de
+ * `sync_tasks` há tempos), então clicar em "Sincronizar agora" criava um
+ * pedido que nunca rodava. O Sync que estiver online pega a tarefa
+ * automaticamente no próximo poll de 30s, sem precisar de nada do lado do
+ * CS.
+ */
 export async function startTenantMuralSyncNow() {
   try {
     const { supabase, profile } = await requireAppUser();
@@ -472,45 +484,110 @@ export async function startTenantMuralSyncNow() {
       .eq("is_active", true);
     if (oabsError) throw new Error(`Falha ao listar OABs: ${oabsError.message}`);
 
-    const end = new Date();
-    const start = new Date(end);
-    start.setMonth(start.getMonth() - 12);
+    const now = new Date();
+    const inicioJanela = new Date(now);
+    inicioJanela.setMonth(inicioJanela.getMonth() - 12);
+    const dataInicioStr = inicioJanela.toISOString().slice(0, 10);
+    const dataFimStr = now.toISOString().slice(0, 10);
+
     let criados = 0;
     let pulados = 0;
+    const batchId = randomUUID();
 
     for (const oab of oabs ?? []) {
-      const { data: existente, error: existingError } = await supabase
-        .from("cs_mural_requests")
+      const { data: existente } = await supabase
+        .from("sync_tasks")
         .select("id")
         .eq("tenant_id", profile.tenant_id)
-        .eq("oab_number", oab.oab_number)
-        .eq("oab_uf", oab.oab_uf)
-        .in("status", ["pending", "processing"])
+        .eq("source", "mural")
+        .eq("type", "mural_request")
+        .contains("cursor", { oabNumber: oab.oab_number, oabUf: oab.oab_uf })
+        .in("status", ["pending", "claimed", "running"])
         .limit(1)
         .maybeSingle();
-      if (existingError) throw new Error(`Falha ao verificar pedido do Mural: ${existingError.message}`);
       if (existente) {
         pulados++;
         continue;
       }
 
-      const { error: insertError } = await supabase.from("cs_mural_requests").insert({
+      const { error: insertError } = await supabase.from("sync_tasks").insert({
         tenant_id: profile.tenant_id,
-        oab_number: oab.oab_number,
-        oab_uf: oab.oab_uf,
-        requested_by: profile.id,
-        data_inicio: start.toISOString().slice(0, 10),
-        data_fim: end.toISOString().slice(0, 10),
-        status: "pending",
+        source: "mural",
+        type: "mural_request",
+        idempotency_key: `mural_request:${oab.oab_number}:${oab.oab_uf}:${dataInicioStr}`,
+        priority: 1,
+        cursor: { oabNumber: oab.oab_number, oabUf: oab.oab_uf, dataInicio: dataInicioStr, dataFim: dataFimStr },
+        batch_id: batchId,
       });
-      if (insertError) throw new Error(`Falha ao enfileirar OAB ${oab.oab_number}/${oab.oab_uf}: ${insertError.message}`);
-      criados++;
+      if (insertError) {
+        if (insertError.code === "23505") pulados++;
+        else throw new Error(`Falha ao enfileirar OAB ${oab.oab_number}/${oab.oab_uf}: ${insertError.message}`);
+      } else {
+        criados++;
+      }
     }
 
     revalidatePath("/monitoramento");
     return { ok: true as const, criados, pulados, oabs: oabs?.length ?? 0 };
   } catch (error) {
     console.error("[monitoramento] nao foi possivel enfileirar sincronizacao do Mural:", error);
+    return { ok: false as const, message: syncErrorMessage(error) };
+  }
+}
+
+/**
+ * Enfileira `pdpj_cnj` em `sync_tasks` pros processos mais desatualizados
+ * do escritório — mesmo mecanismo do cron `poll-pdpj-detalhes`, só
+ * disparado na hora em vez de esperar a janela horária. Prioridade 1 (mais
+ * urgente que os 6 do cron de rotina) pra furar a fila na frente. Cap fixo
+ * (não o cálculo por tempo restante do cron) porque aqui é uma Server
+ * Action com orçamento de tempo bem mais curto — 100 inserts é rápido o
+ * suficiente pra não estourar.
+ */
+export async function startTenantPdpjSyncNow() {
+  try {
+    const { supabase, profile } = await requireAppUser();
+    if (!profile.tenant_id) return { ok: false as const, message: "Usuario sem escritorio vinculado." };
+
+    const LOTE_MAXIMO = 100;
+    const limiteAntiguidade = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    const cnjsComTarefaAberta = await buscarCnjsComTarefaAberta(supabase, profile.tenant_id);
+    const candidatos = await buscarProcessosCandidatosPdpj(supabase, profile.tenant_id, limiteAntiguidade);
+    const pendentesReais = candidatos.filter((p) => !cnjsComTarefaAberta.has(p.cnj)).slice(0, LOTE_MAXIMO);
+
+    if (pendentesReais.length === 0) {
+      return { ok: true as const, criados: 0, pulados: 0 };
+    }
+
+    const dataHoje = new Date().toISOString().slice(0, 10);
+    const batchId = randomUUID();
+    let criados = 0;
+    let pulados = 0;
+
+    for (const processo of pendentesReais) {
+      const { error: insertError } = await supabase.from("sync_tasks").insert({
+        tenant_id: profile.tenant_id,
+        source: "pdpj",
+        type: "pdpj_cnj",
+        idempotency_key: `pdpj_cnj:${processo.cnj}:${dataHoje}`,
+        priority: 1,
+        cnj: processo.cnj,
+        processo_id: processo.id,
+        batch_id: batchId,
+      });
+      if (insertError) {
+        if (insertError.code === "23505") pulados++;
+        else console.error(`[monitoramento] falha ao enfileirar CNJ ${processo.cnj}:`, insertError.message);
+      } else {
+        criados++;
+      }
+    }
+
+    revalidatePath("/monitoramento");
+    return { ok: true as const, criados, pulados };
+  } catch (error) {
+    console.error("[monitoramento] nao foi possivel enfileirar sincronizacao do PDPJ:", error);
     return { ok: false as const, message: syncErrorMessage(error) };
   }
 }
