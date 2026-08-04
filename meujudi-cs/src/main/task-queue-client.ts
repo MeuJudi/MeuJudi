@@ -74,6 +74,19 @@ export class TaskQueueClient {
     return { created: data.created, taskId: data.taskId };
   }
 
+  /**
+   * Dispara o job de sincronização do DataJud pro tenant pareado — DataJud
+   * não roda pela fila unificada (decisão 29/07/2026: só via Web), então
+   * isso só cria a linha em `datajud_sync_jobs`; quem processa é o cron
+   * `process-datajud-sync` do lado do Web, não o CS. Usado pelo "Sincronizar
+   * agora" (Home/tray) pra cobrir os 3 motores de extração num clique só
+   * (achado 04/08/2026: antes só disparava Mural/PDPJ pelo CS).
+   */
+  async triggerDataJudSync(): Promise<{ jobId: string; resumed: boolean }> {
+    const data = await this.request<{ ok: boolean; jobId: string; resumed: boolean }>('/api/cs/sync/datajud/trigger');
+    return { jobId: data.jobId, resumed: data.resumed };
+  }
+
   /** Reserva até `limit` tarefas pendentes (ou com lease expirado). */
   async claim(limit = 5, sources?: Array<'datajud' | 'mural' | 'pdpj'>): Promise<SyncTask[]> {
     const data = await this.request<{ tasks: SyncTask[] }>('/api/cs/tasks/claim', { limit, sources });

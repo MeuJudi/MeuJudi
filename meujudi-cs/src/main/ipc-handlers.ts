@@ -99,6 +99,10 @@ export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: St
 
   ipcMain.handle('sync:now', async (): Promise<UnifiedSyncProgress> => {
     logger.info('IPC: sync:now');
+    // DataJud não roda pela fila (decisão 29/07/2026) — dispara à parte,
+    // sem bloquear Mural/PDPJ nem falhar o clique inteiro se der erro (o
+    // resto do "Sincronizar agora" continua útil mesmo sem DataJud).
+    taskQueueClient.triggerDataJudSync().catch((err: any) => logger.warn('[sync:now] falha ao disparar DataJud:', err.message));
     return syncWorker.syncNow();
   });
 
@@ -249,6 +253,11 @@ export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: St
       auth.stopAutoValidation();
       documentRequests.stop();
     },
-    triggerSync: () => syncWorker.syncNow(),
+    triggerSync: () => {
+      // Mesmo motivo do handler 'sync:now' acima — DataJud à parte, não
+      // bloqueia nem falha o resto do "Sincronizar agora" da bandeja.
+      taskQueueClient.triggerDataJudSync().catch((err: any) => logger.warn('[triggerSync] falha ao disparar DataJud:', err.message));
+      return syncWorker.syncNow();
+    },
   };
 }
