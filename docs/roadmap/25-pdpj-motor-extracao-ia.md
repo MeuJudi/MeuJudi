@@ -124,17 +124,34 @@ Ou seja: a IA não "decide sozinha e pronto" — ela só *sugere*, passa por tra
 - Todo documento PDPJ entra em tempo real na IA, ou cabe um conceito de fila de lote (mais barato) pra quando não é urgente? Volume atual (3272 documentos, crescendo) pode justificar.
 - Teto de custo diário atual (`TETO_CUSTO_IA_SISTEMA_USD`, hoje ~$10) precisa subir com o volume de PDPJ somado ao que já existe?
 
-## 7. Monitoramento e alertas do motor de extração — DISCUTIR DEPOIS, não implementar ainda
+## 7. Log completo do motor de extração (regex + IA) — desenho travado, não implementado ainda
 
-Pedido do Caio (04/08/2026): antes de ligar o PDPJ nisso e aumentar o volume que passa pela IA, precisamos de visibilidade de como o motor está indo — se der erro, se parar, se o crédito de IA acabar no meio do dia — sem precisar caçar isso manualmente depois.
+Pedido do Caio (04/08/2026): quer algo parecido com os logs do CS (`meujudi-cs/.../logs/`) — um registro que ele possa abrir e analisar depois pra entender o que o motor de regex/IA está fazendo. Não é só alerta de erro: quer ver o que deu certo, o que deu errado, e o que "parece normal mas pode estar errado" (ex.: um regex batendo no texto errado, sem gerar erro nenhum) — pra revisar com calma e corrigir (trocar um regex ruim, por exemplo).
 
-**O que já existe hoje** (não é do zero):
-- `motor_extracao_log` já registra todo evento relevante (mudança de estado de regex, erro, regex criada, promoção global, teto de custo atingido).
-- Painel Super Admin (`/admin/motor-extracao`) já mostra o custo acumulado do dia e uma lista de eventos recentes — mas é uma tela pra abrir e olhar, não avisa ninguém sozinho.
-- `guard-custo.ts` já bloqueia IA quando o teto é atingido (não é dado silenciosamente perdido — cai pra "só regex" e o resultado vai pra Central de Revisão) — mas isso hoje só registra o evento, não avisa ninguém em tempo real. O próprio código já comenta que o alerta por e-mail ficou pendente por falta de provedor configurado (Resend).
+### O que já existe (achado revisando o código, 04/08/2026)
 
-**O que falta discutir e desenhar** (não decidir sozinho, trazer pro Caio antes de implementar):
-- Que tipo de aviso, pra quem, e por qual canal — notificação dentro do MeuJudi (sino/central de notificações, se existir algo assim), e-mail, ou os dois?
-- Quais eventos merecem alerta ativo (não só log passivo): teto de custo atingido é o pedido explícito; caberia também erro repetido de uma camada, regex desativada por falha de segurança, fila de revisão crescendo rápido demais?
-- Se o teto de custo bloquear a IA no meio do dia, isso já degrada pra "só regex" sozinho (não trava nada) — o aviso é só informativo, ou precisa de alguma ação manual (ex.: subir o teto na hora)?
-- Vale um relatório periódico (diário/semanal) além do alerta em tempo real, pra acompanhar tendência (taxa de acerto por regex, volume por camada, custo por tenant) sem precisar abrir o painel toda hora?
+- `motor_extracao_log` — tabela que já registra evento (mudança de estado de regex, erro, regex criada, promoção global, teto de custo atingido).
+- Painel Super Admin, **"Feed de atividade"** (`/admin/motor-extracao`) — tabela com quando/evento/tenant/tribunal/detalhes, já filtrável por tenant/tribunal/tipo via query string. Estruturalmente já é bem parecido com uma tela de log.
+- Central de Revisão (`itens_revisao`, hoje só na área do tenant, `monitoramento/revisao`) — fila de casos de baixa confiança já pensada pra correção manual.
+
+### O gap real
+
+O Feed de atividade só registra os eventos **excepcionais** (erro, regex criada, mudança de estado). Ele **não registra uma extração que deu certo no dia a dia** — regex bateu com confiança alta, IA confirmou, IA resolveu do zero. Sem isso, não dá pra revisar "deu certo, mas será que devia?" — só dá pra ver o que já virou problema visível.
+
+### Desenho combinado
+
+**Toda decisão de extração vira uma linha no log** — sucesso, dúvida e erro — do mesmo jeito que o log do CS registra toda requisição, não só as que falham.
+
+1. Em `src/lib/extracao/pipeline.ts` (`extrairCampo`), registrar em `motor_extracao_log` (tipo novo, ex. `extracao_resolvida`) em **todo retorno**, não só nos casos que já viram evento hoje:
+   - `origem` (estruturado / regex_direto / ia_confirmadora / ia_generalista / bloqueado_por_custo / sem_informacao_no_texto).
+   - `campo`, `confianca`, `regex_id` (se houve), `tenant_id`, `tribunal_origem`.
+   - Um trecho curto do texto ao redor do match (contexto pra julgar rápido, sem precisar abrir o documento inteiro) — mesmo padrão de "evidência com contexto" que `pdpj-documentos.ts` já usa.
+2. Estender o Feed de atividade (`/admin/motor-extracao`) pra mostrar esse tipo de evento junto dos demais — mesma tabela, um filtro a mais por `origem`/confiança, pra conseguir isolar "só o que teve confiança baixa/média" quando quiser revisar em lote.
+3. Linkar a Central de Revisão (`itens_revisao`) direto da linha do Feed quando aplicável — hoje ela só existe na área do tenant, sem ponte visual com o Feed do Super Admin.
+4. **Sem alerta ativo/canal externo por enquanto** — decisão do Caio (04/08/2026): só painel, é suficiente por ora. Fica de fora do escopo desta parte; se precisar de aviso em tempo real (e-mail/outro canal) no futuro, é uma extensão de cima disso, não um redesenho.
+5. **Resumo diário**: pedido também confirmado — um cálculo agregado (por dia: total de extrações por origem, taxa de acerto, custo, quantos foram pra revisão) exibido dentro do próprio painel (não meta implementar entrega por canal externo agora). Dá pra computar sob demanda na própria página (agregando `motor_extracao_log` do dia) sem precisar de cron/snapshot guardado — revisar se isso fica rápido o suficiente quando o volume crescer; se não, aí sim vale um snapshot diário calculado uma vez.
+
+### Ainda em aberto pra quando for implementar
+
+- Volume: com PDPJ conectado (milhares de documentos), logar toda extração pode gerar bastante linha — vale pensar em retenção/paginação desde o início (o Feed hoje só traz as 100 mais recentes).
+- O trecho de contexto salvo no log pode conter texto de processo (potencialmente sigiloso) — confirmar se isso é aceitável guardar em `motor_extracao_log` (visível só pro Super Admin) ou se precisa de outro tratamento.
