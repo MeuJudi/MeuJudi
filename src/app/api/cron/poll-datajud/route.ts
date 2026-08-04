@@ -40,10 +40,20 @@ function horaAtualBrasilia(): number {
   return parseInt(formatter.format(new Date()), 10);
 }
 
+/**
+ * `intervalo_horas` removido daqui (achado 04/08/2026, a pedido do Caio):
+ * `horaAtual` só tem granularidade de HORA CHEIA, sem noção de minuto — com
+ * o cron-job.org chamando mais de 1x por hora (agora a cada 5-15min), TODA
+ * chamada dentro da mesma hora elegível passava no cálculo
+ * `(horaAtual - horario_inicio) % intervalo_horas === 0` igualmente, então
+ * o intervalo configurado nunca era respeitado de verdade — só dava a
+ * ilusão de controlar a frequência. Quem controla a frequência real agora é
+ * só o intervalo configurado no cron-job.org; aqui só resta a janela de
+ * horário comercial (`horario_inicio`/`horario_fim`) e o liga/desliga.
+ */
 function deveRodarAgora(config: SyncConfig, horaAtual: number): boolean {
   if (!config?.ativo) return false;
-  if (horaAtual < config.horario_inicio || horaAtual > config.horario_fim) return false;
-  return (horaAtual - config.horario_inicio) % config.intervalo_horas === 0;
+  return horaAtual >= config.horario_inicio && horaAtual <= config.horario_fim;
 }
 
 export async function POST(req: NextRequest) {
@@ -69,7 +79,11 @@ export async function POST(req: NextRequest) {
   // função no meio do processamento). Com isso, o cron precisa rodar mais
   // vezes por hora pra cobrir todo mundo — ajustar a frequência no
   // cron-job.org de acordo com o volume real de processos.
-  const LIMITE_PROCESSOS_POR_TENANT = 15;
+  // Reduzido de 15 pra 10 (04/08/2026) — junto com o cron mais frequente
+  // (5-15min em vez de 1-2h), execução mais curta = mais folga sob os 28s
+  // do cron-job.org, com throughput diário maior (mais execuções pequenas
+  // > menos execuções grandes que arriscam estourar o tempo).
+  const LIMITE_PROCESSOS_POR_TENANT = 10;
   // Antes era 45s (só girando em torno do maxDuration=60s da Vercel) — mas
   // o cron-job.org desiste de esperar resposta com 30s de timeout de
   // requisição, e reporta "falha (timeout)" mesmo quando a função termina
