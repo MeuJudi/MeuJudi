@@ -116,6 +116,13 @@ function BatchCard({ batch }: { batch: TaskBatch }) {
           <p className="text-xs text-gray-500">
             {batch.source} · criado {formatDateTime(batch.created_at)} · {batch.total} {batch.total === 1 ? 'tarefa' : 'tarefas'}
           </p>
+          {batch.type === 'pdpj_oab' && batch.done > 0 && (
+            <p className={`mt-1 text-xs font-medium ${batch.novos_processos > 0 ? 'text-emerald-700' : 'text-gray-500'}`}>
+              {batch.novos_processos > 0
+                ? `🆕 ${batch.novos_processos} processo${batch.novos_processos === 1 ? '' : 's'} novo${batch.novos_processos === 1 ? '' : 's'} encontrado${batch.novos_processos === 1 ? '' : 's'}`
+                : 'Nenhum processo novo encontrado'}
+            </p>
+          )}
           {batch.total > 1 && (
             <div className="mt-2">
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">

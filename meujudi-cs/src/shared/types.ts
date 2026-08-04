@@ -324,6 +324,8 @@ export interface TaskBatch {
   done: number;
   failed: number;
   paused: number;
+  /** Soma de counters.novos das tarefas do lote — só tem valor real pra pdpj_oab (descoberta de processo). */
+  novos_processos: number;
   created_at: string;
 }
 
