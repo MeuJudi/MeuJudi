@@ -39,38 +39,60 @@ function elegivelParaRetry(attempt: number, lastActivityAt: string): boolean {
  * de Bearer acontece no tenant (podia ser a cada minuto), mesmo sem nada
  * ter mudado desde a última tentativa.
  */
+const PAGE_SIZE = 1000;
+// UPDATE ... WHERE id IN (muitos uuids) num lote só estoura o tamanho da
+// requisição pro PostgREST — achado 04/08/2026: com a fila de pausadas
+// acumulada (quase 1000 elegíveis de uma vez, todas na tentativa 1, sem
+// espera nenhuma), a chamada única falhava com 500 a cada ciclo, e a
+// destrava nunca completava (mesmo classe de bug do filtro gigante de
+// poll-pdpj-detalhes, ver pdpj-tarefas-abertas.ts).
+const LOTE_UPDATE = 200;
+
 export async function POST(request: NextRequest) {
   const supabase = createServiceClient();
   const device = await autenticarDevice(supabase, request);
   if (!device) return NextResponse.json({ error: "device_nao_autorizado" }, { status: 401 });
 
-  const { data: candidatas, error: candidatasError } = await supabase
-    .from("sync_tasks")
-    .select("id, attempt, last_activity_at")
-    .eq("tenant_id", device.tenantId)
-    .in("status", ["paused_login_required", "paused_rate_limit"]);
-
-  if (candidatasError) {
-    console.error("[cs/tasks/resume] falha ao buscar tarefas pausadas:", candidatasError);
-    return NextResponse.json({ error: "tarefas_nao_destravadas" }, { status: 500 });
+  const candidatas: { id: string; attempt: number; last_activity_at: string | null }[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("sync_tasks")
+      .select("id, attempt, last_activity_at")
+      .eq("tenant_id", device.tenantId)
+      .in("status", ["paused_login_required", "paused_rate_limit"])
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (error) {
+      console.error("[cs/tasks/resume] falha ao buscar tarefas pausadas:", error);
+      return NextResponse.json({ error: "tarefas_nao_destravadas" }, { status: 500 });
+    }
+    candidatas.push(...(data ?? []));
+    if (!data || data.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
   }
 
-  const elegiveis = (candidatas ?? [])
+  const elegiveis = candidatas
     .filter((t) => elegivelParaRetry(t.attempt ?? 0, t.last_activity_at ?? new Date(0).toISOString()))
     .map((t) => t.id);
 
   if (elegiveis.length === 0) return NextResponse.json({ ok: true, resumed: 0 });
 
-  const { data, error } = await supabase
-    .from("sync_tasks")
-    .update({ status: "pending", last_activity_at: new Date().toISOString() })
-    .in("id", elegiveis)
-    .select("id");
-
-  if (error) {
-    console.error("[cs/tasks/resume] falha ao destravar tarefas:", error);
-    return NextResponse.json({ error: "tarefas_nao_destravadas" }, { status: 500 });
+  let resumed = 0;
+  for (let i = 0; i < elegiveis.length; i += LOTE_UPDATE) {
+    const lote = elegiveis.slice(i, i + LOTE_UPDATE);
+    const { data, error } = await supabase
+      .from("sync_tasks")
+      .update({ status: "pending", last_activity_at: new Date().toISOString() })
+      .in("id", lote)
+      .select("id");
+    if (error) {
+      console.error("[cs/tasks/resume] falha ao destravar lote de tarefas:", error);
+      // Não aborta os lotes seguintes por um lote falho — melhor destravar
+      // o máximo possível do que travar tudo por causa de um pedaço.
+      continue;
+    }
+    resumed += data?.length ?? 0;
   }
 
-  return NextResponse.json({ ok: true, resumed: data?.length ?? 0 });
+  return NextResponse.json({ ok: true, resumed });
 }
