@@ -323,6 +323,10 @@ const TIPOS_AUDIENCIA_CONHECIDOS: Array<{ padrao: RegExp; titulo: string }> = [
   { padrao: /media[cç]ao/i, titulo: "Audiência de Mediação" },
   { padrao: /custodia/i, titulo: "Audiência de Custódia" },
   { padrao: /admonitoria/i, titulo: "Audiência Admonitória" },
+  // Achado 04/08/2026 revisando textos reais: "designada audiencia de
+  // justificacao para oitiva de duas testemunhas" — não existia no
+  // dicionário original.
+  { padrao: /justifica[cç][aã]o/i, titulo: "Audiência de Justificação" },
   { padrao: /\buna\b/i, titulo: "Audiência Una" },
   { padrao: /preliminar/i, titulo: "Audiência Preliminar" },
   { padrao: /sessao\s+(?:de\s+)?julgamento/i, titulo: "Sessão de Julgamento" },
@@ -389,7 +393,16 @@ const ATOS_PROCESSUAIS_CONHECIDOS: Array<{ padrao: RegExp; nome: string }> = [
   { padrao: /r[eé]plica/i, nome: 'Réplica' },
   { padrao: /impugna[cç][aã]o/i, nome: 'Impugnação' },
   { padrao: /cumprimento\s+de\s+senten[cç]a/i, nome: 'Cumprimento de Sentença' },
-  { padrao: /emenda\s+(?:a|à)\s+inicial/i, nome: 'Emenda à Inicial' },
+  // Antes só "emenda à inicial" (substantivo) — achado 04/08/2026 revisando
+  // ~1000 prazos reais: quase todo despacho usa o verbo ("emende"/"emenda a
+  // inicial"), não o substantivo. Padrão antigo batia em 2 dos ~41 casos
+  // reais; este bate em 14 (confirmado contra a mesma amostra).
+  { padrao: /emend[ae]\s+(?:a|à)\s+(?:peti[cç][aã]o\s+)?inicial/i, nome: 'Emenda à Inicial' },
+  { padrao: /especific[a-zà-ÿ]*.{0,30}provas?/i, nome: 'Especificação de Provas' },
+  // Achado 04/08/2026: 31 ocorrências reais na amostra (regularizar
+  // representação processual, polo passivo, custas) — não existia no
+  // dicionário original.
+  { padrao: /regulariz/i, nome: 'Regularização' },
   { padrao: /manifesta[cç][aã]o/i, nome: 'Manifestação' },
   { padrao: /comprova[cç][aã]o/i, nome: 'Comprovação' },
   { padrao: /pagamento/i, nome: 'Pagamento' },

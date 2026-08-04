@@ -201,10 +201,29 @@ todos os lugares").
 
 ## 5. Perguntas em aberto
 
-- **Dicionário de naturezas de audiência** — a lista do item 3.1.2 acima é
-  um ponto de partida baseado no que já aparece nos 16 regex existentes;
-  vale revisar contra uma amostra maior de textos reais antes de fechar
-  (mesmo processo usado nas auditorias anteriores de regex desta sessão).
+- **Dicionário de naturezas de audiência** — **[revisado 04/08/2026 contra
+  dados reais]** puxei ~1000 eventos reais de `agenda_eventos` (tipo
+  audiência e tipo prazo, campo `texto_origem`) e simulei os dois
+  dicionários contra eles (script descartável, não ficou no repo).
+  **Audiência**: achado 1 tipo real faltando — "audiência de justificação"
+  (oitiva de testemunhas), adicionado. Custódia, Conciliação, Mediação,
+  Instrução (+ Instrução e Julgamento), Una, Art. 334 todos confirmados
+  batendo em texto real; nenhum falso positivo notado na amostra.
+  **Prazo**: achado 3 problemas reais —
+  1. `emenda à inicial` (substantivo) só batia em 2 dos ~41 casos reais
+     porque o texto real quase sempre usa o verbo ("emende"/"emenda a
+     inicial") — corrigido, o novo padrão bate em 14.
+  2. `regularização` (representação processual, polo passivo, custas) tinha
+     31 ocorrências reais e não existia no dicionário — adicionado.
+  3. `especificação de provas` tinha 16 ocorrências reais e não existia —
+     adicionado.
+
+  Taxa de reconhecimento de ato em prazo subiu de 18% pra 21% da amostra
+  (18%→21% parece pouco, mas a maioria esmagadora dos despachos reais são
+  instruções administrativas genéricas — "junte planilha atualizada",
+  "comprove a renda" — que corretamente não têm um ato processual pra
+  nomear; cair no título genérico nesses casos está certo, não é uma
+  falha do dicionário).
 - **Prazo: vale a pena mesmo?** — **[respondido 04/08/2026]** o Caio pediu
   pra implementar direto, sem esperar validar Audiência primeiro em produção.
   Fica valendo o mesmo cuidado do design original: confiança sempre "media"
