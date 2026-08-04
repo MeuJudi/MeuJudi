@@ -12,15 +12,12 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { buscarCnjsComTarefaAberta, desduplicarTarefasAbertasPdpj } from "@/lib/tribunais/pdpj-tarefas-abertas";
 
 export const maxDuration = 30;
 
 const DIAS_DE_ANTECEDENCIA = 3;
-
-// Mesmo motivo do poll-pdpj-detalhes: sem isso, CS offline por mais de 1
-// dia faz esse cron empilhar tarefa nova pro mesmo CNJ urgente a cada dia
-// (idempotency key com data só bloqueia dentro do mesmo dia).
-const STATUS_ABERTOS = ["pending", "claimed", "running", "waiting_external", "paused_login_required", "paused_rate_limit"];
+const PAGE_SIZE = 1000;
 
 export async function POST(req: NextRequest) {
   const auth = req.headers.get("authorization");
@@ -46,30 +43,42 @@ export async function POST(req: NextRequest) {
 
   let criadosTotal = 0;
   let pulados = 0;
+  let duplicatasCanceladas = 0;
 
   for (const tenant of tenants) {
     try {
-      const { data: tarefasAbertas } = await supabase
-        .from("sync_tasks")
-        .select("cnj")
-        .eq("tenant_id", tenant.id)
-        .eq("source", "pdpj")
-        .eq("type", "pdpj_cnj")
-        .in("status", STATUS_ABERTOS)
-        .not("cnj", "is", null);
-      const cnjsComTarefaAberta = [...new Set((tarefasAbertas ?? []).map((t) => t.cnj as string))];
-      const filtroCnjAberto = cnjsComTarefaAberta.length > 0 ? `(${cnjsComTarefaAberta.join(",")})` : null;
+      // Mesma rede de segurança do poll-pdpj-detalhes (ver
+      // pdpj-tarefas-abertas.ts) — roda aqui também porque este cron cria
+      // tarefa independente do Cron 2.
+      const dedup = await desduplicarTarefasAbertasPdpj(supabase, tenant.id);
+      duplicatasCanceladas += dedup.tarefasCanceladas;
 
-      let queryProcessos = supabase
-        .from("processos")
-        .select("id, cnj")
-        .eq("tenant_id", tenant.id)
-        .eq("status", "ativo")
-        .is("pdpj_acesso_negado_em", null)
-        .or(`prazo_proxima_resposta.lte.${limiteFuturo},proxima_audiencia.lte.${limiteFuturo}`);
-      if (filtroCnjAberto) queryProcessos = queryProcessos.not("cnj", "in", filtroCnjAberto);
-      const { data: processos } = await queryProcessos;
-      if (!processos || processos.length === 0) continue;
+      const cnjsComTarefaAberta = await buscarCnjsComTarefaAberta(supabase, tenant.id);
+
+      // Grupo pequeno por natureza (só quem tem prazo/audiência perto) —
+      // mas pagina do mesmo jeito, por segurança, caso o escritório tenha
+      // um volume grande de urgências ao mesmo tempo.
+      const candidatos: { id: string; cnj: string }[] = [];
+      let offset = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("processos")
+          .select("id, cnj")
+          .eq("tenant_id", tenant.id)
+          .eq("status", "ativo")
+          .is("pdpj_acesso_negado_em", null)
+          .or(`prazo_proxima_resposta.lte.${limiteFuturo},proxima_audiencia.lte.${limiteFuturo}`)
+          .range(offset, offset + PAGE_SIZE - 1);
+        if (error) throw new Error(`Falha ao buscar processos urgentes: ${error.message}`);
+        for (const row of data ?? []) {
+          if (row.cnj) candidatos.push({ id: row.id as string, cnj: row.cnj as string });
+        }
+        if (!data || data.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+      }
+
+      const processos = candidatos.filter((p) => !cnjsComTarefaAberta.has(p.cnj));
+      if (processos.length === 0) continue;
 
       // Um id só por tenant nesta execução — agrupa na tela de fila do CS.
       const batchId = randomUUID();
@@ -96,7 +105,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  console.log(`[poll-pdpj-urgentes] concluído: ${criadosTotal} criados, ${pulados} pulados`);
+  console.log(`[poll-pdpj-urgentes] concluído: ${criadosTotal} criados, ${pulados} pulados, ${duplicatasCanceladas} duplicatas canceladas`);
 
-  return NextResponse.json({ criados: criadosTotal, pulados });
+  return NextResponse.json({ criados: criadosTotal, pulados, duplicatasCanceladas });
 }

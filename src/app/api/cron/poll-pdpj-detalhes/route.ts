@@ -11,19 +11,13 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { buscarCnjsComTarefaAberta, buscarProcessosCandidatosPdpj, desduplicarTarefasAbertasPdpj } from "@/lib/tribunais/pdpj-tarefas-abertas";
 
 export const maxDuration = 60;
 
 const HORA_INICIO = 9;
 const HORA_FIM = 16;
 const DIAS_PARA_REESCANEAR = 7;
-
-// Estados que NÃO bloqueiam recriar a tarefa — só o que ainda está "em
-// aberto" conta como já coberto. Sem essa exclusão, um CS offline por mais
-// de 1 dia faz o cron empilhar uma tarefa nova pro mesmo CNJ a cada
-// disparo (ultima_sync_pdpj só muda quando a tarefa CONCLUI, não quando é
-// criada) — descoberto ao revisar a lógica com o Caio, 30/07/2026.
-const STATUS_ABERTOS = ["pending", "claimed", "running", "waiting_external", "paused_login_required", "paused_rate_limit"];
 
 function horaAtualBrasilia(): number {
   const formatter = new Intl.DateTimeFormat("en-US", {
@@ -64,54 +58,35 @@ export async function POST(req: NextRequest) {
 
   let criadosTotal = 0;
   let pulados = 0;
+  let duplicatasCanceladas = 0;
   const porTenant: Record<string, number> = {};
 
   for (const tenant of tenants) {
     try {
-      const { data: tarefasAbertas } = await supabase
-        .from("sync_tasks")
-        .select("cnj")
-        .eq("tenant_id", tenant.id)
-        .eq("source", "pdpj")
-        .eq("type", "pdpj_cnj")
-        .in("status", STATUS_ABERTOS)
-        .not("cnj", "is", null);
-      const cnjsComTarefaAberta = [...new Set((tarefasAbertas ?? []).map((t) => t.cnj as string))];
-      // PostgREST exige a lista entre parênteses pro operador "not in".
-      const filtroCnjAberto = cnjsComTarefaAberta.length > 0 ? `(${cnjsComTarefaAberta.join(",")})` : null;
+      // Rede de segurança: limpa duplicata de tarefa aberta pro mesmo CNJ
+      // ANTES de decidir o que falta criar — achado 03/08/2026 (ver
+      // pdpj-tarefas-abertas.ts pro histórico completo do bug).
+      const dedup = await desduplicarTarefasAbertasPdpj(supabase, tenant.id);
+      duplicatasCanceladas += dedup.tarefasCanceladas;
+      if (dedup.tarefasCanceladas > 0) {
+        console.log(`[poll-pdpj-detalhes] tenant ${tenant.id}: ${dedup.tarefasCanceladas} tarefa(s) duplicada(s) canceladas em ${dedup.cnjsComDuplicata} CNJ(s)`);
+      }
 
-      let queryPendentes = supabase
-        .from("processos")
-        .select("id", { count: "exact", head: true })
-        .eq("tenant_id", tenant.id)
-        .eq("status", "ativo")
-        .is("pdpj_acesso_negado_em", null)
-        .or(`ultima_sync_pdpj.is.null,ultima_sync_pdpj.lt.${limiteAntiguidade}`);
-      if (filtroCnjAberto) queryPendentes = queryPendentes.not("cnj", "in", filtroCnjAberto);
-      const { count: pendentes } = await queryPendentes;
+      const cnjsComTarefaAberta = await buscarCnjsComTarefaAberta(supabase, tenant.id);
+      const candidatos = await buscarProcessosCandidatosPdpj(supabase, tenant.id, limiteAntiguidade);
+      const pendentesReais = candidatos.filter((p) => !cnjsComTarefaAberta.has(p.cnj));
 
-      if (!pendentes || pendentes === 0) continue;
+      if (pendentesReais.length === 0) continue;
 
-      const loteDeHoje = Math.min(pendentes, Math.ceil(pendentes / horasRestantes));
+      const loteDeHoje = Math.min(pendentesReais.length, Math.ceil(pendentesReais.length / horasRestantes));
       // Um id só por tenant nesta execução — agrupa as tarefas criadas
       // agora como "um lote" na tela de fila do CS (ver
       // sync_tasks_batches no banco). Puramente visual, não afeta claim.
       const batchId = randomUUID();
-
-      let querySelecao = supabase
-        .from("processos")
-        .select("id, cnj")
-        .eq("tenant_id", tenant.id)
-        .eq("status", "ativo")
-        .is("pdpj_acesso_negado_em", null)
-        .or(`ultima_sync_pdpj.is.null,ultima_sync_pdpj.lt.${limiteAntiguidade}`)
-        .order("ultima_sync_pdpj", { ascending: true, nullsFirst: true })
-        .limit(loteDeHoje);
-      if (filtroCnjAberto) querySelecao = querySelecao.not("cnj", "in", filtroCnjAberto);
-      const { data: processos } = await querySelecao;
+      const processos = pendentesReais.slice(0, loteDeHoje);
 
       let criadosTenant = 0;
-      for (const processo of processos ?? []) {
+      for (const processo of processos) {
         const { error: insertError } = await supabase.from("sync_tasks").insert({
           tenant_id: tenant.id,
           source: "pdpj",
@@ -137,7 +112,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  console.log(`[poll-pdpj-detalhes] concluído: ${criadosTotal} criados, ${pulados} pulados, hora=${horaAtual}, horasRestantes=${horasRestantes}`);
+  console.log(`[poll-pdpj-detalhes] concluído: ${criadosTotal} criados, ${pulados} pulados, ${duplicatasCanceladas} duplicatas canceladas, hora=${horaAtual}, horasRestantes=${horasRestantes}`);
 
-  return NextResponse.json({ criados: criadosTotal, pulados, hora: horaAtual, horasRestantes, porTenant });
+  return NextResponse.json({ criados: criadosTotal, pulados, duplicatasCanceladas, hora: horaAtual, horasRestantes, porTenant });
 }
