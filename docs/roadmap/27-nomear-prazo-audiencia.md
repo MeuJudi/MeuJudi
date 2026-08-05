@@ -231,11 +231,26 @@ todos os lugares").
     ampliados (`contest`, `comprov`, `impugn`) contra todas as variações de
     palavra que aparecem nos dados reais — nenhuma colisão indevida.
 
+  **Prazo — rodada 3 (04/08/2026)**: análise de frequência dos 488 casos
+  que ainda caíam no genérico depois da rodada 2, pra achar mais
+  candidatos. Testei 17 verbos/termos comuns em despacho contra essa
+  amostra residual antes de decidir o que valia adicionar:
+
+  | Candidato | Ocorrências | Decisão |
+  |---|---|---|
+  | "diligencie/diligenciar" | 70 (14%) | ❌ Rejeitado — bate quase sempre por causa de "Intimações e diligências necessárias", um **rodapé padrão** de despacho, sem relação com o prazo específico. Teria piorado a precisão. |
+  | "apresente/apresentar" | 65 (13%) | ❌ Rejeitado — vago demais sozinho (serve tanto pra contrarrazões quanto pra qualquer documento genérico). |
+  | **"junte(m)" (documentos)** | 66 (13%) | ✅ **Adicionado** — "Juntada de Documentos". Padrão `junt[ae]` de propósito não cobre "junto" (37 ocorrências, mas quase sempre preposição — "obtido junto ao Denatran" — não o verbo). |
+  | **"informe/informar"** | 31 (6%) | ✅ **Adicionado** — "Prestação de Informações". |
+  | "requeira/requerer" | 20 (4%) | ❌ Rejeitado — genérico demais ("requeira o que entender de direito" é a versão em texto de "sem instrução específica"). |
+  | indique / promova / esclareça / cumpra-se / quite / recolha / deposite / certifique / constitua / compareça / arrole | 1–19 cada (≤4%) | ❌ Rejeitados — vagos ou volume baixo demais pra justificar o risco individual. |
+
   **Resultado final**: taxa de reconhecimento de ato em prazo foi de
-  **18% → 21% (rodada 1) → 41% (rodada 2)** da amostra de 1000 — dobrou.
-  Ainda assim a maioria (48%) cai no genérico, porque a maior parte dos
-  despachos reais são instruções administrativas sem um ato processual
-  nomeável ("junte planilha atualizada") — isso é esperado, não uma falha.
+  **18% → 21% (rodada 1) → 41% (rodada 2) → 51% (rodada 3)** da amostra de
+  1000 — mais que triplicou desde o início. A partir daqui, o que resta no
+  genérico é majoritariamente instrução administrativa real sem ato
+  nomeável — ponto de retorno decrescente confirmado com dados, não só
+  intuição.
 - **Prazo: vale a pena mesmo?** — **[respondido 04/08/2026]** o Caio pediu
   pra implementar direto, sem esperar validar Audiência primeiro em produção.
   Fica valendo o mesmo cuidado do design original: confiança sempre "media"

@@ -419,6 +419,15 @@ const ATOS_PROCESSUAIS_CONHECIDOS: Array<{ padrao: RegExp; nome: string }> = [
   // reais, o maior ganho depois de "manifestação" — "comprove"/"comprovar"
   // domina sobre o substantivo "comprovação".
   { padrao: /comprov[ae]/i, nome: 'Comprovação' },
+  // Achados 04/08/2026, análise dos casos que ainda caíam no genérico: 66
+  // e 31 ocorrências reais respectivamente. Ficam por último (mais
+  // genéricos) — se a janela também tiver um ato mais específico (ex.
+  // "junte a contestação"), o mais específico já ganhou antes por causa
+  // da ordem. Note: `junt[ae]` de propósito NÃO cobre "junto" (37
+  // ocorrências reais, mas quase sempre preposição — "obtido junto ao
+  // Denatran" — não o verbo "juntar").
+  { padrao: /junt[ae]/i, nome: 'Juntada de Documentos' },
+  { padrao: /inform[ae]/i, nome: 'Prestação de Informações' },
   { padrao: /pagamento/i, nome: 'Pagamento' },
 ];
 
