@@ -209,21 +209,33 @@ todos os lugares").
   (oitiva de testemunhas), adicionado. Custódia, Conciliação, Mediação,
   Instrução (+ Instrução e Julgamento), Una, Art. 334 todos confirmados
   batendo em texto real; nenhum falso positivo notado na amostra.
-  **Prazo**: achado 3 problemas reais —
-  1. `emenda à inicial` (substantivo) só batia em 2 dos ~41 casos reais
-     porque o texto real quase sempre usa o verbo ("emende"/"emenda a
-     inicial") — corrigido, o novo padrão bate em 14.
-  2. `regularização` (representação processual, polo passivo, custas) tinha
-     31 ocorrências reais e não existia no dicionário — adicionado.
-  3. `especificação de provas` tinha 16 ocorrências reais e não existia —
-     adicionado.
+  **Prazo — rodada 1** (3 problemas achados, ver "atos novos" acima):
+  `emenda à inicial` (substantivo) só batia em 2/41 casos reais — o texto
+  real usa o verbo ("emende"/"emenda a inicial") — corrigido pra 14/41.
+  `regularização` (31 ocorrências reais) e `especificação de provas` (16)
+  não existiam no dicionário — adicionados.
 
-  Taxa de reconhecimento de ato em prazo subiu de 18% pra 21% da amostra
-  (18%→21% parece pouco, mas a maioria esmagadora dos despachos reais são
-  instruções administrativas genéricas — "junte planilha atualizada",
-  "comprove a renda" — que corretamente não têm um ato processual pra
-  nomear; cair no título genérico nesses casos está certo, não é uma
-  falha do dicionário).
+  **Prazo — rodada 2 (04/08/2026, revisão mais a fundo a pedido do Caio)**:
+  fiz análise de frequência de palavras nos casos que ainda caíam no
+  genérico e achei o **mesmo padrão substantivo-vs-verbo em mais 3 atos**,
+  bem maiores que a rodada 1:
+  - `manifestação` (subst.) batia 92/1000 — `manifest[ae]` (cobre
+    "manifeste-se"/"manifestar") bate **278/1000**. Maior ganho isolado.
+  - `comprovação` (subst.) batia 32/1000 — `comprov[ae]` bate **178/1000**.
+  - `impugnação` (subst.) batia 40/1000 — `impugn[ae]` bate **56/1000**.
+  - `contestação` teve ganho menor: 54 → 62/1000.
+  - Achado e corrigido 1 falso positivo introduzido pela ampliação:
+    "manifestamente" (advérbio, "claramente") batia no stem "manifesta" sem
+    ter nada a ver com o ato — 4 casos em 1000, resolvido com negative
+    lookahead (`manifest(?!amente)[ae]`). Chequei os outros 3 stems
+    ampliados (`contest`, `comprov`, `impugn`) contra todas as variações de
+    palavra que aparecem nos dados reais — nenhuma colisão indevida.
+
+  **Resultado final**: taxa de reconhecimento de ato em prazo foi de
+  **18% → 21% (rodada 1) → 41% (rodada 2)** da amostra de 1000 — dobrou.
+  Ainda assim a maioria (48%) cai no genérico, porque a maior parte dos
+  despachos reais são instruções administrativas sem um ato processual
+  nomeável ("junte planilha atualizada") — isso é esperado, não uma falha.
 - **Prazo: vale a pena mesmo?** — **[respondido 04/08/2026]** o Caio pediu
   pra implementar direto, sem esperar validar Audiência primeiro em produção.
   Fica valendo o mesmo cuidado do design original: confiança sempre "media"

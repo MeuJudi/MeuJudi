@@ -389,9 +389,13 @@ const ATOS_PROCESSUAIS_CONHECIDOS: Array<{ padrao: RegExp; nome: string }> = [
   { padrao: /agravo/i, nome: 'Agravo' },
   { padrao: /apela[cç][aã]o/i, nome: 'Apelação' },
   { padrao: /recurso/i, nome: 'Recurso' },
-  { padrao: /contesta[cç][aã]o/i, nome: 'Contestação' },
+  // contesta[cç][aã]o -> contest[ae] (04/08/2026): mesmo ajuste de cobrir o
+  // verbo, ganho menor aqui (54 -> 62 na amostra real) mas de graça.
+  { padrao: /contest[ae]/i, nome: 'Contestação' },
   { padrao: /r[eé]plica/i, nome: 'Réplica' },
-  { padrao: /impugna[cç][aã]o/i, nome: 'Impugnação' },
+  // impugna[cç][aã]o -> impugn[ae] (04/08/2026): 40 -> 56 ocorrências reais
+  // cobrindo o verbo ("impugne"/"impugnar"), não só o substantivo.
+  { padrao: /impugn[ae]/i, nome: 'Impugnação' },
   { padrao: /cumprimento\s+de\s+senten[cç]a/i, nome: 'Cumprimento de Sentença' },
   // Antes só "emenda à inicial" (substantivo) — achado 04/08/2026 revisando
   // ~1000 prazos reais: quase todo despacho usa o verbo ("emende"/"emenda a
@@ -403,8 +407,18 @@ const ATOS_PROCESSUAIS_CONHECIDOS: Array<{ padrao: RegExp; nome: string }> = [
   // representação processual, polo passivo, custas) — não existia no
   // dicionário original.
   { padrao: /regulariz/i, nome: 'Regularização' },
-  { padrao: /manifesta[cç][aã]o/i, nome: 'Manifestação' },
-  { padrao: /comprova[cç][aã]o/i, nome: 'Comprovação' },
+  // Mesmo problema do "emenda à inicial": só pegava o substantivo
+  // ("manifestação"), 92 ocorrências reais — mas o texto real quase sempre
+  // usa o verbo ("manifeste-se"/"manifestar"), 278 ocorrências reais
+  // (achado 04/08/2026, mesma revisão contra dados reais).
+  // Negative lookahead: "manifestamente" (advérbio, "claramente") bate no
+  // stem "manifesta" mas não tem nada a ver com o ato de se manifestar —
+  // achado 04/08/2026, 4 falsos positivos em 1000 amostras reais.
+  { padrao: /manifest(?!amente)[ae]/i, nome: 'Manifestação' },
+  // comprova[cç][aã]o -> comprov[ae] (04/08/2026): 32 -> 178 ocorrências
+  // reais, o maior ganho depois de "manifestação" — "comprove"/"comprovar"
+  // domina sobre o substantivo "comprovação".
+  { padrao: /comprov[ae]/i, nome: 'Comprovação' },
   { padrao: /pagamento/i, nome: 'Pagamento' },
 ];
 
