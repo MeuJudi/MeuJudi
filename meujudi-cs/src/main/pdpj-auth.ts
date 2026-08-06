@@ -157,6 +157,15 @@ export class PdpjAuth {
   // nenhum aviso visivel ate a fila inteira travar).
   private falhaValidacaoDesdeMs: number | null = null;
   private ultimaNotificacaoFalhaMs: number | null = null;
+  // Achado 06/08/2026, a pedido do Caio: a revalidação automática de
+  // segundo plano (`doEnsureApiSession`, timer de 5min) reutiliza o MESMO
+  // `authWindow` que um login manual em andamento usa (é a mesma janela em
+  // momentos diferentes, por desenho — fica "mantida em segundo plano" após
+  // o login pra virar a janela técnica depois). Sem essa trava, o timer de
+  // 5min podia cair bem no meio de um login manual em andamento e tentar
+  // usar essa mesma janela — competindo com a navegação real do OAuth,
+  // provável causa de parte do caos de redirecionamento visto em produção.
+  private loginEmAndamento = false;
 
   constructor(private readonly pairing?: Pairing) {
     this.store = new CookieStore();
@@ -206,7 +215,12 @@ export class PdpjAuth {
       return this.toPublicSession(existingSession);
     }
 
-    return new Promise((resolve, reject) => {
+    // Trava pro timer de revalidação automática não competir com o login
+    // manual em andamento (ver comentário do campo `loginEmAndamento`) —
+    // `.finally()` cobre sucesso, erro e qualquer `reject` interno, sem
+    // precisar tocar nos pontos internos que chamam resolve/reject.
+    this.loginEmAndamento = true;
+    const loginPromise = new Promise<PublicSession>((resolve, reject) => {
       const loginStartedAt = Date.now();
       logger.info('========================================');
       logger.info('INICIANDO LOGIN PJe');
@@ -558,6 +572,7 @@ export class PdpjAuth {
         }
       });
     });
+    return loginPromise.finally(() => { this.loginEmAndamento = false; });
   }
 
   // ============================================================
@@ -1296,6 +1311,14 @@ export class PdpjAuth {
   }
 
   private async doEnsureApiSession(): Promise<boolean> {
+    // Login manual em andamento usa a mesma `authWindow` que essa validação
+    // técnica reutilizaria — nunca competir com ele (ver comentário do
+    // campo `loginEmAndamento`). O timer de 5min tenta de novo sozinho no
+    // próximo ciclo, então não precisa fazer nada além de esperar.
+    if (this.loginEmAndamento) {
+      logger.info('Validacao PDPJ adiada: login manual em andamento');
+      return false;
+    }
     logger.info('Validacao da API PDPJ em segundo plano iniciada');
     const current = this.store.getValidSession();
     if (!current) {
@@ -1459,7 +1482,7 @@ export class PdpjAuth {
    * falhar por algum motivo específico do gateway, o pool continua
    * funcionando com 1 (só perde o paralelismo, não quebra).
    */
-  async requestPdpjApi(url: string, authorization: string): Promise<{ status: number; contentType: string | null; body: string }> {
+  async requestPdpjApi(url: string, authorization: string): Promise<{ status: number; contentType: string | null; body: string; retryAfterHeader: string | null }> {
     const session = this.store.getValidSession();
     if (!session) throw new Error('Sessao autenticada do PDPJ nao esta disponivel.');
 
@@ -1467,24 +1490,32 @@ export class PdpjAuth {
     try {
       const urlLiteral = JSON.stringify(url);
       const authorizationLiteral = JSON.stringify(authorization);
-      let result: { status: number; contentType: string | null; body: string };
+      let result: { status: number; contentType: string | null; body: string; retryAfterHeader: string | null };
       try {
         result = await window.webContents.executeJavaScript(`(async () => {
-          const response = await fetch(${urlLiteral}, {
-            method: 'GET',
-            credentials: 'include',
-            headers: {
-              Accept: 'application/json, text/plain, */*',
-              Authorization: ${authorizationLiteral},
-              skipErrorInterceptor: 'true'
-            }
-          });
-          return {
-            status: response.status,
-            contentType: response.headers.get('content-type'),
-            body: await response.text()
-          };
-        })()`, true) as { status: number; contentType: string | null; body: string };
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), ${TIMEOUTS.pdpjChromiumRequest});
+          try {
+            const response = await fetch(${urlLiteral}, {
+              method: 'GET',
+              credentials: 'include',
+              signal: controller.signal,
+              headers: {
+                Accept: 'application/json, text/plain, */*',
+                Authorization: ${authorizationLiteral},
+                skipErrorInterceptor: 'true'
+              }
+            });
+            return {
+              status: response.status,
+              contentType: response.headers.get('content-type'),
+              body: await response.text(),
+              retryAfterHeader: response.headers.get('retry-after')
+            };
+          } finally {
+            clearTimeout(timeoutId);
+          }
+        })()`, true) as { status: number; contentType: string | null; body: string; retryAfterHeader: string | null };
       } catch (error: any) {
         logger.warn('PDPJ API: falha ao executar consulta no Chromium', {
           message: error?.message || String(error),
@@ -1525,25 +1556,34 @@ export class PdpjAuth {
       const authorizationLiteral = JSON.stringify(authorization);
       let result: { status: number; contentType: string | null; base64: string };
       try {
+        // Timeout bem mais folgado que o de consulta (`pdpjChromiumRequest`)
+        // — isso aqui baixa o PDF inteiro, que pode ser grande.
         result = await window.webContents.executeJavaScript(`(async () => {
-          const response = await fetch(${urlLiteral}, {
-            method: 'GET',
-            credentials: 'include',
-            headers: {
-              Accept: 'application/pdf, application/octet-stream, */*',
-              Authorization: ${authorizationLiteral},
-              skipErrorInterceptor: 'true'
-            }
-          });
-          const buffer = await response.arrayBuffer();
-          const bytes = new Uint8Array(buffer);
-          let binary = '';
-          for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
-          return {
-            status: response.status,
-            contentType: response.headers.get('content-type'),
-            base64: btoa(binary)
-          };
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), ${TIMEOUTS.pdfDownload});
+          try {
+            const response = await fetch(${urlLiteral}, {
+              method: 'GET',
+              credentials: 'include',
+              signal: controller.signal,
+              headers: {
+                Accept: 'application/pdf, application/octet-stream, */*',
+                Authorization: ${authorizationLiteral},
+                skipErrorInterceptor: 'true'
+              }
+            });
+            const buffer = await response.arrayBuffer();
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+            return {
+              status: response.status,
+              contentType: response.headers.get('content-type'),
+              base64: btoa(binary)
+            };
+          } finally {
+            clearTimeout(timeoutId);
+          }
         })()`, true) as { status: number; contentType: string | null; base64: string };
       } catch (error: any) {
         logger.warn('PDPJ API: falha ao executar busca de binario no Chromium', {

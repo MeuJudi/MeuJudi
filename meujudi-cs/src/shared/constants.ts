@@ -42,6 +42,14 @@ export const TIMEOUTS = {
   login: 10 * 60_000,        // 10min pro login completo (gov.br pode pedir cadastro)
   pdfDownload: 120_000,      // 2min pra PDFs grandes (35MB)
   keepalive: 30 * 60 * 1000, // 30min entre keepalives
+  // Achado 06/08/2026: o fetch feito dentro da janela do Chromium (pool de
+  // consultas, pdpj-auth.ts requestPdpjApi/requestPdpjApiBinario) nunca teve
+  // limite de tempo próprio — só o caminho node-fetch (hoje sem uso real)
+  // tinha os 30s de `request` acima. Um 504 real chegou a levar 60s pra
+  // responder, prendendo a janela do pool (e a tarefa usando ela) esse
+  // tempo todo, sem controle nosso. 20s dá tempo real de resposta sem deixar
+  // uma única tentativa seg à vontade pra sempre.
+  pdpjChromiumRequest: 20_000,
 } as const;
 
 /**

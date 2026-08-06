@@ -22,6 +22,8 @@ export class PdpjApiError extends Error {
     // que estava funcionando só porque um processo especifico negou
     // acesso).
     public readonly serverMessage?: string,
+    /** Tempo de espera (ms) que o próprio servidor pediu via header `Retry-After`, quando presente — ver `parseRetryAfterMs`. `null`/`undefined` quando o servidor não mandou nada. */
+    public readonly retryAfterMs?: number | null,
   ) {
     super(message);
     this.name = 'PdpjApiError';
@@ -31,6 +33,24 @@ export class PdpjApiError extends Error {
 /** `true` quando o 401/403 é recusa de acesso a UM processo específico (Bearer válido), não sessão morta. */
 export function isAcessoNegadoProcessoEspecifico(error: PdpjApiError): boolean {
   return Boolean(error.serverMessage && /não possui acesso ao processo/i.test(error.serverMessage));
+}
+
+/**
+ * Converte o header HTTP `Retry-After` pra milissegundos — aceita tanto o
+ * formato em segundos ("120") quanto data HTTP ("Wed, 21 Oct 2026
+ * 07:28:00 GMT"), os dois válidos pela spec. `null` quando o header não
+ * veio ou não é um valor reconhecível — quem chamar cai no backoff próprio
+ * nesse caso (06/08/2026: nunca visto o PDPJ mandar esse header na
+ * prática, mas seguir a instrução do servidor quando ele mandar é mais
+ * correto do que ignorar sempre).
+ */
+export function parseRetryAfterMs(header: string | null | undefined): number | null {
+  if (!header) return null;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const dateMs = Date.parse(header);
+  if (!Number.isNaN(dateMs)) return Math.max(0, dateMs - Date.now());
+  return null;
 }
 
 export interface PdpjProcessPage {

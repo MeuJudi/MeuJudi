@@ -1,6 +1,6 @@
 import { logger } from './logger';
 import { registrar429PDPJ } from './pdpj-concurrency';
-import { PdpjApiError, normalizePage, redactPdpjPath, redactPdpjBody, isRecord, extractCnj } from './pdpj-api-helpers';
+import { PdpjApiError, normalizePage, redactPdpjPath, redactPdpjBody, isRecord, extractCnj, parseRetryAfterMs } from './pdpj-api-helpers';
 import type { PdpjProcessPage } from './pdpj-api-helpers';
 import type { PdpjSession } from '../shared/types';
 
@@ -8,8 +8,13 @@ export { PdpjApiError, extractCnj };
 export type { PdpjProcessPage };
 
 export const PDPJ_API_URL = 'https://portaldeservicos.pdpj.jus.br/api/v2';
-const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_RETRIES = 3;
+// Backoff exponencial (500ms, 1s, 2s...) com jitter de ±200ms — sem o
+// jitter, várias janelas do pool que tomam erro no mesmo instante
+// reagendavam pro mesmo milissegundo e batiam no PDPJ de novo, todas
+// juntas, bem na hora que o servidor podia estar tentando se recuperar
+// (achado 06/08/2026).
+const RETRY_JITTER_MS = 200;
 
 type SessionProvider = () => PdpjSession | null;
 
@@ -17,6 +22,8 @@ export interface PdpjBrowserResponse {
   status: number;
   contentType: string | null;
   body: string;
+  /** Header `Retry-After` cru (o navegador é quem tem acesso aos headers, não o processo main) — ver `parseRetryAfterMs`. */
+  retryAfterHeader: string | null;
 }
 
 export interface PdpjBrowserBinaryResponse {
@@ -31,6 +38,13 @@ type BrowserRequestBinario = (url: string, authorization: string) => Promise<Pdp
 export class PdpjApiClient {
   constructor(
     private readonly getSession: SessionProvider,
+    // Opcional só pra não quebrar quem cria o client sem precisar do
+    // caminho de busca/detalhe (ex.: document-requests.ts, que só usa
+    // `browserRequestBinario`) — mas `request()` recusa explicitamente na
+    // hora, em vez de cair num fallback silencioso por HTTP direto do Node
+    // (removido 06/08/2026: mandava User-Agent/headers inventados imitando
+    // browser, sem nunca ser de fato um — nem sequer estava em uso: 100%
+    // do tráfego real já passava pela janela Chromium de verdade).
     private readonly browserRequest?: BrowserRequest,
     private readonly browserRequestBinario?: BrowserRequestBinario,
   ) {}
@@ -108,12 +122,12 @@ export class PdpjApiClient {
     if (!session?.accessToken) {
       throw new PdpjApiError('Login PDPJ necessario para consultar processos.', 401);
     }
+    if (!this.browserRequest) {
+      throw new PdpjApiError('Consulta ao PDPJ nao configurada (sem acesso a janela do navegador).', undefined, false);
+    }
 
     let lastError: unknown;
-    const cookieHeader = session.cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('; ');
     for (let attempt = 0; attempt < MAX_RETRIES; attempt += 1) {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       try {
         logger.info('PDPJ API: iniciando requisicao', {
           method: 'GET',
@@ -127,65 +141,40 @@ export class PdpjApiClient {
         // um "HAR automático" pra tempo de resposta (achado 31/07/2026).
         const inicioMs = Date.now();
         const authorization = `${session.tokenType ?? 'Bearer'} ${session.accessToken}`;
-        const browserResponse = this.browserRequest
-          ? await this.browserRequest(`${PDPJ_API_URL}${path}`, authorization)
-          : null;
-        const response = browserResponse ? undefined : await fetch(`${PDPJ_API_URL}${path}`, {
-          method: 'GET',
-          headers: {
-            Accept: parseJson ? 'application/json, text/plain, */*' : 'text/plain, application/json, */*',
-            Authorization: authorization,
-            'User-Agent': 'MeuJudi-CS/0.2.18',
-            Cookie: cookieHeader,
-            Origin: 'https://portaldeservicos.pdpj.jus.br',
-            Referer: 'https://portaldeservicos.pdpj.jus.br/consulta',
-            'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-origin',
-            skipErrorInterceptor: 'true',
-          },
-          signal: controller.signal,
-        });
+        const browserResponse = await this.browserRequest(`${PDPJ_API_URL}${path}`, authorization);
 
-        const status = browserResponse ? browserResponse.status : response!.status;
-        const contentType = browserResponse ? browserResponse.contentType : response!.headers.get('content-type');
-        const responseBody = browserResponse ? browserResponse.body : undefined;
+        const { status, contentType, body: responseBody, retryAfterHeader } = browserResponse;
         if (status === 401 || status === 403 || status === 404) {
-          const body = responseBody ?? await response!.text();
           logger.warn('PDPJ API: resposta de acesso negado ou recurso ausente', {
             status,
             path: redactPdpjPath(path),
             contentType,
-            transport: browserResponse ? 'chromium' : 'node-fetch',
-            bodyPreview: redactPdpjBody(body),
+            transport: 'chromium',
+            bodyPreview: redactPdpjBody(responseBody),
             durationMs: Date.now() - inicioMs,
           });
-          throw new PdpjApiError(`PDPJ respondeu HTTP ${status}.`, status, false, extractServerMessage(body));
+          throw new PdpjApiError(`PDPJ respondeu HTTP ${status}.`, status, false, extractServerMessage(responseBody));
         }
         if (status < 200 || status >= 300) {
-          const body = responseBody ?? await response!.text();
           logger.warn('PDPJ API: resposta HTTP inesperada', {
             status,
             path: redactPdpjPath(path),
-            transport: browserResponse ? 'chromium' : 'node-fetch',
-            bodyPreview: redactPdpjBody(body),
+            transport: 'chromium',
+            bodyPreview: redactPdpjBody(responseBody),
             durationMs: Date.now() - inicioMs,
           });
           // 429 é sinal real de rate limit — trava a concorrência de volta
           // pra 1 (ver pdpj-concurrency.ts), independente de teste manual
           // de concorrência mais alta estar rolando ou não.
           if (status === 429) registrar429PDPJ();
-          throw new PdpjApiError(`PDPJ respondeu HTTP ${status}.`, status, status >= 500 || status === 429);
+          throw new PdpjApiError(`PDPJ respondeu HTTP ${status}.`, status, status >= 500 || status === 429, undefined, parseRetryAfterMs(retryAfterHeader));
         }
 
-        const body = parseJson
-          ? (responseBody ? JSON.parse(responseBody) as unknown : await response!.json() as unknown)
-          : (responseBody ?? await response!.text());
+        const body = parseJson ? JSON.parse(responseBody) as unknown : responseBody;
         logger.info('PDPJ API: resposta recebida', {
           status,
           path: redactPdpjPath(path),
-          transport: browserResponse ? 'chromium' : 'node-fetch',
+          transport: 'chromium',
           durationMs: Date.now() - inicioMs,
         });
         return body;
@@ -195,11 +184,18 @@ export class PdpjApiClient {
           ? error
           : new PdpjApiError(error instanceof Error && error.name === 'AbortError' ? 'Tempo limite da API PDPJ excedido.' : 'Falha de rede ao consultar o PDPJ.', undefined, true);
         if (!apiError.retryable || attempt === MAX_RETRIES - 1) throw apiError;
-        const delay = 500 * 2 ** attempt;
-        logger.warn('PDPJ: tentativa temporaria falhou; aguardando retry.', { attempt: attempt + 1, delay, status: apiError.status });
+        // Servidor pediu um tempo específico via Retry-After? Obedece isso
+        // em vez do backoff próprio — nunca visto o PDPJ mandar esse header
+        // na prática (06/08/2026), mas seguir a instrução dele quando
+        // existir é mais correto do que ignorar sempre.
+        const delay = apiError.retryAfterMs ?? Math.max(100, 500 * 2 ** attempt + (Math.random() * 2 - 1) * RETRY_JITTER_MS);
+        logger.warn('PDPJ: tentativa temporaria falhou; aguardando retry.', {
+          attempt: attempt + 1,
+          delay: Math.round(delay),
+          status: apiError.status,
+          origemDoDelay: apiError.retryAfterMs != null ? 'retry-after' : 'backoff',
+        });
         await new Promise((resolve) => setTimeout(resolve, delay));
-      } finally {
-        clearTimeout(timeout);
       }
     }
     throw lastError instanceof Error ? lastError : new Error('Falha desconhecida no PDPJ.');
