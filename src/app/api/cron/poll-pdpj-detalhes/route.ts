@@ -7,6 +7,14 @@
 // disparo calcula quantos processos estão pendentes e divide pelas horas
 // restantes até 16h, pra terminar o "rodízio do dia" sem estourar tudo de
 // uma vez nem deixar sobra. Se não tem pendente, não faz nada nesse tenant.
+//
+// Candidatos = TODOS os processos ativos (06/08/2026, a pedido do Caio) —
+// antes só entravam os que passavam de 7 dias sem sincronizar, o que podia
+// deixar processo sem atualização por até uma semana. Agora todo processo
+// é verificado 1x por dia, dividido ao longo da janela 9h-16h pela mesma
+// lógica de rodízio que já existia — não precisou mudar a divisão, só quem
+// entra nela. Custo real: bem mais chamadas ao PDPJ por dia (proporcional
+// ao total de processos ativos do escritório, não só aos "atrasados").
 
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
@@ -17,7 +25,6 @@ export const maxDuration = 60;
 
 const HORA_INICIO = 9;
 const HORA_FIM = 16;
-const DIAS_PARA_REESCANEAR = 7;
 
 function horaAtualBrasilia(): number {
   const formatter = new Intl.DateTimeFormat("en-US", {
@@ -54,7 +61,11 @@ export async function POST(req: NextRequest) {
 
   const horasRestantes = HORA_FIM - horaAtual + 1;
   const dataHoje = new Date().toISOString().slice(0, 10);
-  const limiteAntiguidade = new Date(Date.now() - DIAS_PARA_REESCANEAR * 24 * 60 * 60 * 1000).toISOString();
+  // "Início de hoje" (não "agora"!) — processo sincronizado às 9h05 não pode
+  // voltar a ser candidato no rodízio das 10h, senão todo mundo vira
+  // candidato em toda execução e o rodízio inteiro roda de uma vez só na
+  // primeira hora, em vez de se espalhar pelo dia como devia.
+  const limiteAntiguidade = new Date(`${dataHoje}T00:00:00.000Z`).toISOString();
 
   let criadosTotal = 0;
   let pulados = 0;
