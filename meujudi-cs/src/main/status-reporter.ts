@@ -6,7 +6,8 @@
  * Se o CS não enviar heartbeat por >10 min, o Web mostra aviso.
  */
 
-import { MEUJUDI_WEB_URL, APP_VERSION, INTERVALS } from '../shared/constants';
+import { app } from 'electron';
+import { MEUJUDI_WEB_URL, INTERVALS } from '../shared/constants';
 import { logger, recordDiagnosticEvent } from './logger';
 import { Pairing } from './pairing';
 import type { ConnectionStatus } from '../shared/types';
@@ -124,7 +125,7 @@ export class StatusReporter {
       status: 'online',
       lastActivity: this.lastActivity,
       pendingTasks: 0, // será integrado com TaskQueue na Fase 3
-      version: APP_VERSION,
+      version: app.getVersion(),
     };
     payload.pendingTasks = this.pendingTasks;
 

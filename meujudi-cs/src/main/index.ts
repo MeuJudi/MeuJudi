@@ -22,7 +22,7 @@ import { Diagnostic } from './diagnostic';
 import { Pairing } from './pairing';
 import { StatusReporter } from './status-reporter';
 import { initAutoUpdater, checkForUpdatesManually } from './auto-updater';
-import { APP_NAME, APP_VERSION } from '../shared/constants';
+import { APP_NAME } from '../shared/constants';
 import type { TrayStatus } from '../shared/constants';
 
 let mainWindow: BrowserWindow | null = null;
@@ -30,7 +30,7 @@ const pairing = new Pairing();
 const statusReporter = new StatusReporter(pairing);
 let csRuntime: ReturnType<typeof registerIPCHandlers> | null = null;
 
-logger.info(`${APP_NAME} v${APP_VERSION} iniciando...`);
+logger.info(`${APP_NAME} v${app.getVersion()} iniciando...`);
 
 /**
  * Single instance lock — garante que só 1 MeuJudi Sync roda por vez.

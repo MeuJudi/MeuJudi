@@ -16,7 +16,7 @@ import os from 'os';
 import { getRecentDiagnosticEvents, getRecentLogs, logger, recordDiagnosticEvent } from './logger';
 import { detectarCertA1 } from './cert-detector';
 import { CookieStore } from './cookie-store';
-import { APP_VERSION, PDPJ_LOGIN_URL, PDPJ_PORTAL_URL, TIMEOUTS } from '../shared/constants';
+import { PDPJ_LOGIN_URL, PDPJ_PORTAL_URL, TIMEOUTS } from '../shared/constants';
 import { enviarRelatorioSupabase } from './supabase-reporter';
 import type {
   DiagnosticReport,
@@ -44,7 +44,7 @@ export class Diagnostic {
     const report: DiagnosticReport = {
       id: randomUUID(),
       timestamp: new Date().toISOString(),
-      meuJudiVersion: APP_VERSION,
+      meuJudiVersion: app.getVersion(),
       electronVersion: process.versions.electron || 'unknown',
       nodeVersion: process.versions.node || 'unknown',
       windowsVersion: `${os.type()} ${os.release()} (${os.platform()})`,
@@ -265,7 +265,7 @@ export class Diagnostic {
       const response = await fetch(url, {
         method: 'GET',
         signal: controller.signal,
-        headers: { 'User-Agent': `MeuJudi-CS/${APP_VERSION} (diagnostic)` },
+        headers: { 'User-Agent': `MeuJudi-CS/${app.getVersion()} (diagnostic)` },
       });
 
       clearTimeout(timeoutId);
@@ -317,7 +317,7 @@ export class Diagnostic {
       const url = PDPJ_LOGIN_URL;
       await fetch(url, {
         method: 'GET',
-        headers: { 'User-Agent': `MeuJudi-CS/${APP_VERSION} (diagnostic)` },
+        headers: { 'User-Agent': `MeuJudi-CS/${app.getVersion()} (diagnostic)` },
       }).catch((err) => ({ status: 0, error: err.message }));
 
       const durationMs = Date.now() - start;
