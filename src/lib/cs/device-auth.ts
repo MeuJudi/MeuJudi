@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-type DeviceAuth = { tenantId: string; deviceId: string; userId: string };
+type DeviceAuth = { tenantId: string; deviceId: string; userId: string; logUploadEnabled: boolean };
 
 export async function autenticarDevice(supabase: SupabaseClient, request: NextRequest): Promise<DeviceAuth | null> {
   const authorization = request.headers.get("authorization");
@@ -12,12 +12,17 @@ export async function autenticarDevice(supabase: SupabaseClient, request: NextRe
   const tokenHash = createHash("sha256").update(token, "utf8").digest("hex");
   const { data: device } = await supabase
     .from("cs_devices")
-    .select("id, tenant_id, user_id")
+    .select("id, tenant_id, user_id, log_upload_enabled")
     .eq("token_hash", tokenHash)
     .is("revoked_at", null)
     .maybeSingle();
   if (!device) return null;
 
   await supabase.from("cs_devices").update({ last_seen_at: new Date().toISOString() }).eq("id", device.id);
-  return { tenantId: device.tenant_id as string, deviceId: device.id as string, userId: device.user_id as string };
+  return {
+    tenantId: device.tenant_id as string,
+    deviceId: device.id as string,
+    userId: device.user_id as string,
+    logUploadEnabled: Boolean(device.log_upload_enabled),
+  };
 }

@@ -183,6 +183,95 @@ export function getRecentDiagnosticEvents(limit: number = 180): DiagnosticEvent[
   return recentEvents.slice(-limit);
 }
 
+// Palavras-chave pra decidir se uma linha INFO "importa" — WARN/ERROR
+// sempre entram, DEBUG nunca entra (é o did-navigate/heartbeat que lota o
+// arquivo — achado 13/08/2026: 1 milhão+ de linhas de loop num único dia),
+// e INFO só entra se bater com algo que já se mostrou relevante nas
+// investigações reais até aqui (login, sessão, Bearer, rate limit).
+const IMPORTANT_INFO_MARKERS = [
+  'LOGIN PDPJ',
+  'SESSÃO PJe SALVA',
+  'Sessão deletada',
+  'Sessão em disco expirada',
+  'validacao da API expirou',
+  'Falha na validacao PDPJ',
+  'tarefa concluída',
+  'destravada(s) apos revalidar',
+  'HTTP 429',
+  'nenhuma sessao salva disponivel',
+];
+
+export interface ExportedLogEntry {
+  timestamp: string;
+  level: LogLevel;
+  message: string;
+  context?: any;
+}
+
+/**
+ * Lê os arquivos de log em disco (não o buffer em memória, que só guarda os
+ * últimos 300) e devolve as linhas WARN/ERROR + INFO relevante dentro do
+ * período pedido — sempre sanitizado, mesmo o que já foi escrito em disco
+ * sem sanitização (`writeToFile` grava a mensagem crua; a sanitização até
+ * agora só rodava pro buffer em memória usado pela tela).
+ */
+export async function getImportantLogEntriesInRange(
+  periodStartMs: number,
+  periodEndMs: number,
+  maxEntries: number = 5000,
+): Promise<ExportedLogEntry[]> {
+  const readline = await import('readline');
+  const files = fs
+    .readdirSync(logsDir)
+    .filter((name) => /^\d{4}-\d{2}-\d{2}\.log$/.test(name))
+    .filter((name) => {
+      const fileDateMs = Date.parse(`${name.slice(0, 10)}T00:00:00.000Z`);
+      // Um arquivo cobre um dia UTC inteiro — inclui se qualquer parte dele
+      // cai dentro do período pedido.
+      return fileDateMs <= periodEndMs && fileDateMs + 24 * 60 * 60 * 1000 >= periodStartMs;
+    })
+    .sort();
+
+  const lineRegex = /^(\S+) \[(DEBUG|INFO|WARN|ERROR)\] (.*)$/;
+  const entries: ExportedLogEntry[] = [];
+
+  for (const file of files) {
+    if (entries.length >= maxEntries) break;
+    const filePath = path.join(logsDir, file);
+    const rl = readline.createInterface({ input: fs.createReadStream(filePath, 'utf-8'), crlfDelay: Infinity });
+    for await (const line of rl) {
+      if (entries.length >= maxEntries) { rl.close(); break; }
+      const match = lineRegex.exec(line);
+      if (!match) continue;
+      const [, timestamp, levelUpper, rest] = match;
+      const level = levelUpper.toLowerCase() as LogLevel;
+      if (level === 'debug') continue;
+
+      const timestampMs = Date.parse(timestamp);
+      if (Number.isNaN(timestampMs) || timestampMs < periodStartMs || timestampMs > periodEndMs) continue;
+
+      const isRelevant = level !== 'info' || IMPORTANT_INFO_MARKERS.some((marker) => rest.includes(marker));
+      if (!isRelevant) continue;
+
+      const sepIndex = rest.indexOf(' | ');
+      const rawMessage = sepIndex === -1 ? rest : rest.slice(0, sepIndex);
+      let context: any;
+      if (sepIndex !== -1) {
+        try { context = JSON.parse(rest.slice(sepIndex + 3)); } catch { context = undefined; }
+      }
+
+      entries.push({
+        timestamp,
+        level,
+        message: sanitizeMessage(rawMessage),
+        context: sanitizeContext(context),
+      });
+    }
+  }
+
+  return entries;
+}
+
 // API exportada (mesmo formato do console, mas com tipos)
 export const logger = {
   debug: (...args: any[]) => log('debug', ...args),

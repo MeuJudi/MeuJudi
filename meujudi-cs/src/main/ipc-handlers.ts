@@ -21,6 +21,7 @@ import { SyncWorker } from './sync-worker';
 import { createPdpjTaskHandlers } from './pdpj-tasks';
 import { createMuralTaskHandlers, startMuralScheduledTasks } from './mural-tasks';
 import { DocumentRequests } from './document-requests';
+import { exportAndSendLogs } from './log-export';
 import type { StatusReporter, ConnectionStatus } from './status-reporter';
 import type { PdpjStatus, PublicSession, LogEntry, DiagnosticReport, ConfirmADVValidation, SyncTask, TaskBatch, UnifiedSyncProgress, PdpjConcurrencyStatus } from '../shared/types';
 
@@ -144,7 +145,12 @@ export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: St
       lastHeartbeatAt: null,
       lastError: null,
       revoked: false,
+      logUploadEnabled: false,
     };
+  });
+
+  ipcMain.handle('logs:export-and-send', async (_event, periodStart: string, periodEnd: string) => {
+    return exportAndSendLogs(pairing, periodStart, periodEnd);
   });
 
   ipcMain.handle('mural:sync-historical', async () => {

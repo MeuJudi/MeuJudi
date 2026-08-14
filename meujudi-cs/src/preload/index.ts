@@ -60,6 +60,9 @@ const api: ElectronAPI = {
     openActive: () => ipcRenderer.invoke('oab:open-active'),
     checkAndOpen: () => ipcRenderer.invoke('oab:check-and-open'),
   },
+  logs: {
+    exportAndSend: (periodStart, periodEnd) => ipcRenderer.invoke('logs:export-and-send', periodStart, periodEnd),
+  },
 };
 
 contextBridge.exposeInMainWorld('meujudi', api);

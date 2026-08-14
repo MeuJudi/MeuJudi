@@ -1,5 +1,6 @@
 import { AppShell } from '@/components/AppShell';
 import { LogsViewer } from '@/components/LogsViewer';
+import { SendLogsPanel } from '@/components/SendLogsPanel';
 
 export default function LogsPage() {
   return (
@@ -12,7 +13,10 @@ export default function LogsPage() {
         </button>
       }
     >
-      <LogsViewer limit={200} />
+      <div className="space-y-4">
+        <SendLogsPanel />
+        <LogsViewer limit={200} />
+      </div>
     </AppShell>
   );
 }

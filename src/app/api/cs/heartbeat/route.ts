@@ -51,5 +51,6 @@ export async function POST(request: NextRequest) {
     ok: true,
     receivedAt: now,
     realtime_token: mintDeviceRealtimeToken(device.deviceId, device.tenantId),
+    log_upload_enabled: device.logUploadEnabled,
   });
 }

@@ -223,7 +223,15 @@ export interface ElectronAPI {
     openActive: () => Promise<ConfirmADVValidation | null>;
     checkAndOpen: () => Promise<OabCheckResult>;
   };
+  logs: {
+    /** `periodStart`/`periodEnd` em ISO 8601. Só envia WARN/ERROR + eventos importantes, nunca DEBUG. */
+    exportAndSend: (periodStart: string, periodEnd: string) => Promise<LogUploadResult>;
+  };
 }
+
+export type LogUploadResult =
+  | { sent: true; entryCount: number }
+  | { sent: false; error: string };
 
 export type OabCheckResult =
   | { status: 'opened'; validation: ConfirmADVValidation }
@@ -365,6 +373,8 @@ export interface ConnectionStatus {
   lastHeartbeatAt: string | null;
   lastError: string | null;
   revoked: boolean;
+  /** Liberado manualmente pelo Super Admin pra esse dispositivo (ver /admin/cs-diagnostics) — controla só se o botão de enviar logs aparece na tela. */
+  logUploadEnabled: boolean;
 }
 
 export interface PairingInfo {

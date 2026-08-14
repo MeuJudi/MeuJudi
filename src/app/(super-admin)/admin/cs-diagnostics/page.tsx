@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, Clock3, MonitorCog, XCircle } from "lucide
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireSuperAdmin } from "@/lib/auth/guards";
+import { toggleDeviceLogUpload } from "./actions";
 
 type RecentLog = {
   timestamp?: string;
@@ -40,6 +41,27 @@ type SyncTaskFailureRow = {
   error_message: string | null;
   last_activity_at: string | null;
   created_at: string;
+  tenants: { name: string | null } | null;
+};
+
+type CsDeviceRow = {
+  id: string;
+  device_name: string | null;
+  hostname: string | null;
+  last_heartbeat: string | null;
+  log_upload_enabled: boolean;
+  tenants: { name: string | null } | null;
+};
+
+type CsLogUploadRow = {
+  id: string;
+  device_id: string;
+  period_start: string;
+  period_end: string;
+  entry_count: number;
+  entries: { timestamp?: string; level?: string; message?: string; context?: unknown }[] | null;
+  created_at: string;
+  cs_devices: { device_name: string | null } | null;
   tenants: { name: string | null } | null;
 };
 
@@ -110,6 +132,20 @@ export default async function CsDiagnosticsPage() {
     .order("last_activity_at", { ascending: false, nullsFirst: false })
     .limit(30)
     .returns<SyncTaskFailureRow[]>();
+
+  const { data: devices } = await supabase
+    .from("cs_devices")
+    .select("id, device_name, hostname, last_heartbeat, log_upload_enabled, tenants(name)")
+    .is("revoked_at", null)
+    .order("last_heartbeat", { ascending: false, nullsFirst: false })
+    .returns<CsDeviceRow[]>();
+
+  const { data: logUploads } = await supabase
+    .from("cs_log_uploads")
+    .select("id, device_id, period_start, period_end, entry_count, entries, created_at, cs_devices(device_name), tenants(name)")
+    .order("created_at", { ascending: false })
+    .limit(15)
+    .returns<CsLogUploadRow[]>();
 
   const reports = (data ?? []) as DiagnosticReportRow[];
   const latest = reports[0];
@@ -200,6 +236,87 @@ export default async function CsDiagnosticsPage() {
                 ))}
               </tbody>
             </table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Envio de logs sob demanda — liberacao por dispositivo</CardTitle>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <p className="mb-3 text-sm text-muted-foreground">
+            Desligado por padrao. So libere pro dispositivo especifico que voce precisa investigar — o botao de enviar so aparece no Sync daquele PC enquanto estiver ligado aqui.
+          </p>
+          {!devices || devices.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum dispositivo pareado.</p>
+          ) : (
+            <table className="w-full min-w-[700px] text-sm">
+              <thead className="border-b text-left text-muted-foreground">
+                <tr>
+                  <th className="py-3 pr-4 font-medium">Dispositivo</th>
+                  <th className="py-3 pr-4 font-medium">Escritorio</th>
+                  <th className="py-3 pr-4 font-medium">Ultimo heartbeat</th>
+                  <th className="py-3 pr-4 font-medium">Envio de logs</th>
+                  <th className="py-3 pr-4 font-medium" />
+                </tr>
+              </thead>
+              <tbody>
+                {devices.map((device) => (
+                  <tr key={device.id} className="border-b align-top last:border-0">
+                    <td className="py-3 pr-4 font-mono text-xs">{device.device_name ?? device.hostname ?? device.id.slice(0, 8)}</td>
+                    <td className="py-3 pr-4">{device.tenants?.name ?? "-"}</td>
+                    <td className="py-3 pr-4 text-muted-foreground">
+                      {device.last_heartbeat ? new Date(device.last_heartbeat).toLocaleString("pt-BR") : "-"}
+                    </td>
+                    <td className="py-3 pr-4">
+                      <Badge variant={device.log_upload_enabled ? "default" : "secondary"}>
+                        {device.log_upload_enabled ? "Liberado" : "Desligado"}
+                      </Badge>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <form action={toggleDeviceLogUpload}>
+                        <input type="hidden" name="device_id" value={device.id} />
+                        <input type="hidden" name="enabled" value={(!device.log_upload_enabled).toString()} />
+                        <button type="submit" className="text-xs font-medium text-primary underline underline-offset-2">
+                          {device.log_upload_enabled ? "Desligar" : "Liberar"}
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Logs enviados sob demanda</CardTitle>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          {!logUploads || logUploads.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum envio ainda.</p>
+          ) : (
+            <div className="space-y-3">
+              {logUploads.map((upload) => (
+                <details key={upload.id} className="rounded-lg border border-border p-3">
+                  <summary className="cursor-pointer text-sm">
+                    <span className="font-medium">{upload.cs_devices?.device_name ?? upload.device_id.slice(0, 8)}</span>
+                    {" — "}
+                    {upload.tenants?.name ?? "-"}
+                    {" — "}
+                    {new Date(upload.period_start).toLocaleString("pt-BR")} ate {new Date(upload.period_end).toLocaleString("pt-BR")}
+                    {" — "}
+                    <span className="text-muted-foreground">{upload.entry_count} linha(s)</span>
+                  </summary>
+                  <pre className="mt-3 max-h-96 overflow-auto rounded bg-muted p-3 text-xs">
+                    {JSON.stringify(upload.entries, null, 2)}
+                  </pre>
+                </details>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>

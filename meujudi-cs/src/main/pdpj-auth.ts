@@ -715,6 +715,9 @@ export class PdpjAuth {
       recordDiagnosticEvent('pdpj_api_validation_load_failed', 'warning', error.message, { urlHost: safeHost(PDPJ_LOGIN_URL) });
     }
 
+    // Fecha modal "Navegação Guiada" se apareceu durante o carregamento
+    await this.dismissGuidedNavigationModal(this.authWindow);
+
     const startedAt = Date.now();
     let lastDiagnosticoAt = 0;
     let domInspected = false;
@@ -1457,6 +1460,23 @@ export class PdpjAuth {
     } catch (error: any) {
       logger.error('Falha na validacao PDPJ em segundo plano:', error?.message || error);
       recordDiagnosticEvent('pdpj_session_upgrade_failed', 'warning', error.message || 'Nao foi possivel atualizar a sessao PDPJ');
+      // Destroi a janela em vez de mante-la viva pro proximo ciclo (achado
+      // 14/08/2026: apos falhar, a mesma janela as vezes fica presa num
+      // loop de redirecionamento em www.jus.br — e com
+      // `backgroundThrottling: false` (necessario pro SSO silencioso, ver
+      // comentario acima) esse loop roda a CPU cheia mesmo escondida, sem
+      // nunca parar sozinho, porque nada nunca navega essa janela pra
+      // outro lugar nem a fecha. Reaproveitar a MESMA janela quebrada no
+      // ciclo de 5min seguinte so reproduzia o mesmo loop de novo — travou
+      // o Caio por 10min+ e, ao longo de dias sem reiniciar o app,
+      // explica o app ficando cada vez mais lento (achado no log de
+      // 13/08/2026: 1 milhao+ de linhas so desse tipo de loop num unico
+      // dia). Destruir aqui forca uma janela nova e limpa na proxima
+      // tentativa.
+      if (this.authWindow && !this.authWindow.isDestroyed()) {
+        this.authWindow.destroy();
+      }
+      this.authWindow = null;
       return false;
     } finally {
       this.cleanup();
@@ -1487,6 +1507,8 @@ export class PdpjAuth {
     if (!session) throw new Error('Sessao autenticada do PDPJ nao esta disponivel.');
 
     const { window, release } = await this.acquireQueryWindow(session);
+    // Fecha modal "Navegação Guiada" antes de interagir com o DOM
+    await this.dismissGuidedNavigationModal(window);
     try {
       const urlLiteral = JSON.stringify(url);
       const authorizationLiteral = JSON.stringify(authorization);
@@ -1551,6 +1573,8 @@ export class PdpjAuth {
     if (!session) throw new Error('Sessao autenticada do PDPJ nao esta disponivel.');
 
     const { window, release } = await this.acquireQueryWindow(session);
+    // Fecha modal "Navegação Guiada" antes de interagir com o DOM
+    await this.dismissGuidedNavigationModal(window);
     try {
       const urlLiteral = JSON.stringify(url);
       const authorizationLiteral = JSON.stringify(authorization);
@@ -1676,6 +1700,30 @@ export class PdpjAuth {
     if (next) next();
   }
 
+  /**
+   * Fecha o modal "Você está na navegação guiada" do PDPJ se estiver aberto.
+   * Chamado antes de cada interação com o Portal pra garantir que a interface
+   * não está bloqueada por esse popup (detectado em 05/08/2026).
+   */
+  private async dismissGuidedNavigationModal(window: BrowserWindow): Promise<void> {
+    try {
+      await window.webContents.executeJavaScript(`
+        (function() {
+          var botoes = document.querySelectorAll('button');
+          var btnPular = Array.prototype.find.call(botoes, function(btn) {
+            return btn.textContent.trim() === 'Pular';
+          });
+          if (btnPular) {
+            btnPular.click();
+            console.log('[CS] Modal de navegação guiada fechado');
+          }
+        })();
+      `);
+    } catch {
+      // Modal não existe ou página não carregou — ignora silenciosamente
+    }
+  }
+
   /** Cria uma janela oculta nova do pool: aplica os cookies da sessão salva e navega pro Portal uma vez. */
   private async createQueryWindow(session: PdpjSession): Promise<BrowserWindow> {
     logger.info('PDPJ API: criando janela do pool de consultas', { poolSize: this.queryPool.length + 1 });
@@ -1733,6 +1781,8 @@ export class PdpjAuth {
         setTimeout(resolve, 5000);
       });
     }
+    // Fecha o modal "Navegação Guiada" se apareceu durante o carregamento
+    await this.dismissGuidedNavigationModal(window);
     return window;
   }
 

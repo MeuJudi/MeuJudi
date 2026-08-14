@@ -31,6 +31,7 @@ export class StatusReporter {
   private lastHeartbeatAt: string | null = null;
   private lastError: string | null = null;
   private revoked = false;
+  private logUploadEnabled = false;
 
   constructor(private readonly pairing: Pairing) {}
 
@@ -45,6 +46,7 @@ export class StatusReporter {
       lastHeartbeatAt: this.lastHeartbeatAt,
       lastError: this.lastError,
       revoked: this.revoked,
+      logUploadEnabled: this.logUploadEnabled,
     };
   }
 
@@ -167,8 +169,9 @@ export class StatusReporter {
       this.lastError = null;
       this.revoked = false;
 
-      const body = await response.json().catch(() => null) as { realtime_token?: string } | null;
+      const body = await response.json().catch(() => null) as { realtime_token?: string; log_upload_enabled?: boolean } | null;
       if (body?.realtime_token) this.pairing.setRealtimeToken(body.realtime_token);
+      this.logUploadEnabled = Boolean(body?.log_upload_enabled);
 
       logger.debug(`[StatusReporter] Heartbeat enviado (${durationMs}ms)`);
       recordDiagnosticEvent('cs_heartbeat_sent', 'success', `Heartbeat OK`, { lastActivity: this.lastActivity }, durationMs);

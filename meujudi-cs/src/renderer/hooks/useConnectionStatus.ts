@@ -7,6 +7,7 @@ const DEFAULT_STATUS: ConnectionStatus = {
   lastHeartbeatAt: null,
   lastError: null,
   revoked: false,
+  logUploadEnabled: false,
 };
 
 /**
