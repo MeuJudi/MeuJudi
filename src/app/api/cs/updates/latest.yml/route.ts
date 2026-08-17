@@ -15,6 +15,15 @@ import { NextResponse } from "next/server";
  * Os arquivos grandes (instalador, blockmap) continuam vindo direto do
  * GitHub via redirect (`[filename]/route.ts`) — só o metadado pequeno
  * (`latest.yml`, checado com frequência) passa pelo cache de verdade.
+ *
+ * Só UM nível de cache: o `Cache-Control` da resposta, que o CDN da
+ * Vercel respeita. Achado 17/08/2026: usar TAMBÉM o `next.revalidate` do
+ * `fetch` (Data Cache do Next.js) ao mesmo tempo empilhava dois caches
+ * independentes sem sincronia entre si — na prática, ficou mais lento e
+ * imprevisível que os 2min pretendidos (passou de 3min e ainda servia
+ * dado velho). `cache: 'no-store'` aqui garante que toda vez que a função
+ * roda, ela busca fresco do GitHub — quem decide a frequência de verdade
+ * é só o Cache-Control abaixo.
  */
 
 const GITHUB_LATEST_YML_URL =
@@ -24,7 +33,7 @@ const CACHE_SECONDS = 120;
 export async function GET() {
   let response: Response;
   try {
-    response = await fetch(GITHUB_LATEST_YML_URL, { next: { revalidate: CACHE_SECONDS } });
+    response = await fetch(GITHUB_LATEST_YML_URL, { cache: "no-store" });
   } catch (error) {
     console.error("[cs/updates/latest.yml] falha ao buscar do GitHub:", error);
     return NextResponse.json({ error: "falha_ao_buscar_latest_yml" }, { status: 502 });
