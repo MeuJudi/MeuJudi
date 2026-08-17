@@ -63,7 +63,15 @@ export const INTERVALS = {
   retryBackoff: [1000, 2000, 4000, 8000, 16000, 30000], // backoff exponencial
   muralSync: '0 6 * * 1',
   pdpjApiValidation: 5 * 60 * 1000, // 5min — verifica em segundo plano se o Bearer da API PDPJ precisa ser revalidado
-  updateCheck: 6 * 60 * 60 * 1000, // 6h — verifica se tem versão nova no repo de releases
+  // 3min — antes eram 6h, limitado pelo rate limit do GitHub (60 req/h por
+  // IP sem autenticação, compartilhado entre todas as máquinas do mesmo
+  // escritório). Agora a checagem passa por um proxy com cache no nosso
+  // próprio servidor (`/api/cs/updates/latest.yml`, cache de 2min) — o
+  // GitHub só é consultado por ESSE endpoint, no máximo a cada 2min,
+  // nunca direto pelos devices. Manter o intervalo do CS um pouco acima
+  // do cache do servidor (2min) evita checagem "gratuita" que só bateria
+  // no mesmo cache sem nunca pegar dado mais fresco.
+  updateCheck: 3 * 60 * 1000,
 } as const;
 
 /**

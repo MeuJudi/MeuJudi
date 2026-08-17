@@ -97,9 +97,9 @@
       "shortcutName": "MeuJudi Sync"
     },
     "publish": {
-      "provider": "github",
-      "owner": "MeuJudi",
-      "repo": "MeuJudi-Sync-Releases"
+      "provider": "generic",
+      "url": "https://www.meujudi.com.br/api/cs/updates",
+      "channel": "latest"
     }
   }
 }

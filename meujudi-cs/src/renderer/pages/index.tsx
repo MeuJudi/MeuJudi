@@ -68,9 +68,12 @@ export default function Home() {
   return (
     <main className="min-h-screen flex items-center justify-center p-6">
       <div className="max-w-md w-full space-y-6">
-        <div className="text-center">
+        <div className="relative text-center">
           <h1 className="text-3xl font-bold text-primary-700">MeuJudi Sync</h1>
           <p className="text-gray-500 mt-1 text-sm">Sincronização do escritório com o MeuJudi</p>
+          <div className="absolute left-0 top-0">
+            <UpdateButton />
+          </div>
         </div>
 
         {connection.revoked && (
@@ -78,8 +81,6 @@ export default function Home() {
             O pareamento deste computador foi revogado pelo escritório. Pareie novamente em "Pareamento".
           </div>
         )}
-
-        <UpdateButton />
 
         <div className="card space-y-3">
           <div className="flex items-center justify-between text-sm py-1">
