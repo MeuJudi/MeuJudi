@@ -193,6 +193,9 @@ export interface ElectronAPI {
     getVersion: () => Promise<string>;
     openLogsFolder: () => Promise<void>;
     checkForUpdates: () => Promise<void>;
+    getUpdateStatus: () => Promise<UpdateState>;
+    /** Fecha o app e instala a atualização já baixada — só chamar quando `getUpdateStatus().status === 'ready'`. */
+    installUpdate: () => Promise<void>;
   };
   pairing: {
     submitCode: (codigo: string) => Promise<PairingInfo>;
@@ -232,6 +235,17 @@ export interface ElectronAPI {
 export type LogUploadResult =
   | { sent: true; entryCount: number }
   | { sent: false; error: string };
+
+/**
+ * Estado da checagem/download de atualização (autoUpdater) exposto pro
+ * renderer — o botão de atualizar na Home só aparece quando `status` é
+ * `ready` (download já concluído, `quitAndInstall()` é instantâneo).
+ */
+export interface UpdateState {
+  status: 'idle' | 'checking' | 'downloading' | 'ready' | 'error';
+  version?: string;
+  error?: string;
+}
 
 export type OabCheckResult =
   | { status: 'opened'; validation: ConfirmADVValidation }

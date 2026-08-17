@@ -30,6 +30,8 @@ const api: ElectronAPI = {
     getVersion: () => ipcRenderer.invoke('app:get-version'),
     openLogsFolder: () => ipcRenderer.invoke('app:open-logs-folder'),
     checkForUpdates: () => ipcRenderer.invoke('app:check-for-updates'),
+    getUpdateStatus: () => ipcRenderer.invoke('app:get-update-status'),
+    installUpdate: () => ipcRenderer.invoke('app:install-update'),
   },
   pairing: {
     submitCode: (codigo) => ipcRenderer.invoke('pairing:submit-code', codigo),

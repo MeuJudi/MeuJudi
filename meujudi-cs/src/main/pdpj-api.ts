@@ -1,5 +1,5 @@
 import { logger } from './logger';
-import { registrar429PDPJ } from './pdpj-concurrency';
+import { registrar429PDPJ, registrarErroRedePDPJ, registrarSucessoRedePDPJ } from './pdpj-concurrency';
 import { PdpjApiError, normalizePage, redactPdpjPath, redactPdpjBody, isRecord, extractCnj, parseRetryAfterMs } from './pdpj-api-helpers';
 import type { PdpjProcessPage } from './pdpj-api-helpers';
 import type { PdpjSession } from '../shared/types';
@@ -107,8 +107,10 @@ export class PdpjApiClient {
       throw new PdpjApiError(`PDPJ respondeu HTTP ${result.status}.`, result.status);
     }
     if (result.status < 200 || result.status >= 300) {
+      if (result.status === 502 || result.status === 503 || result.status === 504) registrarErroRedePDPJ();
       throw new PdpjApiError(`PDPJ respondeu HTTP ${result.status}.`, result.status, result.status >= 500 || result.status === 429);
     }
+    registrarSucessoRedePDPJ();
     return result.base64;
   }
 
@@ -167,9 +169,16 @@ export class PdpjApiClient {
           // pra 1 (ver pdpj-concurrency.ts), independente de teste manual
           // de concorrência mais alta estar rolando ou não.
           if (status === 429) registrar429PDPJ();
+          // 502/503/504 são sinal de instabilidade real do servidor (não
+          // confundir com falha de detecção de DOM ou sessão expirada,
+          // que são outra categoria) — circuit breaker separado e mais
+          // leniente que o do 429 (ver pdpj-concurrency.ts, item 3.5 de
+          // docs/roadmap/28-pdpj-auth-robustez.md).
+          if (status === 502 || status === 503 || status === 504) registrarErroRedePDPJ();
           throw new PdpjApiError(`PDPJ respondeu HTTP ${status}.`, status, status >= 500 || status === 429, undefined, parseRetryAfterMs(retryAfterHeader));
         }
 
+        registrarSucessoRedePDPJ();
         const body = parseJson ? JSON.parse(responseBody) as unknown : responseBody;
         logger.info('PDPJ API: resposta recebida', {
           status,
@@ -183,6 +192,10 @@ export class PdpjApiClient {
         const apiError = error instanceof PdpjApiError
           ? error
           : new PdpjApiError(error instanceof Error && error.name === 'AbortError' ? 'Tempo limite da API PDPJ excedido.' : 'Falha de rede ao consultar o PDPJ.', undefined, true);
+        // Erro que não veio de um status HTTP conhecido (timeout do
+        // AbortController, falha de rede do fetch dentro da janela) —
+        // mesma categoria dos 502/503/504 acima pro circuit breaker.
+        if (!(error instanceof PdpjApiError)) registrarErroRedePDPJ();
         if (!apiError.retryable || attempt === MAX_RETRIES - 1) throw apiError;
         // Servidor pediu um tempo específico via Retry-After? Obedece isso
         // em vez do backoff próprio — nunca visto o PDPJ mandar esse header

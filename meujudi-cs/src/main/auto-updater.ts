@@ -38,6 +38,7 @@ import { app, Notification } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { logger, recordDiagnosticEvent } from './logger';
 import { APP_NAME, INTERVALS } from '../shared/constants';
+import type { UpdateState } from '../shared/types';
 
 let started = false;
 // Diferencia uma checagem disparada pelo usuário (menu da bandeja) das
@@ -45,6 +46,24 @@ let started = false;
 // quando não tem nada novo ou dá erro, pra não spammar o usuário a cada
 // 6h com "você já está atualizado".
 let manualCheckInFlight = false;
+
+// Estado exposto pro renderer via IPC (ver getUpdateState) — o botão de
+// atualizar na Home só aparece quando vira 'ready' (download concluído,
+// `quitAndInstall()` é instantâneo a partir daí).
+let updateState: UpdateState = { status: 'idle' };
+
+export function getUpdateState(): UpdateState {
+  return updateState;
+}
+
+/** Fecha o app e instala — só deve ser chamado com `updateState.status === 'ready'`. */
+export function installUpdate(): void {
+  if (updateState.status !== 'ready') {
+    logger.warn('installUpdate chamado sem atualização pronta; ignorando', { status: updateState.status });
+    return;
+  }
+  autoUpdater.quitAndInstall();
+}
 
 export function initAutoUpdater(): void {
   if (started) return;
@@ -65,12 +84,14 @@ export function initAutoUpdater(): void {
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('update-available', (info) => {
+    updateState = { status: 'downloading', version: info.version };
     recordDiagnosticEvent('auto_update', 'info', `Versão ${info.version} disponível, baixando...`, {
       version: info.version,
     });
   });
 
   autoUpdater.on('update-not-available', () => {
+    updateState = { status: 'idle' };
     logger.debug('Auto-update: nenhuma versão nova disponível');
     if (manualCheckInFlight) {
       manualCheckInFlight = false;
@@ -83,13 +104,14 @@ export function initAutoUpdater(): void {
   });
 
   autoUpdater.on('update-downloaded', (info) => {
+    updateState = { status: 'ready', version: info.version };
     recordDiagnosticEvent('auto_update', 'success', `Versão ${info.version} baixada, pronta pra instalar`, {
       version: info.version,
     });
     manualCheckInFlight = false;
     const notification = new Notification({
       title: `${APP_NAME} — Atualização pronta`,
-      body: `Versão ${info.version} baixada. Clique aqui pra instalar agora, ou ela instala sozinha na próxima vez que o app reiniciar.`,
+      body: `Versão ${info.version} baixada. Clique aqui pra instalar agora, ou use o botão que apareceu no Sync — ela também instala sozinha na próxima vez que o app reiniciar.`,
       silent: true,
     });
     // Clicar na notificação instala na hora (fecha e reabre o app já
@@ -107,6 +129,11 @@ export function initAutoUpdater(): void {
     recordDiagnosticEvent('auto_update', 'warning', 'Falha ao checar/baixar atualização', {
       message: err.message,
     });
+    // Erro de checagem/download não deve esconder um update que já
+    // tinha ficado pronto numa tentativa anterior (ex.: falha na
+    // checagem periódica seguinte, com o download antigo intacto) — só
+    // vira 'error' se ainda não tinha nada pronto.
+    if (updateState.status !== 'ready') updateState = { status: 'error', error: err.message };
     if (manualCheckInFlight) {
       manualCheckInFlight = false;
       new Notification({
@@ -118,6 +145,7 @@ export function initAutoUpdater(): void {
   });
 
   const check = () => {
+    if (updateState.status !== 'ready') updateState = { status: 'checking' };
     autoUpdater.checkForUpdates().catch((err) => {
       logger.warn('Auto-update: falha ao iniciar checagem:', err.message);
       manualCheckInFlight = false;
@@ -143,6 +171,7 @@ export function checkForUpdatesManually(): void {
     return;
   }
   manualCheckInFlight = true;
+  if (updateState.status !== 'ready') updateState = { status: 'checking' };
   autoUpdater.checkForUpdates().catch((err) => {
     manualCheckInFlight = false;
     logger.warn('Auto-update: falha na checagem manual:', err.message);

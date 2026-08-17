@@ -13,6 +13,7 @@ import { usePairing } from '@/hooks/usePairing';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
 import { useTimeAgo } from '@/hooks/useTimeAgo';
 import { StatusIndicator } from '@/components/StatusIndicator';
+import { UpdateButton } from '@/components/UpdateButton';
 
 function NavButton({ href, icon, label, primary = false }: { href: string; icon: string; label: string; primary?: boolean }) {
   return (
@@ -77,6 +78,8 @@ export default function Home() {
             O pareamento deste computador foi revogado pelo escritório. Pareie novamente em "Pareamento".
           </div>
         )}
+
+        <UpdateButton />
 
         <div className="card space-y-3">
           <div className="flex items-center justify-between text-sm py-1">

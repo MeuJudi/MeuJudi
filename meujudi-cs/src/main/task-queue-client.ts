@@ -87,6 +87,19 @@ export class TaskQueueClient {
     return { jobId: data.jobId, resumed: data.resumed };
   }
 
+  /**
+   * Conta quantas tarefas do tenant estão em `pending` agora no servidor —
+   * diferente do que o worker reporta localmente (tarefas que ELE está
+   * processando neste momento). Usado pro alerta de backlog crescendo
+   * mesmo com sessão saudável (ver `pdpj-auth.ts::maybeCheckPendingBacklog`,
+   * docs/roadmap/28-pdpj-auth-robustez.md item 3.6).
+   */
+  async getPendingCount(source?: SyncTaskSource): Promise<number> {
+    const query = source ? `?source=${encodeURIComponent(source)}` : '';
+    const data = await this.request<{ pendingCount: number }>(`/api/cs/tasks/pending-count${query}`, undefined, 'GET');
+    return data.pendingCount;
+  }
+
   /** Reserva até `limit` tarefas pendentes (ou com lease expirado). */
   async claim(limit = 5, sources?: Array<'datajud' | 'mural' | 'pdpj'>): Promise<SyncTask[]> {
     const data = await this.request<{ tasks: SyncTask[] }>('/api/cs/tasks/claim', { limit, sources });

@@ -33,6 +33,7 @@ import { BrowserWindow, Notification, session as electronSession } from 'electro
 import { CookieStore } from './cookie-store';
 import { getMaxConcurrentPdpj } from './pdpj-concurrency';
 import { loadAppIcon } from './app-icon';
+import { TaskQueueClient } from './task-queue-client';
 import { logger, recordDiagnosticEvent } from './logger';
 import { PDPJ_LOGIN_URL, TIMEOUTS, INTERVALS, MEUJUDI_WEB_URL, APP_NAME } from '../shared/constants';
 import type { Pairing } from './pairing';
@@ -92,6 +93,24 @@ const OPEN_DEVTOOLS_NA_JANELA_TECNICA = false;
 const SESSION_COOKIES_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias
 const TOKEN_FALLBACK_TTL_MS = 8 * 60 * 60 * 1000; // só se o JWT não puder ser decodificado
 const TOKEN_REFRESH_MARGIN_MS = 10 * 60 * 1000; // revalida um pouco antes do Bearer expirar de verdade
+// Hora local da máquina em que roda a revalidação proativa (1x por dia,
+// só na primeira checagem de 5min que cair nessa hora) — antes do início
+// do expediente (Cron 2/poll-pdpj-detalhes roda 9h-16h BRT como
+// referência), pra já chegar com sessão confirmada em vez de descobrir
+// que ela morreu só quando a primeira tarefa do dia falhar. Ver
+// docs/roadmap/28-pdpj-auth-robustez.md, item 3.4.
+const PROACTIVE_REVALIDATION_HOUR_LOCAL = 7;
+// Alerta de backlog crescendo — independente do estado da sessão (achado
+// 14/08/2026: fila com 327 tarefas `pdpj_cnj` presas em `pending` enquanto
+// a sessão revalidava com sucesso a cada 5min; o único alerta que existia
+// até então só reagia a falha de validação, então esse cenário nunca
+// disparava nada). Limiar e janela de sustentação deliberadamente
+// grosseiros (sem baseline por tenant ainda) — servem pra pegar "a fila
+// não sai do lugar", não pra ser preciso sobre "quanto é normal" pra cada
+// escritório. Ver docs/roadmap/28-pdpj-auth-robustez.md, item 3.6.
+const BACKLOG_ALERT_THRESHOLD = 100;
+const BACKLOG_ALERT_SUSTAINED_MS = 30 * 60_000; // precisa ficar acima do limiar por 30min seguidos
+const BACKLOG_NOTIFICACAO_COOLDOWN_MS = 30 * 60_000; // não repete o aviso por 30min
 
 /** Lê o `exp` de dentro do próprio JWT (payload base64url) — sem depender de suposição nossa sobre validade. */
 function decodeJwtExpiry(token: string): Date | null {
@@ -126,6 +145,15 @@ interface QueryWindowSlot {
 // dois casos: fecha janela livre ociosa há mais de `POOL_IDLE_TIMEOUT_MS`, e
 // fecha o excedente livre se o teto atual for menor que o pool de agora.
 const POOL_IDLE_TIMEOUT_MS = 5 * 60_000;
+// Margem sobre o timeout interno do fetch (TIMEOUTS.pdpjChromiumRequest/
+// pdfDownload, que só cobre a chamada de rede em si) — cobre o resto da
+// operação (dismissGuidedNavigationModal + o dispatch do executeJavaScript
+// pro processo renderer), que não tinha limite próprio nenhum. Achado
+// 14/08/2026: se a janela travar antes mesmo do fetch começar (ex.: presa
+// no meio de uma navegação), a operação inteira ficava sem teto, prendendo
+// a vaga do pool pra sempre — ver docs/roadmap/28-pdpj-auth-robustez.md,
+// item 3.3.
+const POOL_OPERATION_TIMEOUT_MARGIN_MS = 10_000;
 
 /**
  * Teto de janelas ocultas dedicadas a consultas em paralelo — ver
@@ -137,7 +165,17 @@ export { getMaxConcurrentPdpj as getMaxQueryWindows } from './pdpj-concurrency';
 
 export class PdpjAuth {
   private authWindow: BrowserWindow | null = null;
-  // Bearer capturado pelo listener onBeforeSendHeaders da authWindow —
+  // Janela técnica dedicada à revalidação em segundo plano
+  // (doEnsureApiSession/ensurePortalBearer) — nunca mais a mesma instância
+  // que `authWindow` (achado 14/08/2026: compartilhar as duas era a causa
+  // de fundo do loop de redirecionamento que travou o app por 10min+;
+  // ver docs/roadmap/28-pdpj-auth-robustez.md, item 3.1). Sempre criada do
+  // zero e destruída ao fim de cada ciclo — nunca fica viva entre ciclos,
+  // então normalmente é `null` fora de uma chamada em andamento. O campo
+  // existe (em vez de só uma variável local) pra `disconnect()` conseguir
+  // fechar ela também se o usuário desconectar no meio de um ciclo.
+  private revalidationWindow: BrowserWindow | null = null;
+  // Bearer capturado pelo listener onBeforeSendHeaders da janela em uso —
   // campo de instância (não variável local) porque, desde a correção do
   // vazamento de listener (31/07/2026), os listeners só são registrados
   // UMA VEZ, na criação da janela — precisam de um lugar persistente pra
@@ -157,6 +195,16 @@ export class PdpjAuth {
   // nenhum aviso visivel ate a fila inteira travar).
   private falhaValidacaoDesdeMs: number | null = null;
   private ultimaNotificacaoFalhaMs: number | null = null;
+  // Data (YYYY-MM-DD, hora local da máquina) em que a revalidação proativa
+  // já rodou — evita disparar mais de uma vez por dia mesmo com o timer de
+  // 5min passando várias vezes pela janela-alvo (ver `maybeRunProactiveRevalidation`).
+  private proactiveRevalidationDoneOnDate: string | null = null;
+  // Rastreiam o alerta de backlog (item 3.6) — separado do rastreio de
+  // falha de validação acima, porque os dois podem acontecer sem relação
+  // nenhuma um com o outro (sessão saudável + fila travada é o caso real
+  // que motivou isso).
+  private backlogAltoDesdeMs: number | null = null;
+  private ultimaNotificacaoBacklogMs: number | null = null;
   // Achado 06/08/2026, a pedido do Caio: a revalidação automática de
   // segundo plano (`doEnsureApiSession`, timer de 5min) reutiliza o MESMO
   // `authWindow` que um login manual em andamento usa (é a mesma janela em
@@ -608,7 +656,8 @@ export class PdpjAuth {
       // apenas para captura tÃ©cnica e nÃ£o deve ficar visÃ­vel ao usuÃ¡rio.
       this.authWindow?.hide();
       this.authWindow?.setSkipTaskbar(true);
-      const session = await this.captureSession(getBearerToken());
+      if (!this.authWindow) throw new Error('Janela de login não está aberta');
+      const session = await this.captureSession(this.authWindow, getBearerToken());
       logger.info('Sessão capturada com sucesso, fechando janela...');
       recordDiagnosticEvent('pdpj_session_captured', 'success', 'Sessao PDPJ capturada com sucesso', {
         userId: session.userId,
@@ -691,32 +740,32 @@ export class PdpjAuth {
    * primeira chamada da API. Abrimos o Portal automaticamente, aguardamos a
    * requisicao autenticada e mantemos o Bearer somente no processo principal.
    */
-  private async ensurePortalBearer(getBearerToken: () => string | undefined): Promise<string> {
+  private async ensurePortalBearer(window: BrowserWindow, getBearerToken: () => string | undefined): Promise<string> {
     const existing = getBearerToken();
     if (existing) return existing;
-    if (!this.authWindow) throw new Error('Janela PDPJ nao esta disponivel para validar a API.');
+    if (!window) throw new Error('Janela PDPJ nao esta disponivel para validar a API.');
 
     recordDiagnosticEvent('pdpj_api_validation_started', 'started', 'Validando sessao da API PDPJ apos o login');
     if (SHOW_PDPJ_VALIDATION_WINDOW) {
-      this.authWindow.show();
-      this.authWindow.setSkipTaskbar(false);
-      this.authWindow.focus();
-      this.authWindow.moveTop();
+      window.show();
+      window.setSkipTaskbar(false);
+      window.focus();
+      window.moveTop();
     } else {
-      this.authWindow.hide();
-      this.authWindow.setSkipTaskbar(true);
+      window.hide();
+      window.setSkipTaskbar(true);
     }
     try {
       // O Portal direto pode abrir sem a sessao da API. O fluxo que gera o
       // contexto correto passa pelo Jus autenticado e aciona Consultar processos.
-      await this.authWindow.loadURL(PDPJ_LOGIN_URL);
+      await window.loadURL(PDPJ_LOGIN_URL);
       logger.info('Jus autenticado carregado na janela tecnica; procurando Consultar processos');
     } catch (error: any) {
       recordDiagnosticEvent('pdpj_api_validation_load_failed', 'warning', error.message, { urlHost: safeHost(PDPJ_LOGIN_URL) });
     }
 
     // Fecha modal "Navegação Guiada" se apareceu durante o carregamento
-    await this.dismissGuidedNavigationModal(this.authWindow);
+    await this.dismissGuidedNavigationModal(window);
 
     const startedAt = Date.now();
     let lastDiagnosticoAt = 0;
@@ -748,18 +797,18 @@ export class PdpjAuth {
       }
       if (Date.now() - lastDiagnosticoAt > 10_000) {
         lastDiagnosticoAt = Date.now();
-        const diag = await this.diagnosticarPagina();
+        const diag = await this.diagnosticarPagina(window);
         logger.info('PDPJ: diagnostico da pagina tecnica', diag);
         const pareceNaoAutenticado = !diag || (!diag.temLinkConsultarProcessos && !diag.temComboboxBusca);
         sinalNaoAutenticadoSeguido = pareceNaoAutenticado ? sinalNaoAutenticadoSeguido + 1 : 0;
 
-        if (sinalNaoAutenticadoSeguido >= 2 && reloadsFeitos < MAX_RELOADS_TENTATIVA && !this.authWindow.webContents.isLoading()) {
+        if (sinalNaoAutenticadoSeguido >= 2 && reloadsFeitos < MAX_RELOADS_TENTATIVA && !window.webContents.isLoading()) {
           reloadsFeitos += 1;
           sinalNaoAutenticadoSeguido = 0;
           logger.warn(`PDPJ: pagina parece fora da area autenticada em 2 checagens seguidas, recarregando (tentativa ${reloadsFeitos}/${MAX_RELOADS_TENTATIVA})`, diag);
           recordDiagnosticEvent('pdpj_api_validation_stuck_reload', 'warning', 'Pagina tecnica parece travada fora da area autenticada; recarregando', { ...diag, tentativa: reloadsFeitos });
           try {
-            await this.authWindow.loadURL(PDPJ_LOGIN_URL);
+            await window.loadURL(PDPJ_LOGIN_URL);
           } catch (error: any) {
             logger.warn('PDPJ: falha ao recarregar apos deteccao de pagina nao autenticada:', error?.message || error);
           }
@@ -782,8 +831,23 @@ export class PdpjAuth {
       if (!domInspected && consultationTriggered && Date.now() - startedAt > 5000) {
         domInspected = true;
         const linkedOab = await this.getLinkedOab();
-        const searchResult = await this.authWindow.webContents.executeJavaScript(`(async () => {
+        const searchResult = await window.webContents.executeJavaScript(`(async () => {
           const oab = ${JSON.stringify(linkedOab)};
+          // Espera o elemento aparecer em vez de checar uma vez só — achado
+          // 14/08/2026: o Angular às vezes ainda não terminou de renderizar
+          // no instante exato em que o código olhava (visto ao vivo: 293ms
+          // depois de uma navegação), fazendo o código concluir "não achei"
+          // quando o elemento só ainda não tinha aparecido. Ver
+          // docs/roadmap/28-pdpj-auth-robustez.md, item 3.2.
+          const waitFor = async (encontra, timeoutMs, intervaloMs) => {
+            const limite = Date.now() + (timeoutMs || 5000);
+            while (Date.now() < limite) {
+              const achado = encontra();
+              if (achado) return achado;
+              await new Promise((r) => setTimeout(r, intervaloMs || 200));
+            }
+            return null;
+          };
           const dumpInputs = () => Array.from(document.querySelectorAll('input,textarea'))
             .map((el) => ({ tag: el.tagName, type: el.type || null, name: el.name || null, id: el.id || null, placeholder: el.placeholder || null }));
           const setNativeValue = (el, value) => {
@@ -792,11 +856,11 @@ export class PdpjAuth {
             el.dispatchEvent(new Event('input', { bubbles: true }));
             el.dispatchEvent(new Event('change', { bubbles: true }));
           };
-          const clickBuscar = () => {
-            const searchButton = Array.from(document.querySelectorAll('button')).find((b) => {
+          const clickBuscar = async () => {
+            const searchButton = await waitFor(() => Array.from(document.querySelectorAll('button')).find((b) => {
               const text = (b.textContent || '').toLowerCase();
               return text.includes('buscar') && !text.includes('limpar');
-            });
+            }));
             if (!searchButton) return false;
             searchButton.click();
             return true;
@@ -811,26 +875,24 @@ export class PdpjAuth {
           let inputsAposSelecionarOab = null;
           if (oab) {
             try {
-              const trigger = document.querySelector('[role="combobox"],mat-select');
+              const trigger = await waitFor(() => document.querySelector('[role="combobox"],mat-select'));
               if (!trigger) {
                 oabFalhaMotivo = 'combobox-nao-encontrado';
               } else {
                 trigger.click();
-                await new Promise((r) => setTimeout(r, 400));
-                const oabOption = Array.from(document.querySelectorAll('.cdk-overlay-container [role="option"], .cdk-overlay-container mat-option'))
-                  .find((el) => (el.textContent || '').trim().toLowerCase() === 'oab');
+                const oabOption = await waitFor(() => Array.from(document.querySelectorAll('.cdk-overlay-container [role="option"], .cdk-overlay-container mat-option'))
+                  .find((el) => (el.textContent || '').trim().toLowerCase() === 'oab'), 3000);
                 if (!oabOption) {
                   oabFalhaMotivo = 'opcao-oab-nao-encontrada';
                 } else {
                   oabOption.click();
-                  await new Promise((r) => setTimeout(r, 500));
+                  const input = await waitFor(() => document.querySelector('input:not([type="hidden"])'), 3000);
                   inputsAposSelecionarOab = dumpInputs();
-                  const input = document.querySelector('input:not([type="hidden"])');
                   if (!input) {
                     oabFalhaMotivo = 'campo-nao-encontrado-apos-selecionar-oab';
                   } else {
                     setNativeValue(input, oab.oabUf + oab.oabNumber);
-                    if (clickBuscar()) return { ok: true, modo: 'oab', inputsAposSelecionarOab };
+                    if (await clickBuscar()) return { ok: true, modo: 'oab', inputsAposSelecionarOab };
                     oabFalhaMotivo = 'botao-buscar-nao-encontrado-oab';
                   }
                 }
@@ -843,10 +905,10 @@ export class PdpjAuth {
           // Fallback: sem OAB vinculada, ou a busca por OAB falhou em
           // alguma etapa (motivo registrado em oabFalhaMotivo).
           try {
-            const input = document.querySelector('input[name="numeroProcesso"]') || document.querySelector('input:not([type="hidden"])');
+            const input = await waitFor(() => document.querySelector('input[name="numeroProcesso"]') || document.querySelector('input:not([type="hidden"])'), 3000);
             if (!input) return { ok: false, reason: 'nenhum-campo-encontrado', oabFalhaMotivo, inputsAposSelecionarOab };
             setNativeValue(input, ${JSON.stringify(BEARER_PRIME_CNJ_FALLBACK)});
-            if (clickBuscar()) return { ok: true, modo: 'cnj-fallback', oabFalhaMotivo, inputsAposSelecionarOab };
+            if (await clickBuscar()) return { ok: true, modo: 'cnj-fallback', oabFalhaMotivo, inputsAposSelecionarOab };
             return { ok: false, reason: 'botao-buscar-nao-encontrado-fallback', oabFalhaMotivo, inputsAposSelecionarOab };
           } catch (e) {
             return { ok: false, reason: String(e && e.message || e), oabFalhaMotivo, inputsAposSelecionarOab };
@@ -856,10 +918,16 @@ export class PdpjAuth {
       }
       if (!consultationTriggered) {
         consultationTriggered = true;
-        const action = await this.authWindow.webContents.executeJavaScript(`(() => {
+        const action = await window.webContents.executeJavaScript(`(async () => {
           const selectors = 'a,button,[role="button"],[role="link"]';
-          const items = Array.from(document.querySelectorAll(selectors));
-          const item = items.find((element) => (element.textContent || '').toLowerCase().replace(/\\s+/g, ' ').includes('consultar processos'));
+          const encontra = () => Array.from(document.querySelectorAll(selectors))
+            .find((element) => (element.textContent || '').toLowerCase().replace(/\\s+/g, ' ').includes('consultar processos'));
+          const limite = Date.now() + 5000;
+          let item = encontra();
+          while (!item && Date.now() < limite) {
+            await new Promise((r) => setTimeout(r, 200));
+            item = encontra();
+          }
           if (!(item instanceof HTMLElement)) return null;
           if (item instanceof HTMLAnchorElement && item.href) return item.href;
           item.click();
@@ -867,7 +935,7 @@ export class PdpjAuth {
         })()`, true).catch(() => false);
         if (typeof action === 'string' && action.startsWith('https://')) {
           logger.info('Destino de Consultar processos encontrado; navegando na janela tecnica:', safeHost(action));
-          await this.authWindow.loadURL(action).catch((error: any) => {
+          await window.loadURL(action).catch((error: any) => {
             logger.warn('Falha ao navegar para Consultar processos:', error.message);
           });
         } else if (action === 'clicked') {
@@ -884,7 +952,7 @@ export class PdpjAuth {
     // cookies do PDPJ realmente estao na janela nesse instante (descarta a
     // hipotese de "cookie nao foi aplicado" se o numero bater com o
     // esperado).
-    const diagFinal = await this.diagnosticarPagina();
+    const diagFinal = await this.diagnosticarPagina(window);
     const cookiesPdpjNaJanela = await electronSession.defaultSession.cookies
       .get({})
       .then((cookies) => cookies.filter((c) => PDPJ_COOKIE_HOSTS.has((c.domain || '').replace(/^\./, ''))).length)
@@ -901,7 +969,7 @@ export class PdpjAuth {
    * pro diagnostico final de falha. Só nomes de chave de storage, nunca
    * valor (pode conter token/dado sensivel).
    */
-  private async diagnosticarPagina(): Promise<{
+  private async diagnosticarPagina(window: BrowserWindow): Promise<{
     url: string;
     title: string;
     readyState: string;
@@ -910,8 +978,8 @@ export class PdpjAuth {
     temLinkLogin: boolean;
     storage: { session: string[]; local: string[] } | { error: string };
   } | null> {
-    if (!this.authWindow || this.authWindow.isDestroyed()) return null;
-    return this.authWindow.webContents.executeJavaScript(`(() => {
+    if (!window || window.isDestroyed()) return null;
+    return window.webContents.executeJavaScript(`(() => {
       try {
         const texto = (el) => (el.textContent || '').toLowerCase().replace(/\\s+/g, ' ');
         const temLinkConsultarProcessos = Array.from(document.querySelectorAll('a,button,[role="button"],[role="link"]'))
@@ -942,8 +1010,8 @@ export class PdpjAuth {
   /**
    * Extrai cookies da BrowserWindow e monta PdpjSession.
    */
-  private async captureSession(accessToken?: string, preserveCreatedAt?: Date): Promise<PdpjSession> {
-    if (!this.authWindow) {
+  private async captureSession(window: BrowserWindow, accessToken?: string, preserveCreatedAt?: Date): Promise<PdpjSession> {
+    if (!window) {
       throw new Error('Janela de login não está aberta');
     }
 
@@ -1024,10 +1092,6 @@ export class PdpjAuth {
    * sessao.
    */
   private async waitForPdpjCookies(): Promise<Electron.Cookie[]> {
-    if (!this.authWindow) {
-      throw new Error('Janela de login nao esta aberta');
-    }
-
     const startedAt = Date.now();
     let lastCookies: Electron.Cookie[] = [];
 
@@ -1047,11 +1111,13 @@ export class PdpjAuth {
   }
 
   private async getPdpjCookies(): Promise<Electron.Cookie[]> {
-    if (!this.authWindow) {
-      throw new Error('Janela de login nao esta aberta');
-    }
-
-    const allCookies = await this.authWindow.webContents.session.cookies.get({});
+    // Cookies vivem na sessão do Electron (`electronSession.defaultSession`),
+    // não numa janela específica — nenhuma BrowserWindow deste app usa
+    // `partition` própria, então qualquer janela veria os mesmos cookies.
+    // Ler direto da sessão (em vez de exigir uma janela de login aberta)
+    // deixa essa função utilizável também pela janela de revalidação, que
+    // agora é uma instância separada (ver `revalidationWindow`).
+    const allCookies = await electronSession.defaultSession.cookies.get({});
     const pdpjCookies = allCookies.filter((cookie) => {
       const domain = (cookie.domain || '').replace(/^\./, '');
       return Array.from(PDPJ_COOKIE_HOSTS).some((host) => domain === host || domain.endsWith(`.${host}`));
@@ -1167,6 +1233,25 @@ export class PdpjAuth {
     }
   }
 
+  /**
+   * Corre `promise` contra um teto de tempo — se estourar, rejeita com um
+   * erro identificável em vez de deixar quem chamou esperando pra sempre.
+   * Não cancela a `promise` original (o Electron não dá um jeito limpo de
+   * abortar um `executeJavaScript` em andamento) — só para de esperar por
+   * ela, então quem chama ainda precisa descartar o recurso associado
+   * (ver uso em `requestPdpjApi`/`requestPdpjApiBinario`, que destroem a
+   * janela do pool em vez de devolvê-la quando isso acontece).
+   */
+  private withHardTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`${label}: tempo limite de ${ms}ms excedido`)), ms);
+      promise.then(
+        (value) => { clearTimeout(timer); resolve(value); },
+        (error) => { clearTimeout(timer); reject(error); },
+      );
+    });
+  }
+
   // ============================================================
   //  VALIDAÇÃO AUTOMÁTICA DA API EM SEGUNDO PLANO
   // ============================================================
@@ -1203,6 +1288,16 @@ export class PdpjAuth {
     // decide quem está pronto pra tentar de novo.
     void this.resumePausedTasks();
     this.sweepQueryPool();
+    // Roda mesmo sem sessão válida (o early return `if (!session) return`
+    // vem depois) — é justamente o cenário sem sessão (ou com sessão
+    // saudável mas fila travada por outro motivo) que esse alerta precisa
+    // cobrir, não só o caminho reativo abaixo.
+    void this.maybeCheckPendingBacklog();
+    // Roda antes do resto (awaited, não `void`) — evita competir com a
+    // checagem reativa logo abaixo pela mesma `ensureApiSession()` no
+    // mesmo instante (as duas usam o guard de execução única, mas rodar em
+    // sequência evita qualquer leitura de estado no meio da troca).
+    await this.maybeRunProactiveRevalidation();
 
     const session = this.store.getValidSession();
     if (!session) return; // sem sessão de cookies salva — precisa logar, nada a fazer aqui
@@ -1258,6 +1353,116 @@ export class PdpjAuth {
       }).show();
     } catch (error: any) {
       logger.warn('PDPJ: falha ao mostrar notificacao de sessao travada:', error?.message || error);
+    }
+  }
+
+  /**
+   * Roda 1x por dia, na primeira checagem de 5min que cair na hora-alvo
+   * (`PROACTIVE_REVALIDATION_HOUR_LOCAL`) — força uma revalidação completa
+   * mesmo com um Bearer que ainda "parece" válido pelo nosso relógio, pra
+   * confirmar de verdade que a sessão funciona antes do expediente
+   * começar, em vez de só reagir depois que uma tarefa real falhar. Não
+   * tenta nada se não existir sessão de cookies (aí só um login manual
+   * resolve, e isso exige o usuário abrir o app de qualquer forma).
+   */
+  private async maybeRunProactiveRevalidation(): Promise<void> {
+    const now = new Date();
+    if (now.getHours() !== PROACTIVE_REVALIDATION_HOUR_LOCAL) return;
+    const todayKey = now.toISOString().slice(0, 10);
+    if (this.proactiveRevalidationDoneOnDate === todayKey) return;
+    if (!this.store.getValidSession()) return;
+
+    this.proactiveRevalidationDoneOnDate = todayKey;
+    logger.info('PDPJ: revalidacao proativa antes do expediente iniciada');
+    recordDiagnosticEvent('pdpj_proactive_revalidation_started', 'started', 'Revalidacao proativa antes do horario de pico iniciada');
+    try {
+      const ok = await this.ensureApiSession(true);
+      if (ok) {
+        this.falhaValidacaoDesdeMs = null;
+        logger.info('PDPJ: revalidacao proativa concluida com sucesso');
+        recordDiagnosticEvent('pdpj_proactive_revalidation_finished', 'success', 'Revalidacao proativa concluida com sucesso');
+      } else {
+        this.avisarFalhaProativaImediatamente();
+      }
+    } catch (error: any) {
+      logger.warn('PDPJ: revalidacao proativa deu erro:', error?.message || error);
+      this.avisarFalhaProativaImediatamente();
+    }
+  }
+
+  /**
+   * Diferente de `registrarFalhaValidacaoENotificarSeNecessario` (que só
+   * avisa depois de 15min de falhas seguidas, pra não virar spam de um
+   * timer que roda o dia todo): uma falha na checagem proativa da manhã
+   * merece aviso na hora — é justamente a checagem feita pra pegar o
+   * problema ANTES do expediente, não depois de já ter incomodado por
+   * 15min durante ele.
+   */
+  private avisarFalhaProativaImediatamente(): void {
+    logger.error('PDPJ: revalidacao proativa antes do expediente falhou');
+    recordDiagnosticEvent('pdpj_proactive_revalidation_failed', 'error', 'Revalidacao proativa antes do horario de pico falhou');
+    try {
+      new Notification({
+        title: `${APP_NAME} - Sessão PDPJ precisa de atenção`,
+        body: 'A checagem automática desta manhã não conseguiu confirmar a sessão do PDPJ. Abra o app e reconecte o Portal PDPJ/Jus antes de começar a sincronizar.',
+        silent: false,
+      }).show();
+    } catch (error: any) {
+      logger.warn('PDPJ: falha ao mostrar notificacao de revalidacao proativa:', error?.message || error);
+    }
+    // Mantém o contador de falha "normal" andando também — se o problema
+    // continuar durante o expediente, o alerta de 15min (acima) ainda
+    // dispara como rede de segurança.
+    this.registrarFalhaValidacaoENotificarSeNecessario();
+  }
+
+  /**
+   * Checa o backlog REAL de tarefas `pending` no servidor (diferente do
+   * `StatusReporter.setPendingTasks`, que só reflete o que este device tem
+   * em andamento agora) — se ficar acima de `BACKLOG_ALERT_THRESHOLD` por
+   * `BACKLOG_ALERT_SUSTAINED_MS` seguidos sem cair, avisa. Cobre o cenário
+   * achado 14/08/2026: sessão revalidando com sucesso a cada 5min, Bearer
+   * saudável, e mesmo assim 327 tarefas `pdpj_cnj` presas em `pending` sem
+   * nenhum alerta disparar (o único que existia até então só reagia a
+   * falha de validação).
+   */
+  private async maybeCheckPendingBacklog(): Promise<void> {
+    if (!this.pairing) return;
+    let count: number;
+    try {
+      count = await new TaskQueueClient(this.pairing).getPendingCount('pdpj');
+    } catch (error: any) {
+      logger.warn('PDPJ: falha ao checar backlog de tarefas pendentes:', error?.message || error);
+      return;
+    }
+
+    if (count < BACKLOG_ALERT_THRESHOLD) {
+      this.backlogAltoDesdeMs = null;
+      return;
+    }
+
+    const agora = Date.now();
+    if (this.backlogAltoDesdeMs === null) this.backlogAltoDesdeMs = agora;
+    const persistindoHaMs = agora - this.backlogAltoDesdeMs;
+    const jaAvisouRecente = this.ultimaNotificacaoBacklogMs !== null && agora - this.ultimaNotificacaoBacklogMs < BACKLOG_NOTIFICACAO_COOLDOWN_MS;
+    if (persistindoHaMs < BACKLOG_ALERT_SUSTAINED_MS || jaAvisouRecente) return;
+
+    this.ultimaNotificacaoBacklogMs = agora;
+    logger.error(`PDPJ: fila com ${count} tarefa(s) pendente(s) ha mais de ${Math.round(persistindoHaMs / 60_000)}min seguidos, sem cair`, {
+      pendingCount: count,
+      persistindoHaMinutos: Math.round(persistindoHaMs / 60_000),
+    });
+    recordDiagnosticEvent('pdpj_backlog_stuck', 'error', `Fila com ${count} tarefa(s) pdpj pendente(s) ha mais de ${Math.round(persistindoHaMs / 60_000)}min seguidos`, {
+      pendingCount: count,
+    });
+    try {
+      new Notification({
+        title: `${APP_NAME} - Fila do PDPJ não está andando`,
+        body: `${count} tarefas pendentes há mais de ${Math.round(persistindoHaMs / 60_000)}min sem cair. Abra o app e confira a tela de Fila/Diagnóstico.`,
+        silent: false,
+      }).show();
+    } catch (error: any) {
+      logger.warn('PDPJ: falha ao mostrar notificacao de backlog:', error?.message || error);
     }
   }
 
@@ -1334,96 +1539,89 @@ export class PdpjAuth {
       });
       return true;
     }
-    if (this.authWindow && this.authWindow.isDestroyed()) this.authWindow = null;
-    if (!this.authWindow) {
-      this.authWindow = new BrowserWindow({
-        width: 1000,
-        height: 750,
-        show: SHOW_PDPJ_VALIDATION_WINDOW,
-        icon: loadAppIcon(),
-        autoHideMenuBar: true,
-        // `backgroundThrottling: false` — achado 31/07/2026 via HAR real:
-        // com a janela VISIVEL, 8 ciclos seguidos de revalidacao
-        // capturaram Bearer com sucesso (100%), contra ~2% em produção
-        // (janela sempre oculta, `show: false`). Suspeita forte: o
-        // Chromium por padrao throttla timers/rAF de janela em segundo
-        // plano pra economizar recurso — pode ser exatamente o que quebra
-        // o SSO silencioso do Keycloak (que depende de timers/iframe) só
-        // quando a janela fica escondida. Mantém oculta (nao e assim que
-        // deve rodar visivel em produção) mas sem o throttling.
-        webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false },
-      });
-      this.authWindow.setTitle('MeuJudi Sync - Diagnostico PDPJ');
-      logger.info('Janela tecnica do Portal PDPJ criada para capturar o Bearer');
-      if (OPEN_DEVTOOLS_NA_JANELA_TECNICA) {
-        this.authWindow.webContents.openDevTools({ mode: 'detach' });
-      }
-      // C5 (31/07/2026): os listeners abaixo SÓ são registrados aqui, na
-      // criação da janela — não a cada chamada de doEnsureApiSession. Antes
-      // eram reanexados toda vez que a janela era REUTILIZADA (branch
-      // `else` abaixo), sem nunca remover os anteriores — cada ciclo de
-      // validação (a cada 5min, INTERVALS.pdpjApiValidation) empilhava mais
-      // 4 listeners de did-navigate/did-navigate-in-page/did-finish-load/
-      // did-fail-load na mesma janela. Achado em produção: 13h de captura
-      // de Bearer falhando repetidamente acumularam listener suficiente
-      // pra gerar 23 mil linhas de log e monopolizar o processo principal,
-      // travando a fila de sincronização inteira (tarefas pdpj_cnj ficavam
-      // presas em "claimed" sem nunca progredir).
-      this.authWindow.webContents.on('did-navigate', (_event, url) => {
-        logger.info('PDPJ validacao did-navigate:', safeUrlForLog(url));
-      });
-      this.authWindow.webContents.on('did-navigate-in-page', (_event, url) => {
-        logger.info('PDPJ validacao did-navigate-in-page:', safeUrlForLog(url));
-      });
-      this.authWindow.webContents.on('did-finish-load', () => {
-        if (!this.authWindow || this.authWindow.isDestroyed()) return;
-        logger.info('PDPJ validacao did-finish-load:', safeUrlForLog(this.authWindow.webContents.getURL()));
-      });
-      this.authWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
-        logger.warn('PDPJ validacao did-fail-load:', { errorCode, errorDescription, validatedURL: safeUrlForLog(validatedURL), isMainFrame });
-      });
-      this.authWindow.webContents.session.webRequest.onBeforeSendHeaders(
-        { urls: ['https://portaldeservicos.pdpj.jus.br/*'] },
-          (details, callback) => {
-            const authorization = details.requestHeaders.Authorization || details.requestHeaders.authorization;
-            if (authorization?.startsWith('Bearer ')) {
-              this.capturedBearer = authorization.slice(7).trim();
-              logger.info('PDPJ requisicao autenticada detectada', {
-                method: details.method,
-                url: safeUrlForLog(details.url),
-                headerNames: Object.keys(details.requestHeaders).sort(),
-                bearerLength: this.capturedBearer.length,
-              });
-            }
-            callback({ requestHeaders: details.requestHeaders });
-          },
-        );
-      this.authWindow.webContents.session.webRequest.onCompleted(
-        { urls: ['https://portaldeservicos.pdpj.jus.br/*'] },
-        (details) => {
-          logger.info('PDPJ requisicao concluida', {
-            method: details.method,
-            url: safeRequestUrlForLog(details.url),
-            statusCode: details.statusCode,
-            responseHeaderNames: Object.keys(details.responseHeaders ?? {}).sort(),
-          });
+    // Janela dedicada, sempre nova — nunca reaproveitada entre ciclos (ver
+    // docs/roadmap/28-pdpj-auth-robustez.md, item 3.1). Antes essa janela
+    // era mantida viva e reutilizada a cada ciclo de 5min (a mesma
+    // instância que, em alguns dias, ficava presa fora da área autenticada
+    // sem nunca se recuperar sozinha — achado 14/08/2026). Como só existe
+    // uma execução de `doEnsureApiSession` por vez (`ensureApiSession()`
+    // já garante isso via `ensureApiSessionPromise`), não tem risco de duas
+    // janelas de revalidação coexistindo.
+    const window = new BrowserWindow({
+      width: 1000,
+      height: 750,
+      show: SHOW_PDPJ_VALIDATION_WINDOW,
+      icon: loadAppIcon(),
+      autoHideMenuBar: true,
+      // `backgroundThrottling: false` — achado 31/07/2026 via HAR real:
+      // com a janela VISIVEL, 8 ciclos seguidos de revalidacao
+      // capturaram Bearer com sucesso (100%), contra ~2% em produção
+      // (janela sempre oculta, `show: false`). Suspeita forte: o
+      // Chromium por padrao throttla timers/rAF de janela em segundo
+      // plano pra economizar recurso — pode ser exatamente o que quebra
+      // o SSO silencioso do Keycloak (que depende de timers/iframe) só
+      // quando a janela fica escondida. Mantém oculta (nao e assim que
+      // deve rodar visivel em produção) mas sem o throttling.
+      webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false },
+    });
+    this.revalidationWindow = window;
+    window.setTitle('MeuJudi Sync - Diagnostico PDPJ');
+    logger.info('Janela tecnica do Portal PDPJ criada para capturar o Bearer');
+    if (OPEN_DEVTOOLS_NA_JANELA_TECNICA) {
+      window.webContents.openDevTools({ mode: 'detach' });
+    }
+    window.webContents.on('did-navigate', (_event, url) => {
+      logger.info('PDPJ validacao did-navigate:', safeUrlForLog(url));
+    });
+    window.webContents.on('did-navigate-in-page', (_event, url) => {
+      logger.info('PDPJ validacao did-navigate-in-page:', safeUrlForLog(url));
+    });
+    window.webContents.on('did-finish-load', () => {
+      if (window.isDestroyed()) return;
+      logger.info('PDPJ validacao did-finish-load:', safeUrlForLog(window.webContents.getURL()));
+    });
+    window.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      logger.warn('PDPJ validacao did-fail-load:', { errorCode, errorDescription, validatedURL: safeUrlForLog(validatedURL), isMainFrame });
+    });
+    window.webContents.session.webRequest.onBeforeSendHeaders(
+      { urls: ['https://portaldeservicos.pdpj.jus.br/*'] },
+        (details, callback) => {
+          const authorization = details.requestHeaders.Authorization || details.requestHeaders.authorization;
+          if (authorization?.startsWith('Bearer ')) {
+            this.capturedBearer = authorization.slice(7).trim();
+            logger.info('PDPJ requisicao autenticada detectada', {
+              method: details.method,
+              url: safeUrlForLog(details.url),
+              headerNames: Object.keys(details.requestHeaders).sort(),
+              bearerLength: this.capturedBearer.length,
+            });
+          }
+          callback({ requestHeaders: details.requestHeaders });
         },
       );
-    } else {
-      logger.info('Reutilizando janela autenticada do Portal PDPJ para capturar o Bearer');
-    }
+    window.webContents.session.webRequest.onCompleted(
+      { urls: ['https://portaldeservicos.pdpj.jus.br/*'] },
+      (details) => {
+        logger.info('PDPJ requisicao concluida', {
+          method: details.method,
+          url: safeRequestUrlForLog(details.url),
+          statusCode: details.statusCode,
+          responseHeaderNames: Object.keys(details.responseHeaders ?? {}).sort(),
+        });
+      },
+    );
     // Cada tentativa de validação começa sem Bearer capturado — evita usar
     // por engano um valor de uma tentativa anterior que falhou antes de
     // completar o fluxo.
     this.capturedBearer = undefined;
     if (SHOW_PDPJ_VALIDATION_WINDOW) {
-      this.authWindow.setAlwaysOnTop(true);
-      this.authWindow.show();
-      this.authWindow.setSkipTaskbar(false);
-      this.authWindow.focus();
-      this.authWindow.moveTop();
+      window.setAlwaysOnTop(true);
+      window.show();
+      window.setSkipTaskbar(false);
+      window.focus();
+      window.moveTop();
       setTimeout(() => {
-        if (this.authWindow && !this.authWindow.isDestroyed()) this.authWindow.setAlwaysOnTop(false);
+        if (!window.isDestroyed()) window.setAlwaysOnTop(false);
       }, 3000);
     }
 
@@ -1447,45 +1645,28 @@ export class PdpjAuth {
           expirationDate: cookie.expirationDate,
         });
       }
-      const token = await this.ensurePortalBearer(() => this.capturedBearer);
+      const token = await this.ensurePortalBearer(window, () => this.capturedBearer);
       logger.info('Bearer PDPJ capturado em segundo plano; atualizando sessao local');
       // Passa `current.createdAt`: isso é revalidação de token em segundo
       // plano, não um novo login — sem preservar a data original, cada
       // ciclo de 5min reescrevia "Sessão criada em" pra agora, apagando o
       // horário real do login.
-      await this.captureSession(token, current.createdAt);
+      await this.captureSession(window, token, current.createdAt);
       recordDiagnosticEvent('pdpj_session_upgraded', 'success', 'Sessao PDPJ antiga atualizada automaticamente para a API');
       await this.resumePausedTasks();
       return true;
     } catch (error: any) {
       logger.error('Falha na validacao PDPJ em segundo plano:', error?.message || error);
       recordDiagnosticEvent('pdpj_session_upgrade_failed', 'warning', error.message || 'Nao foi possivel atualizar a sessao PDPJ');
-      // Destroi a janela em vez de mante-la viva pro proximo ciclo (achado
-      // 14/08/2026: apos falhar, a mesma janela as vezes fica presa num
-      // loop de redirecionamento em www.jus.br — e com
-      // `backgroundThrottling: false` (necessario pro SSO silencioso, ver
-      // comentario acima) esse loop roda a CPU cheia mesmo escondida, sem
-      // nunca parar sozinho, porque nada nunca navega essa janela pra
-      // outro lugar nem a fecha. Reaproveitar a MESMA janela quebrada no
-      // ciclo de 5min seguinte so reproduzia o mesmo loop de novo — travou
-      // o Caio por 10min+ e, ao longo de dias sem reiniciar o app,
-      // explica o app ficando cada vez mais lento (achado no log de
-      // 13/08/2026: 1 milhao+ de linhas so desse tipo de loop num unico
-      // dia). Destruir aqui forca uma janela nova e limpa na proxima
-      // tentativa.
-      if (this.authWindow && !this.authWindow.isDestroyed()) {
-        this.authWindow.destroy();
-      }
-      this.authWindow = null;
       return false;
     } finally {
       this.cleanup();
-      if (this.authWindow && !this.authWindow.isDestroyed()) {
-        this.authWindow.setAlwaysOnTop(false);
-        this.authWindow.hide();
-        this.authWindow.setSkipTaskbar(true);
-        logger.info('Janela PDPJ autenticada mantida em segundo plano para reutilizar a sessao');
-      }
+      // Sempre destruída ao final do ciclo, com sucesso ou falha — nunca
+      // fica viva pro próximo ciclo (era isso, reaproveitar a mesma janela,
+      // que deixava um estado ruim de um ciclo contaminar o próximo; ver
+      // comentário no topo do método e docs/roadmap/28-pdpj-auth-robustez.md).
+      if (!window.isDestroyed()) window.destroy();
+      if (this.revalidationWindow === window) this.revalidationWindow = null;
     }
   }
 
@@ -1507,37 +1688,42 @@ export class PdpjAuth {
     if (!session) throw new Error('Sessao autenticada do PDPJ nao esta disponivel.');
 
     const { window, release } = await this.acquireQueryWindow(session);
-    // Fecha modal "Navegação Guiada" antes de interagir com o DOM
-    await this.dismissGuidedNavigationModal(window);
+    let falhou = false;
     try {
+      // Fecha modal "Navegação Guiada" antes de interagir com o DOM
+      await this.dismissGuidedNavigationModal(window);
       const urlLiteral = JSON.stringify(url);
       const authorizationLiteral = JSON.stringify(authorization);
       let result: { status: number; contentType: string | null; body: string; retryAfterHeader: string | null };
       try {
-        result = await window.webContents.executeJavaScript(`(async () => {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), ${TIMEOUTS.pdpjChromiumRequest});
-          try {
-            const response = await fetch(${urlLiteral}, {
-              method: 'GET',
-              credentials: 'include',
-              signal: controller.signal,
-              headers: {
-                Accept: 'application/json, text/plain, */*',
-                Authorization: ${authorizationLiteral},
-                skipErrorInterceptor: 'true'
-              }
-            });
-            return {
-              status: response.status,
-              contentType: response.headers.get('content-type'),
-              body: await response.text(),
-              retryAfterHeader: response.headers.get('retry-after')
-            };
-          } finally {
-            clearTimeout(timeoutId);
-          }
-        })()`, true) as { status: number; contentType: string | null; body: string; retryAfterHeader: string | null };
+        result = await this.withHardTimeout(
+          window.webContents.executeJavaScript(`(async () => {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), ${TIMEOUTS.pdpjChromiumRequest});
+            try {
+              const response = await fetch(${urlLiteral}, {
+                method: 'GET',
+                credentials: 'include',
+                signal: controller.signal,
+                headers: {
+                  Accept: 'application/json, text/plain, */*',
+                  Authorization: ${authorizationLiteral},
+                  skipErrorInterceptor: 'true'
+                }
+              });
+              return {
+                status: response.status,
+                contentType: response.headers.get('content-type'),
+                body: await response.text(),
+                retryAfterHeader: response.headers.get('retry-after')
+              };
+            } finally {
+              clearTimeout(timeoutId);
+            }
+          })()`, true),
+          TIMEOUTS.pdpjChromiumRequest + POOL_OPERATION_TIMEOUT_MARGIN_MS,
+          'PDPJ API (consulta)',
+        ) as { status: number; contentType: string | null; body: string; retryAfterHeader: string | null };
       } catch (error: any) {
         logger.warn('PDPJ API: falha ao executar consulta no Chromium', {
           message: error?.message || String(error),
@@ -1552,8 +1738,16 @@ export class PdpjAuth {
         bodyLength: result.body.length,
       });
       return result;
+    } catch (error) {
+      falhou = true;
+      throw error;
     } finally {
-      release();
+      // Falhou (inclusive por timeout rígido): destroi a janela em vez de
+      // devolver pro pool — não dá pra confiar que ela ainda está num
+      // estado bom depois de travar ou estourar o tempo (achado
+      // 14/08/2026, mesma causa do loop de redirecionamento visto na
+      // janela de revalidação). Sucesso continua devolvendo normalmente.
+      release({ destroy: falhou });
     }
   }
 
@@ -1573,42 +1767,47 @@ export class PdpjAuth {
     if (!session) throw new Error('Sessao autenticada do PDPJ nao esta disponivel.');
 
     const { window, release } = await this.acquireQueryWindow(session);
-    // Fecha modal "Navegação Guiada" antes de interagir com o DOM
-    await this.dismissGuidedNavigationModal(window);
+    let falhou = false;
     try {
+      // Fecha modal "Navegação Guiada" antes de interagir com o DOM
+      await this.dismissGuidedNavigationModal(window);
       const urlLiteral = JSON.stringify(url);
       const authorizationLiteral = JSON.stringify(authorization);
       let result: { status: number; contentType: string | null; base64: string };
       try {
         // Timeout bem mais folgado que o de consulta (`pdpjChromiumRequest`)
         // — isso aqui baixa o PDF inteiro, que pode ser grande.
-        result = await window.webContents.executeJavaScript(`(async () => {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), ${TIMEOUTS.pdfDownload});
-          try {
-            const response = await fetch(${urlLiteral}, {
-              method: 'GET',
-              credentials: 'include',
-              signal: controller.signal,
-              headers: {
-                Accept: 'application/pdf, application/octet-stream, */*',
-                Authorization: ${authorizationLiteral},
-                skipErrorInterceptor: 'true'
-              }
-            });
-            const buffer = await response.arrayBuffer();
-            const bytes = new Uint8Array(buffer);
-            let binary = '';
-            for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
-            return {
-              status: response.status,
-              contentType: response.headers.get('content-type'),
-              base64: btoa(binary)
-            };
-          } finally {
-            clearTimeout(timeoutId);
-          }
-        })()`, true) as { status: number; contentType: string | null; base64: string };
+        result = await this.withHardTimeout(
+          window.webContents.executeJavaScript(`(async () => {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), ${TIMEOUTS.pdfDownload});
+            try {
+              const response = await fetch(${urlLiteral}, {
+                method: 'GET',
+                credentials: 'include',
+                signal: controller.signal,
+                headers: {
+                  Accept: 'application/pdf, application/octet-stream, */*',
+                  Authorization: ${authorizationLiteral},
+                  skipErrorInterceptor: 'true'
+                }
+              });
+              const buffer = await response.arrayBuffer();
+              const bytes = new Uint8Array(buffer);
+              let binary = '';
+              for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+              return {
+                status: response.status,
+                contentType: response.headers.get('content-type'),
+                base64: btoa(binary)
+              };
+            } finally {
+              clearTimeout(timeoutId);
+            }
+          })()`, true),
+          TIMEOUTS.pdfDownload + POOL_OPERATION_TIMEOUT_MARGIN_MS,
+          'PDPJ API (binario)',
+        ) as { status: number; contentType: string | null; base64: string };
       } catch (error: any) {
         logger.warn('PDPJ API: falha ao executar busca de binario no Chromium', {
           message: error?.message || String(error),
@@ -1623,8 +1822,11 @@ export class PdpjAuth {
         base64Length: result.base64.length,
       });
       return result;
+    } catch (error) {
+      falhou = true;
+      throw error;
     } finally {
-      release();
+      release({ destroy: falhou });
     }
   }
 
@@ -1633,11 +1835,11 @@ export class PdpjAuth {
   // ============================================================
 
   /** Pega uma janela livre do pool (cria se ainda não estiver no teto) ou espera alguém liberar. */
-  private async acquireQueryWindow(session: PdpjSession): Promise<{ window: BrowserWindow; release: () => void }> {
+  private async acquireQueryWindow(session: PdpjSession): Promise<{ window: BrowserWindow; release: (opts?: { destroy?: boolean }) => void }> {
     const free = this.queryPool.find((slot) => !slot.busy && !slot.window.isDestroyed());
     if (free) {
       free.busy = true;
-      return { window: free.window, release: () => this.releaseQueryWindow(free) };
+      return { window: free.window, release: (opts) => this.releaseQueryWindow(free, opts?.destroy) };
     }
 
     this.queryPool = this.queryPool.filter((slot) => !slot.window.isDestroyed());
@@ -1645,7 +1847,7 @@ export class PdpjAuth {
       const window = await this.createQueryWindow(session);
       const slot: QueryWindowSlot = { window, busy: true, idleSince: Date.now() };
       this.queryPool.push(slot);
-      return { window, release: () => this.releaseQueryWindow(slot) };
+      return { window, release: (opts) => this.releaseQueryWindow(slot, opts?.destroy) };
     }
 
     // Pool cheio e todas ocupadas: espera alguém liberar e tenta de novo.
@@ -1693,9 +1895,27 @@ export class PdpjAuth {
     this.queryPool = restantes;
   }
 
-  private releaseQueryWindow(slot: QueryWindowSlot): void {
-    slot.busy = false;
-    slot.idleSince = Date.now();
+  /**
+   * `destroy: true` — a operação que usou essa janela falhou (inclusive por
+   * timeout rígido, ver `withHardTimeout`) e ela não volta pro pool: é
+   * destruída e removida, liberando a vaga pra uma janela nova e limpa na
+   * próxima `acquireQueryWindow`. Sem isso, uma janela travada continuava
+   * sendo "devolvida" como se estivesse boa, e a próxima consulta que a
+   * pegasse herdava o mesmo problema (achado 14/08/2026, mesma classe de
+   * bug do loop de redirecionamento na janela de revalidação — ver
+   * docs/roadmap/28-pdpj-auth-robustez.md, item 3.3).
+   */
+  private releaseQueryWindow(slot: QueryWindowSlot, destroy = false): void {
+    if (destroy) {
+      this.queryPool = this.queryPool.filter((s) => s !== slot);
+      if (!slot.window.isDestroyed()) slot.window.destroy();
+      logger.warn('PDPJ API: janela do pool destruida (nao devolvida) apos falha/timeout', {
+        poolSizeDepois: this.queryPool.length,
+      });
+    } else {
+      slot.busy = false;
+      slot.idleSince = Date.now();
+    }
     const next = this.queryWaiters.shift();
     if (next) next();
   }
@@ -1793,6 +2013,8 @@ export class PdpjAuth {
     this.store.clearSession();
     if (this.authWindow && !this.authWindow.isDestroyed()) this.authWindow.close();
     this.authWindow = null;
+    if (this.revalidationWindow && !this.revalidationWindow.isDestroyed()) this.revalidationWindow.destroy();
+    this.revalidationWindow = null;
     for (const slot of this.queryPool) {
       if (!slot.window.isDestroyed()) slot.window.close();
     }

@@ -9,7 +9,7 @@ import { ipcMain, app, shell } from 'electron';
 import { PdpjAuth } from './pdpj-auth';
 import { Diagnostic } from './diagnostic';
 import { getConcurrencyStatus, setMaxConcurrentPdpj } from './pdpj-concurrency';
-import { checkForUpdatesManually } from './auto-updater';
+import { checkForUpdatesManually, getUpdateState, installUpdate } from './auto-updater';
 import { logger, getRecentLogs } from './logger';
 import { enviarRelatorioSupabase } from './supabase-reporter';
 import { Pairing } from './pairing';
@@ -249,6 +249,13 @@ export function registerIPCHandlers(pairing = new Pairing(), statusReporter?: St
   ipcMain.handle('app:check-for-updates', async () => {
     logger.info('IPC: app:check-for-updates');
     checkForUpdatesManually();
+  });
+
+  ipcMain.handle('app:get-update-status', async () => getUpdateState());
+
+  ipcMain.handle('app:install-update', async () => {
+    logger.info('IPC: app:install-update');
+    installUpdate();
   });
 
   return {

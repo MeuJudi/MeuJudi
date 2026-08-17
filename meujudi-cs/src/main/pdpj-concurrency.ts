@@ -28,6 +28,18 @@ import type { PdpjConcurrencyStatus } from '../shared/types';
 const CONFIG_FILE_NAME = 'pdpj-test-config.json';
 const MAX_CONCURRENCY_PERMITIDA = 10; // teto de sanidade — nunca ultrapassa isso, nem o calculo nem o teto manual
 const COOLDOWN_MS = 30 * 60_000; // 30min voltando pra 1 depois de um 429 real
+// Circuit breaker separado, só pra erro de rede REAL (502/503/504 ou
+// timeout de conexão — nunca falha de deteccao de DOM nem "sessao
+// expirada", que sao outra categoria de problema com outra causa). O
+// desenho anterior (docs/IMPLEMENTACAO-CIRCUIT-BREAKER-PDPJ.md, agosto/2026)
+// foi descartado por misturar essas duas categorias e ter numeros que nao
+// batiam com os logs reais — este aqui e deliberadamente mais estreito:
+// só conta status HTTP especificos, threshold de 2 CONSECUTIVOS (nao 1
+// como o 429, que ja e um sinal inequivoco por si so) e cooldown mais
+// curto que o do 429 porque 5xx tende a ser mais transiente que rate
+// limit de verdade. Ver docs/roadmap/28-pdpj-auth-robustez.md, item 3.5.
+const REDE_ERRO_THRESHOLD = 2;
+const REDE_COOLDOWN_MS = 5 * 60_000; // 5min — mais curto que o do 429 (30min)
 
 // Orçamento de RAM por janela PDPJ — estimativa inicial (janela Chromium
 // oculta real, ver pdpj-auth.ts:1602). A validar com medição real do
@@ -38,6 +50,8 @@ const RAM_ESTIMADA_POR_JANELA_MB = 350;
 const RAM_MINIMA_LIVRE_RESERVADA_MB = 1024; // nunca conta a última faixa de RAM livre — deixa folga pro resto do PC
 
 let ultimoAviso429: number | null = null;
+let ultimoErroRede: number | null = null;
+let errosRedeConsecutivos = 0;
 
 function configPath(): string {
   return path.join(app.getPath('userData'), CONFIG_FILE_NAME);
@@ -81,9 +95,13 @@ function emCooldown(): boolean {
   return ultimoAviso429 !== null && Date.now() - ultimoAviso429 < COOLDOWN_MS;
 }
 
-/** Concorrência efetiva agora — cálculo automático, limitado pelo teto manual se existir, exceto durante o cooldown pós-429 (força 1). */
+function emCooldownRede(): boolean {
+  return ultimoErroRede !== null && Date.now() - ultimoErroRede < REDE_COOLDOWN_MS;
+}
+
+/** Concorrência efetiva agora — cálculo automático, limitado pelo teto manual se existir, exceto durante cooldown de 429 ou de erro de rede (força 1 nos dois casos). */
 export function getMaxConcurrentPdpj(): number {
-  if (emCooldown()) return 1;
+  if (emCooldown() || emCooldownRede()) return 1;
   const { resultado } = calcularConcorrenciaAutomatica();
   const teto = lerTetoManual();
   return teto !== null ? Math.min(resultado, teto) : resultado;
@@ -93,8 +111,12 @@ export function getMaxConcurrentPdpj(): number {
 export function getConcurrencyStatus(): PdpjConcurrencyStatus {
   const automatico = calcularConcorrenciaAutomatica();
   const tetoManual = lerTetoManual();
-  const cooldown = emCooldown();
+  const cooldown429 = emCooldown();
+  const cooldownRede = emCooldownRede();
+  const cooldown = cooldown429 || cooldownRede;
   const efetivo = cooldown ? 1 : tetoManual !== null ? Math.min(automatico.resultado, tetoManual) : automatico.resultado;
+  const cooldownAteMs429 = cooldown429 && ultimoAviso429 !== null ? ultimoAviso429 + COOLDOWN_MS : null;
+  const cooldownAteMsRede = cooldownRede && ultimoErroRede !== null ? ultimoErroRede + REDE_COOLDOWN_MS : null;
   return {
     automatico: automatico.resultado,
     limiteRam: automatico.ram,
@@ -102,7 +124,9 @@ export function getConcurrencyStatus(): PdpjConcurrencyStatus {
     tetoManual,
     efetivo,
     emCooldown: cooldown,
-    cooldownAteMs: cooldown && ultimoAviso429 !== null ? ultimoAviso429 + COOLDOWN_MS : null,
+    cooldownAteMs: cooldownAteMs429 !== null && cooldownAteMsRede !== null
+      ? Math.max(cooldownAteMs429, cooldownAteMsRede)
+      : cooldownAteMs429 ?? cooldownAteMsRede,
   };
 }
 
@@ -148,4 +172,45 @@ export function registrar429PDPJ(): void {
       logger.warn('PDPJ: falha ao mostrar notificacao de 429:', error?.message || error);
     }
   }
+}
+
+/**
+ * Chamado só quando o PDPJ responde 502/503/504 ou a requisição falha por
+ * timeout de conexão — nunca por falha de detecção de DOM ou "sessão
+ * expirada" (essas são outra categoria, tratadas em `pdpj-auth.ts`/
+ * `registrarFalhaValidacaoENotificarSeNecessario`). Conta consecutivos —
+ * um único 502 isolado pode ser um baque passageiro; só ativa o cooldown
+ * na 2ª vez seguida sem nenhum sucesso no meio (`registrarSucessoRedePDPJ`
+ * zera o contador).
+ */
+export function registrarErroRedePDPJ(): void {
+  errosRedeConsecutivos += 1;
+  if (errosRedeConsecutivos < REDE_ERRO_THRESHOLD) {
+    logger.warn(`PDPJ: erro de rede (${errosRedeConsecutivos}/${REDE_ERRO_THRESHOLD} consecutivos) — ainda nao ativa o cooldown`);
+    return;
+  }
+
+  const jaAvisado = ultimoErroRede !== null && Date.now() - ultimoErroRede < REDE_COOLDOWN_MS;
+  ultimoErroRede = Date.now();
+  logger.error(`PDPJ: ${errosRedeConsecutivos} erros de rede seguidos (502/503/504/timeout) — forçando concorrência de volta pra 1 por 5min`, {
+    automaticoAntesDoCooldown: calcularConcorrenciaAutomatica().resultado,
+    tetoManual: lerTetoManual(),
+  });
+  recordDiagnosticEvent('pdpj_network_error_streak', 'error', `${errosRedeConsecutivos} erros de rede seguidos do PDPJ — concorrência forçada pra 1 por 5min`);
+  if (!jaAvisado) {
+    try {
+      new Notification({
+        title: `${APP_NAME} - PDPJ com instabilidade de rede`,
+        body: 'Vários erros seguidos (502/503/504) ao consultar o PDPJ. Reduzindo pra 1 janela simultânea por 5min, pra dar espaço do servidor se recuperar.',
+        silent: false,
+      }).show();
+    } catch (error: any) {
+      logger.warn('PDPJ: falha ao mostrar notificacao de erro de rede:', error?.message || error);
+    }
+  }
+}
+
+/** Chamado em toda resposta bem-sucedida do PDPJ — zera o contador de erros de rede consecutivos (não mexe no cooldown já ativo, se houver um rodando). */
+export function registrarSucessoRedePDPJ(): void {
+  errosRedeConsecutivos = 0;
 }
