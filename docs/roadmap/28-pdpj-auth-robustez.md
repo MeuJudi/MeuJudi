@@ -78,6 +78,19 @@ autenticada) que hoje é evitado reaproveitando a janela "quente". Precisa
 medir se isso aumenta o tempo médio de revalidação antes de considerar
 pronto — não é uma troca sem custo, só sem o risco de estado acumulado.
 
+> **Achado real, 17/08/2026 (pós-v0.3.28 em produção)**: confirmado ao
+> vivo — o loop de redirecionamento em www.jus.br (mesmo problema do
+> item 3.2) ainda acontece mesmo com janela sempre nova; numa tentativa
+> real, 300 navegações em 157 segundos antes de desistir. O problema não
+> era só a janela ficar "suja" entre ciclos — é que o timeout de 45s
+> (`BEARER_CAPTURE_TIMEOUT_MS`) só cobria o loop interno de
+> `ensurePortalBearer`, não a chamada inteira (o `loadURL` inicial, antes
+> do loop começar a contar, podia demorar sem limite nenhum). Corrigido
+> envolvendo a chamada inteira com `withHardTimeout` (o mesmo helper do
+> item 3.3), teto de 70s — ver `ENSURE_PORTAL_BEARER_HARD_TIMEOUT_MS`.
+> Uma segunda tentativa na mesma sessão, com janela nova, levou só 7,5s —
+> o loop parece intermitente, não constante.
+
 **Arquivos**: `meujudi-cs/src/main/pdpj-auth.ts` (`doEnsureApiSession`,
 `showLoginWindow`, remove o compartilhamento de `this.authWindow`).
 

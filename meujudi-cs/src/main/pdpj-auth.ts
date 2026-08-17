@@ -57,6 +57,18 @@ const PDPJ_PORTAL_URL = 'https://portaldeservicos.pdpj.jus.br/';
 // terminar de carregar e disparar a primeira chamada autenticada.
 const BEARER_CAPTURE_TIMEOUT_MS = 45_000;
 const BEARER_CAPTURE_RETRY_MS = 500;
+// Teto de segurança sobre a operação INTEIRA de `ensurePortalBearer`, não
+// só o loop interno. Achado 17/08/2026, ao vivo: `startedAt` (a base do
+// timeout de 45s acima) só é marcado DEPOIS do `loadURL(PDPJ_LOGIN_URL)`
+// inicial — se a página entrar no loop de redirecionamento em
+// www.jus.br logo nessa carga inicial (antes do loop nem começar), ou se
+// os `executeJavaScript` do loop ficarem lentos por causa da própria
+// página navegando sem parar (visto: 300 navegações em 157s numa única
+// tentativa), o tempo real passa longe dos 45s nominais — chegou a 157s
+// numa tentativa real. Isso envolve `withHardTimeout` (já usado no pool
+// de consulta, item 3.3) por fora da chamada inteira, garantindo um teto
+// de verdade independente de onde o tempo está sendo gasto por dentro.
+const ENSURE_PORTAL_BEARER_HARD_TIMEOUT_MS = 70_000;
 // Achado (29/07/2026, 3a rodada, via diagnostico de estrutura da pagina): o
 // Portal so dispara a chamada autenticada apos uma busca de verdade — a
 // pagina sozinha nunca chama a API. A busca principal usa a OAB vinculada
@@ -1645,7 +1657,11 @@ export class PdpjAuth {
           expirationDate: cookie.expirationDate,
         });
       }
-      const token = await this.ensurePortalBearer(window, () => this.capturedBearer);
+      const token = await this.withHardTimeout(
+        this.ensurePortalBearer(window, () => this.capturedBearer),
+        ENSURE_PORTAL_BEARER_HARD_TIMEOUT_MS,
+        'PDPJ (captura de Bearer)',
+      );
       logger.info('Bearer PDPJ capturado em segundo plano; atualizando sessao local');
       // Passa `current.createdAt`: isso é revalidação de token em segundo
       // plano, não um novo login — sem preservar a data original, cada
