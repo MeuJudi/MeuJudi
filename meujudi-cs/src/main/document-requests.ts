@@ -31,7 +31,18 @@ import { CookieStore } from './cookie-store';
 import type { Pairing } from './pairing';
 import type { PdpjAuth } from './pdpj-auth';
 
-const RECONNECT_DELAY_MS = 5_000;
+// Achado 19/08/2026 (auditoria de logs): delay fixo de 5s sem teto nem
+// backoff — num episódio real (13/08/2026) virou 1.040.778 reconexões
+// num único dia (o arquivo de log daquele dia chegou a 114MB só por
+// causa disso), e ainda intermitente meses depois sem nenhuma correção
+// (49.969 em 17/08/2026). Backoff exponencial com teto resolve o volume
+// sem nunca desistir de tentar. O reset do backoff só acontece depois de
+// ficar conectado de verdade por `STABLE_CONNECTION_RESET_MS` — resetar
+// no primeiro `SUBSCRIBED` sozinho não ajuda se a conexão estiver
+// "flapping" (sobe e cai em segundos).
+const RECONNECT_DELAY_BASE_MS = 5_000;
+const RECONNECT_DELAY_MAX_MS = 5 * 60_000;
+const STABLE_CONNECTION_RESET_MS = 30_000;
 const AUTH_REFRESH_INTERVAL_MS = 60_000;
 
 interface ClaimedRequest {
@@ -48,9 +59,11 @@ export class DocumentRequests {
   private readonly sessions = new CookieStore();
   private readonly api: PdpjApiClient;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private stabilityTimer: ReturnType<typeof setTimeout> | null = null;
   private authRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private lastAuthedToken: string | null = null;
   private started = false;
+  private reconnectAttempts = 0;
 
   constructor(private readonly pairing: Pairing, private readonly auth: PdpjAuth) {
     this.api = new PdpjApiClient(
@@ -75,6 +88,7 @@ export class DocumentRequests {
   }
 
   private teardown(): void {
+    if (this.stabilityTimer) { clearTimeout(this.stabilityTimer); this.stabilityTimer = null; }
     this.channel?.unsubscribe();
     this.channel = null;
     this.client?.removeAllChannels();
@@ -130,8 +144,18 @@ export class DocumentRequests {
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') {
             logger.info('DocumentRequests: assinatura Realtime ativa', { tenantId });
+            // Só zera o backoff depois de ficar conectado de verdade por um
+            // tempo — se a conexão estiver "flapping" (cai de novo em
+            // segundos), resetar no SUBSCRIBED sozinho faria o backoff
+            // nunca crescer, voltando ao mesmo problema de martelar a cada
+            // poucos segundos.
+            if (this.stabilityTimer) clearTimeout(this.stabilityTimer);
+            this.stabilityTimer = setTimeout(() => {
+              this.reconnectAttempts = 0;
+              this.stabilityTimer = null;
+            }, STABLE_CONNECTION_RESET_MS);
           } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-            logger.warn('DocumentRequests: socket Realtime caiu, reconectando', { status });
+            logger.warn('DocumentRequests: socket Realtime caiu, reconectando', { status, tentativasSeguidas: this.reconnectAttempts + 1 });
             this.teardown();
             this.scheduleReconnect();
           }
@@ -145,10 +169,12 @@ export class DocumentRequests {
 
   private scheduleReconnect(): void {
     if (!this.started || this.reconnectTimer) return;
+    this.reconnectAttempts += 1;
+    const delay = Math.min(RECONNECT_DELAY_MAX_MS, RECONNECT_DELAY_BASE_MS * 2 ** (this.reconnectAttempts - 1));
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       if (this.started) this.connect();
-    }, RECONNECT_DELAY_MS);
+    }, delay);
   }
 
   /**

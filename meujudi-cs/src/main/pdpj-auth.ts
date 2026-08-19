@@ -1369,17 +1369,26 @@ export class PdpjAuth {
   }
 
   /**
-   * Roda 1x por dia, na primeira checagem de 5min que cair na hora-alvo
+   * Roda 1x por dia, na primeira checagem de 5min a partir da hora-alvo
    * (`PROACTIVE_REVALIDATION_HOUR_LOCAL`) — força uma revalidação completa
    * mesmo com um Bearer que ainda "parece" válido pelo nosso relógio, pra
    * confirmar de verdade que a sessão funciona antes do expediente
    * começar, em vez de só reagir depois que uma tarefa real falhar. Não
    * tenta nada se não existir sessão de cookies (aí só um login manual
    * resolve, e isso exige o usuário abrir o app de qualquer forma).
+   *
+   * Achado 19/08/2026, auditando os logs: a checagem original exigia hora
+   * EXATAMENTE igual à hora-alvo (`!==`) — como o app só é aberto quando
+   * o usuário liga o PC (confirmado: sempre entre 08h e 08h15 local, nunca
+   * antes das 7h), a janela de 1h nunca existiu de verdade, e esse
+   * recurso nunca disparou nem uma vez em nenhum log histórico. Corrigido
+   * pra "já passou da hora-alvo hoje" (`>=`) — dispara na primeira
+   * checagem do dia a partir da hora-alvo, não importa a que horas o app
+   * de fato abrir.
    */
   private async maybeRunProactiveRevalidation(): Promise<void> {
     const now = new Date();
-    if (now.getHours() !== PROACTIVE_REVALIDATION_HOUR_LOCAL) return;
+    if (now.getHours() < PROACTIVE_REVALIDATION_HOUR_LOCAL) return;
     const todayKey = now.toISOString().slice(0, 10);
     if (this.proactiveRevalidationDoneOnDate === todayKey) return;
     if (!this.store.getValidSession()) return;
