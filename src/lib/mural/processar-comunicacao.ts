@@ -159,8 +159,31 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
       status: "ativo",
       ultima_sync_mural: new Date().toISOString(),
     }).select("id").single();
-    if (error || !novoProcesso) throw new Error(`Falha ao criar processo ${com.numero_processo}: ${error?.message}`);
-    processoId = novoProcesso.id;
+    if (error) {
+      // 23505 = unique_violation (tenant_id, cnj) — mesma corrida que o
+      // PDPJ já trata (ver src/app/api/cs/sync/pdpj/route.ts): PDPJ e
+      // Mural podem descobrir o mesmo CNJ quase ao mesmo tempo (mais
+      // provável ainda logo que uma OAB nova é cadastrada, quando os dois
+      // varrem ela pela primeira vez no mesmo ciclo). Antes essa corrida
+      // subia como exceção não tratada aqui; agora recupera o id já
+      // criado pela outra fonte em vez de derrubar a tarefa inteira.
+      if (error.code === "23505") {
+        const { data: refetched } = await supabase
+          .from("processos")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .eq("cnj", com.numero_processo)
+          .maybeSingle();
+        if (!refetched) throw new Error(`Corrida ao criar processo ${com.numero_processo}, mas não achou a linha existente: ${error.message}`);
+        processoId = refetched.id;
+      } else {
+        throw new Error(`Falha ao criar processo ${com.numero_processo}: ${error.message}`);
+      }
+    } else if (novoProcesso) {
+      processoId = novoProcesso.id;
+    } else {
+      throw new Error(`Falha ao criar processo ${com.numero_processo}: insert não retornou id.`);
+    }
   }
 
   const prazoDias = extrairPrazoDias(com.texto);
