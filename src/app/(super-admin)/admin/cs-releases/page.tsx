@@ -2,6 +2,8 @@ import { requireSuperAdmin } from "@/lib/auth/guards";
 import { listCsReleases, type CsRelease } from "./actions";
 import { CsReleaseForm } from "./cs-release-form";
 import { CsReleaseActions } from "./cs-release-actions";
+import { GithubSyncBanner } from "./github-sync-banner";
+import { fetchLatestGithubSetupRelease } from "@/lib/cs/github-releases";
 import { Download, Package, CalendarDays, HardDrive } from "lucide-react";
 
 function formatBytes(bytes: number | null): string {
@@ -36,6 +38,8 @@ export default async function CsReleasesPage() {
   await requireSuperAdmin();
   const releases = await listCsReleases();
   const active = releases.find((r) => r.is_active);
+  const latestGithub = await fetchLatestGithubSetupRelease().catch(() => null);
+  const mismatched = Boolean(latestGithub) && latestGithub?.version !== active?.version;
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -49,6 +53,10 @@ export default async function CsReleasesPage() {
           escritórios.
         </p>
       </header>
+
+      {mismatched && latestGithub && (
+        <GithubSyncBanner activeVersion={active?.version ?? null} latestGithubVersion={latestGithub.version} />
+      )}
 
       {/* Versão ativa atual */}
       {active ? (

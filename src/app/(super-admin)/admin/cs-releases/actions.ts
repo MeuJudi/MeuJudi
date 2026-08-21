@@ -1,10 +1,15 @@
 "use server";
 
-import { createSign } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireSuperAdmin } from "@/lib/auth/guards";
+import {
+  getGithubInstallationToken,
+  fetchLatestGithubSetupRelease,
+  upsertActiveCsRelease,
+  type GithubSetupAsset,
+} from "@/lib/cs/github-releases";
 
 export type CsRelease = {
   id: string;
@@ -54,57 +59,6 @@ export async function listCsReleases(): Promise<CsRelease[]> {
     .select("*")
     .order("uploaded_at", { ascending: false });
   return (data ?? []) as CsRelease[];
-}
-
-function githubConfig() {
-  const appId = process.env.GITHUB_APP_ID;
-  const installationId = process.env.GITHUB_APP_INSTALLATION_ID;
-  const privateKey = process.env.GITHUB_APP_PRIVATE_KEY?.replace(/\\n/g, "\n");
-  const owner = process.env.GITHUB_RELEASE_OWNER ?? "MeuJudi";
-  const repo = process.env.GITHUB_RELEASE_REPO ?? "MeuJudi-Sync-Releases";
-  if (!appId || !installationId || !privateKey) {
-    throw new Error(
-      "GitHub Releases não configurado. Cadastre GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID e GITHUB_APP_PRIVATE_KEY na Vercel.",
-    );
-  }
-  return { appId, installationId, privateKey, owner, repo };
-}
-
-function base64Url(value: string | Buffer) {
-  return Buffer.from(value).toString("base64url");
-}
-
-async function getGithubInstallationToken() {
-  const config = githubConfig();
-  const now = Math.floor(Date.now() / 1000);
-  const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-  const payload = base64Url(JSON.stringify({ iat: now - 60, exp: now + 540, iss: config.appId }));
-  const signer = createSign("RSA-SHA256");
-  signer.update(`${header}.${payload}`);
-  signer.end();
-  const jwt = `${header}.${payload}.${signer.sign(config.privateKey).toString("base64url")}`;
-  const response = await fetch(
-    `https://api.github.com/app/installations/${config.installationId}/access_tokens`,
-    {
-      method: "POST",
-      headers: {
-        Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${jwt}`,
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    },
-  );
-  if (!response.ok) {
-    const details = await response.text();
-    if (response.status === 404) {
-      throw new Error(
-        `GitHub App nao encontrado. Confira GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID e se o App foi instalado no repositorio ${config.owner}/${config.repo}. Detalhes: ${details}`,
-      );
-    }
-    throw new Error(`GitHub token: ${details}`);
-  }
-  const body = (await response.json()) as { token: string };
-  return { ...config, token: body.token };
 }
 
 export type TrackedGithubRelease = {
@@ -373,21 +327,43 @@ export async function activateCsRelease(releaseId: string) {
   revalidatePath("/configuracoes/meujudi-cs");
 }
 
-export async function deleteCsRelease(releaseId: string) {
+/**
+ * Apaga a versão — se ela vier do GitHub, apaga o Release DE VERDADE lá
+ * (instalador incluído), não só a linha daqui (achado 19/08/2026: o botão
+ * de lixeira parecia só "esconder da lista", mas era destrutivo pra
+ * valer). Por isso a trava abaixo: nunca deixa apagar a versão que o
+ * GitHub considera "latest" agora — isso quebraria o auto-update de quem
+ * já tem o Sync instalado, já que o `latest.yml`/instalador que ele
+ * depende sumiriam junto.
+ */
+export async function deleteCsRelease(releaseId: string): Promise<ActionResult<null>> {
   await requireSuperAdmin();
   const service = createServiceClient();
   const { data: release } = await service
     .from("cs_releases")
-    .select("file_url, file_name, version, github_release_id")
+    .select("file_url, file_name, version, github_release_id, github_tag_name")
     .eq("id", releaseId)
     .single();
 
   if (release?.github_release_id) {
+    const latest = await fetchLatestGithubSetupRelease().catch(() => null);
+    if (latest && latest.tagName === release.github_tag_name) {
+      return {
+        ok: false,
+        error: `${latest.tagName} é a versão mais recente publicada no GitHub agora — apagar quebraria o auto-update de quem já tem o Sync instalado. Publique uma versão nova antes de apagar essa.`,
+      };
+    }
     const github = await getGithubInstallationToken();
-    await fetch(`https://api.github.com/repos/${github.owner}/${github.repo}/releases/${release.github_release_id}`, {
-      method: "DELETE",
-      headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${github.token}`, "X-GitHub-Api-Version": "2022-11-28" },
-    });
+    const deleteResponse = await fetch(
+      `https://api.github.com/repos/${github.owner}/${github.repo}/releases/${release.github_release_id}`,
+      {
+        method: "DELETE",
+        headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${github.token}`, "X-GitHub-Api-Version": "2022-11-28" },
+      },
+    );
+    if (!deleteResponse.ok && deleteResponse.status !== 404) {
+      return { ok: false, error: `Falha ao apagar o Release no GitHub: ${await deleteResponse.text()}` };
+    }
   } else if (release) {
     // Compatibilidade com versões antigas que ainda foram salvas no Storage.
     const extension = release.file_name.split(".").pop() ?? "exe";
@@ -398,4 +374,40 @@ export async function deleteCsRelease(releaseId: string) {
   await service.from("cs_releases").delete().eq("id", releaseId);
   revalidatePath("/admin/cs-releases");
   revalidatePath("/configuracoes/meujudi-cs");
+  return { ok: true, data: null };
+}
+
+/**
+ * Compara a versão ativa em `cs_releases` com o "latest" de verdade do
+ * GitHub — usado pra mostrar o aviso de dessincronia na tela (achado
+ * 19/08/2026: a tabela ficou 12 dias travada numa versão velha sem
+ * nenhum aviso visível).
+ */
+export async function getGithubLatestMismatch(activeVersion: string | null): Promise<{
+  latest: GithubSetupAsset | null;
+  mismatched: boolean;
+}> {
+  await requireSuperAdmin();
+  try {
+    const latest = await fetchLatestGithubSetupRelease();
+    return { latest, mismatched: Boolean(latest) && latest?.version !== activeVersion };
+  } catch {
+    return { latest: null, mismatched: false };
+  }
+}
+
+/** Botão "Sincronizar agora" — adota na hora o release mais recente do GitHub, sem precisar escolher no dropdown. */
+export async function syncActiveCsReleaseWithGithubLatest(): Promise<ActionResult<null>> {
+  await requireSuperAdmin();
+  try {
+    const latest = await fetchLatestGithubSetupRelease();
+    if (!latest) return { ok: false, error: "Nenhum Release com instalador assistido encontrado no GitHub." };
+    await upsertActiveCsRelease(latest);
+    revalidatePath("/admin/cs-releases");
+    revalidatePath("/configuracoes/meujudi-cs");
+    return { ok: true, data: null };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha ao sincronizar com o GitHub.";
+    return { ok: false, error: message };
+  }
 }
