@@ -32,6 +32,7 @@ import {
   Clock3,
   ChevronLeft,
   ChevronRight,
+  Download,
   FileText,
   GripVertical,
   KanbanSquare,
@@ -42,6 +43,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -547,6 +549,35 @@ function DeleteColumnDialog({
   );
 }
 
+/**
+ * Aviso grande quando o escritório ainda não tem NENHUM processo — o
+ * motivo quase sempre é o Sync (CS) ainda não ter sido instalado/pareado,
+ * já que PDPJ e Mural (as 2 fontes que descobrem processo novo) rodam
+ * dentro dele. Ver docs/roadmap/30-auditoria-descoberta-inicial-processos.md.
+ */
+function InstallSyncBanner() {
+  return (
+    <div className="rounded-xl border-2 border-dashed border-[var(--tenant-brass)] bg-[color-mix(in_srgb,var(--tenant-brass)_10%,var(--tenant-surface))] p-8 text-center">
+      <Download className="mx-auto h-10 w-10 text-[var(--tenant-brass)]" />
+      <h2 className="mt-3 font-display text-2xl font-semibold text-[var(--color-card-foreground)]">
+        Nenhum processo ainda — instale o MeuJudi Sync pra começar
+      </h2>
+      <p className="mx-auto mt-2 max-w-xl text-sm text-[var(--color-muted-foreground)]">
+        A busca de processos roda dentro do MeuJudi Sync, um programa pequeno que fica instalado no computador do escritório.
+        Depois de instalar e conectar com a OAB, os processos começam a aparecer aqui aos poucos — a primeira varredura pode
+        levar de alguns minutos a algumas horas, dependendo de quantos processos a OAB tiver.
+      </p>
+      <Link
+        href="/configuracoes/meujudi-cs"
+        className="mt-4 inline-flex items-center gap-2 rounded-full bg-[var(--tenant-brass)] px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+      >
+        <Download className="h-4 w-4" />
+        Baixar o MeuJudi Sync
+      </Link>
+    </div>
+  );
+}
+
 function EmptyState() {
   return (
     <div className="rounded-lg border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface)] p-8 text-center text-[var(--tenant-surface-foreground)]">
@@ -938,6 +969,8 @@ export function MonitoramentoView({
           {error}
         </div>
       ) : null}
+
+      {processes.length === 0 && <InstallSyncBanner />}
 
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {[

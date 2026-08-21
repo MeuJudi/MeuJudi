@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { stripMask } from "@/lib/masks";
 import { assertTenantWritable } from "@/lib/auth/access";
+import { dispararDescobertaInicial } from "@/lib/cs/descoberta-inicial";
 
 export async function updateProfile(formData: FormData) {
   await assertTenantWritable();
@@ -213,6 +214,14 @@ export async function addOab(formData: FormData) {
   });
 
   if (error) throw error;
+
+  // OAB adicional num escritório que já está liberado — dispara a
+  // descoberta inicial na hora, mesmo raciocínio da validação de OAB (ver
+  // docs/roadmap/30-auditoria-descoberta-inicial-processos.md). Não
+  // bloqueia a resposta: falha aqui não deve impedir o cadastro da OAB.
+  dispararDescobertaInicial(profile.tenant_id, oabNumber, oabUf).catch((error) => {
+    console.error("[configuracoes/addOab] falha ao disparar descoberta inicial:", error);
+  });
 
   revalidatePath("/configuracoes/oabs");
   return { success: true };

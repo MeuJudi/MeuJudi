@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { autenticarDevice } from "@/lib/cs/device-auth";
+import { dispararDescobertaInicial } from "@/lib/cs/descoberta-inicial";
 
 const EVENT_STATUS_MAP: Record<string, string | undefined> = {
   cs_received: "aguardando_cs",
@@ -97,7 +98,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ va
     .select("status, tenant_id, user_id, oab_number, oab_uf, users!oab_validations_user_id_fkey(name)")
     .eq("id", validationId)
     .eq("tenant_id", device.tenantId)
-    .eq("user_id", device.userId)
     .maybeSingle<{
       status: string;
       tenant_id: string;
@@ -187,8 +187,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ va
       .from("oab_validations")
       .update(update)
       .eq("id", validationId)
-      .eq("tenant_id", device.tenantId)
-      .eq("user_id", device.userId);
+      .eq("tenant_id", device.tenantId);
   }
 
   // Fase 4 — quando o resultado é positivo (nome + status conferidos
@@ -215,6 +214,17 @@ export async function POST(request: NextRequest, context: { params: Promise<{ va
         { status: 500 },
       );
     }
+
+    // Momento em que o tenant passa a `access_status = 'liberado'` de
+    // verdade — dispara a descoberta inicial (PDPJ + Mural) na hora, em
+    // vez de esperar o próximo balde de 6h dos crons `solicitar-pdpj`/
+    // `solicitar-mural`. Ver docs/roadmap/30-auditoria-descoberta-inicial-processos.md.
+    // Não bloqueia a resposta pro CS por causa disso — falha aqui não deve
+    // impedir o usuário de ver "validada" (os crons pegam mais tarde de
+    // qualquer forma).
+    dispararDescobertaInicial(current.tenant_id, current.oab_number, current.oab_uf).catch((error) => {
+      console.error("[cs/oab-validations] falha ao disparar descoberta inicial:", error);
+    });
   }
 
   return NextResponse.json({ ok: true, status: nextStatus ?? current.status });

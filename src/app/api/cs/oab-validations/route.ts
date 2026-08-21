@@ -1,9 +1,16 @@
 // Fase 3 (módulo CS) da validação de OAB via ConfirmADV — ver
 // docs/roadmap/validacao-oab-confirmadv-cs.md. Mesmo padrão de
-// src/app/api/cs/mural-requests/route.ts, mas o claim é escopado por
-// (tenant_id, user_id) do device — diferente do Mural (recurso do
-// escritório), a validação de OAB é pessoal: só o dispositivo pareado pelo
-// próprio dono da OAB deve abrir a janela do ConfirmADV.
+// src/app/api/cs/mural-requests/route.ts.
+//
+// [corrigido] O claim é escopado só por tenant_id, não por (tenant_id,
+// user_id) do device. A validação de OAB é pessoal no sentido de que só o
+// dono da OAB resolve o reCAPTCHA/código (isso acontece na página oficial
+// do ConfirmADV, fora do controle do CS) — mas o dispositivo que abre a
+// janela pode ser qualquer um pareado ao escritório. Escopar por user_id
+// do device quebrava o caso normal de um escritório com vários
+// advogados: só quem gerou o código de pareamento do CS conseguia validar
+// a própria OAB; qualquer outro advogado do mesmo tenant nunca via a
+// própria solicitação pendente.
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -20,7 +27,6 @@ export async function GET(request: NextRequest) {
     .from("oab_validations")
     .select("id, oab_number, oab_uf, professional_email, requester_name, status")
     .eq("tenant_id", device.tenantId)
-    .eq("user_id", device.userId)
     .in("status", ESTADOS_ATIVOS)
     .order("created_at", { ascending: true })
     .limit(1)
