@@ -306,3 +306,32 @@ sai do lugar", não pra ser preciso sobre o que é normal por escritório.
 - Certificado A1, captura de cookies, fluxo de MFA — nada disso muda.
 - Não entra fallback pago (Judit/Escavador) — decisão explícita de não
   fazer isso agora.
+
+## 6. [implementado, 21/08/2026] Circuit breaker para falhas consecutivas de validação
+
+Nova auditoria pedida pelo Caio ("sinto que travamos demais nessa
+Revalidação"). Log ao vivo do dia (`2026-08-21.log`) mostrou 10 falhas
+seguidas de 70s (o hard-timeout do item 3.3) em ~13min, com apenas 24ms
+de intervalo entre o fim de uma tentativa e o início da próxima —
+zero recuperação no período. Causa raiz: cada tarefa `pdpj_cnj` pendente
+chama `ensureSession()`, que dispara `ensureApiSession()` assim que a
+promise compartilhada da tentativa anterior termina — sem nenhum
+cooldown, a fila de tarefas pendentes vira um loop de retry infinito.
+
+**Correção**: circuit breaker novo, categoria própria (falha de captura
+do Bearer), sem misturar com o circuit breaker de 429/rede que já existe
+em `pdpj-concurrency.ts` (mesma filosofia: categorias diferentes de falha
+merecem cooldowns independentes, foi por misturar categoria que o
+primeiro desenho de agosto tinha sido descartado). Após
+`VALIDATION_FAILURE_THRESHOLD = 3` falhas seguidas, `doEnsureApiSession`
+entra em cooldown de `VALIDATION_COOLDOWN_MS = 5min` — chamadas não
+forçadas (fila de tarefas, timer de 5min) retornam `false` na hora, sem
+abrir janela nova; chamadas forçadas (`force: true` — clique manual em
+"Validar API agora" e a revalidação proativa da manhã, item 3.4) ignoram
+o cooldown, porque são pedidos deliberados e pouco frequentes. Contador
+zera em qualquer sucesso.
+
+**Arquivo**: `meujudi-cs/src/main/pdpj-auth.ts` — constantes
+`VALIDATION_FAILURE_THRESHOLD`/`VALIDATION_COOLDOWN_MS`, campos
+`falhasValidacaoConsecutivas`/`validacaoEmCooldownAteMs`, gate no início
+de `doEnsureApiSession` e incremento/reset nos caminhos de falha/sucesso.

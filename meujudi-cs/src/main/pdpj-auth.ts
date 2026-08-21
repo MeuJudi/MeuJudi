@@ -69,6 +69,18 @@ const BEARER_CAPTURE_RETRY_MS = 500;
 // de consulta, item 3.3) por fora da chamada inteira, garantindo um teto
 // de verdade independente de onde o tempo está sendo gasto por dentro.
 const ENSURE_PORTAL_BEARER_HARD_TIMEOUT_MS = 70_000;
+// Circuit breaker específico pra falha em CAPTURAR O BEARER — categoria
+// própria, sem misturar com erro de rede (já tem o seu em
+// pdpj-concurrency.ts) nem com "sem sessão salva" (já é barato, nunca
+// chega a abrir janela). Achado ao vivo em 21/08/2026: sem esse freio,
+// cada tarefa pdpj_cnj pendente redispara `ensureApiSession()` assim que
+// a tentativa anterior termina (24ms de intervalo observado no log) —
+// 10 tentativas seguidas, cada uma travando os `ENSURE_PORTAL_BEARER_HARD_TIMEOUT_MS`
+// (70s) inteiros, ~13min de janelas abrindo sem parar e sem nunca dar
+// uma folga pro jus.br. Ver docs/roadmap/28-pdpj-auth-robustez.md, item
+// 3.5, mesmo raciocínio aplicado a essa categoria de falha.
+const VALIDATION_FAILURE_THRESHOLD = 3;
+const VALIDATION_COOLDOWN_MS = 5 * 60_000;
 // Achado (29/07/2026, 3a rodada, via diagnostico de estrutura da pagina): o
 // Portal so dispara a chamada autenticada apos uma busca de verdade — a
 // pagina sozinha nunca chama a API. A busca principal usa a OAB vinculada
@@ -207,6 +219,12 @@ export class PdpjAuth {
   // nenhum aviso visivel ate a fila inteira travar).
   private falhaValidacaoDesdeMs: number | null = null;
   private ultimaNotificacaoFalhaMs: number | null = null;
+  // Circuit breaker de falha em capturar o Bearer (item 3.5-b do plano
+  // 28) — conta falhas seguidas de tentativas REAIS (janela aberta de
+  // verdade), nunca dos atalhos baratos ("sem sessao", "Bearer ja
+  // valido"). Zera no primeiro sucesso.
+  private falhasValidacaoConsecutivas = 0;
+  private validacaoEmCooldownAteMs: number | null = null;
   // Data (YYYY-MM-DD, hora local da máquina) em que a revalidação proativa
   // já rodou — evita disparar mais de uma vez por dia mesmo com o timer de
   // 5min passando várias vezes pela janela-alvo (ver `maybeRunProactiveRevalidation`).
@@ -1531,7 +1549,7 @@ export class PdpjAuth {
       return this.ensureApiSessionPromise;
     }
     if (force) this.store.clearAccessToken();
-    this.ensureApiSessionPromise = this.doEnsureApiSession();
+    this.ensureApiSessionPromise = this.doEnsureApiSession(force);
     try {
       return await this.ensureApiSessionPromise;
     } finally {
@@ -1539,7 +1557,7 @@ export class PdpjAuth {
     }
   }
 
-  private async doEnsureApiSession(): Promise<boolean> {
+  private async doEnsureApiSession(force = false): Promise<boolean> {
     // Login manual em andamento usa a mesma `authWindow` que essa validação
     // técnica reutilizaria — nunca competir com ele (ver comentário do
     // campo `loginEmAndamento`). O timer de 5min tenta de novo sozinho no
@@ -1547,6 +1565,19 @@ export class PdpjAuth {
     if (this.loginEmAndamento) {
       logger.info('Validacao PDPJ adiada: login manual em andamento');
       return false;
+    }
+    // Circuit breaker de falhas consecutivas — `force` (clique manual em
+    // "Validar API agora", ou a revalidação proativa da manhã) sempre
+    // ignora o cooldown, porque são pedidos deliberados e pouco
+    // frequentes, não o loop de tarefas que causou o problema original.
+    if (!force && this.validacaoEmCooldownAteMs !== null) {
+      if (Date.now() < this.validacaoEmCooldownAteMs) {
+        logger.debug('Validacao PDPJ pulada: em cooldown apos falhas consecutivas de captura do Bearer', {
+          faltamMs: this.validacaoEmCooldownAteMs - Date.now(),
+        });
+        return false;
+      }
+      this.validacaoEmCooldownAteMs = null;
     }
     logger.info('Validacao da API PDPJ em segundo plano iniciada');
     const current = this.store.getValidSession();
@@ -1679,10 +1710,24 @@ export class PdpjAuth {
       await this.captureSession(window, token, current.createdAt);
       recordDiagnosticEvent('pdpj_session_upgraded', 'success', 'Sessao PDPJ antiga atualizada automaticamente para a API');
       await this.resumePausedTasks();
+      this.falhasValidacaoConsecutivas = 0;
+      this.validacaoEmCooldownAteMs = null;
       return true;
     } catch (error: any) {
       logger.error('Falha na validacao PDPJ em segundo plano:', error?.message || error);
       recordDiagnosticEvent('pdpj_session_upgrade_failed', 'warning', error.message || 'Nao foi possivel atualizar a sessao PDPJ');
+      // Circuit breaker: sem isso, cada tarefa `pdpj_cnj` pendente dispara
+      // uma nova tentativa assim que a promise compartilhada da anterior
+      // termina (evidencia ao vivo em 21/08/2026: 10 falhas de 70s
+      // seguidas, gap de 24ms entre elas, 13min sem nenhuma recuperacao).
+      this.falhasValidacaoConsecutivas += 1;
+      if (this.falhasValidacaoConsecutivas >= VALIDATION_FAILURE_THRESHOLD) {
+        this.validacaoEmCooldownAteMs = Date.now() + VALIDATION_COOLDOWN_MS;
+        logger.warn('Circuit breaker: pausando validacao PDPJ por falhas consecutivas de captura do Bearer', {
+          falhasConsecutivas: this.falhasValidacaoConsecutivas,
+          cooldownMs: VALIDATION_COOLDOWN_MS,
+        });
+      }
       return false;
     } finally {
       this.cleanup();
