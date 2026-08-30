@@ -201,18 +201,20 @@ function HelpModal({ onClose }: { onClose: () => void }) {
             <li>Você faz login normal:
               <ul className="list-disc list-inside ml-6 mt-1 space-y-0.5">
                 <li><strong>gov.br</strong>: CPF + senha (igual entrar no e-mail gov)</li>
-                <li><strong>Cert. A1</strong>: seleciona seu certificado digital</li>
+                <li><strong>Cert. A1/A3</strong>: seleciona seu certificado digital</li>
                 <li>Se pedir, digite o <strong>código de segurança</strong> enviado por e-mail (2º fator, obrigatório desde 2025)</li>
+                <li>Para <strong>A3 (token)</strong>: conecte o token e digite o PIN quando solicitado</li>
               </ul>
             </li>
             <li>A janela fecha sozinha quando o login completar e o PJe te reconhecer</li>
             <li>Você volta pra cá e vê "● Conectado"</li>
           </ol>
 
-          <h3 className="font-semibold text-gray-900">Popup do cert. A1 (Windows)</h3>
+          <h3 className="font-semibold text-gray-900">Popup do cert. A1/A3 (Windows)</h3>
           <p>
             Na primeira vez, o Windows vai mostrar um popup pedindo pra escolher o cert.
-            Selecione seu e-CPF A1 e marque "Sempre usar este certificado" (se aparecer essa opção).
+            Selecione seu e-CPF (A1 ou A3) e marque "Sempre usar este certificado" (se aparecer essa opção).
+            Para tokens A3, o Windows pode pedir o PIN do token.
             Nas próximas vezes, pula direto.
           </p>
 

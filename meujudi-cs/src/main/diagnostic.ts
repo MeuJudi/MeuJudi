@@ -63,24 +63,32 @@ export class Diagnostic {
       technicalSummary: {},
     };
 
-    // ======== Teste 1: Detectar cert. A1 ========
+    // ======== Teste 1: Detectar cert. A1/A3 ========
     try {
-      logger.info('[1/5] Detectando cert. A1...');
+      logger.info('[1/5] Detectando cert. A1/A3...');
       report.certA1 = detectarCertA1();
+      const certLabel = report.certA1.certType === 'A3' ? 'A3 (token)' : 'A1';
       if (!report.certA1.found) {
-        report.errors.push('Cert. A1 não detectado no Windows Cert Store');
-        report.recommendations.push('Instale o cert. A1 (.pfx) no Windows: clique 2x → Instalar → Pessoal');
+        report.errors.push(`Cert. ${certLabel} não detectado no Windows Cert Store`);
+        if (report.certA1.error?.includes('certutil')) {
+          report.recommendations.push('Verifique se o token está conecto e o middleware (SafeSign/SafeID) está instalado');
+        } else {
+          report.recommendations.push('Instale o cert. A1 (.pfx): clique 2x → Instalar → Pessoal, ou conecte o token A3');
+        }
       } else if (report.certA1.expired) {
-        report.errors.push(`Cert. A1 expirado (${report.certA1.daysToExpire} dias atrás)`);
-        report.recommendations.push('Renove o cert. A1 (custa R$130-200/ano)');
+        report.errors.push(`Cert. ${certLabel} expirado (${report.certA1.daysToExpire} dias atrás)`);
+        report.recommendations.push(`Renove o cert. ${certLabel} (custa R$130-200/ano)`);
       } else if (report.certA1.daysToExpire && report.certA1.daysToExpire < 30) {
-        report.warnings.push(`Cert. A1 expira em ${report.certA1.daysToExpire} dias`);
-        report.recommendations.push('Renove o cert. A1 em breve');
+        report.warnings.push(`Cert. ${certLabel} expira em ${report.certA1.daysToExpire} dias`);
+        report.recommendations.push(`Renove o cert. ${certLabel} em breve`);
+      }
+      if (report.certA1.found && report.certA1.certType === 'A3') {
+        logger.info(`Cert. A3 detectado: ${report.certA1.subject} (Provider: ${report.certA1.provider})`);
       }
     } catch (err: any) {
       logger.error('Erro no teste 1:', err);
       report.certA1 = { found: false, error: err.message };
-      report.errors.push(`Erro ao detectar cert. A1: ${err.message}`);
+      report.errors.push(`Erro ao detectar certificado: ${err.message}`);
     }
 
     // ======== Teste 2: Conectividade com PJe ========
@@ -203,8 +211,10 @@ export class Diagnostic {
       appPackaged: app.isPackaged,
       pdpjPortalUrl: PDPJ_PORTAL_URL,
       certFound: report.certA1.found,
+      certType: report.certA1.certType || 'unknown',
       certExpired: report.certA1.expired,
       certHasPrivateKey: report.certA1.hasPrivateKey,
+      certProvider: report.certA1.provider,
       pjeReachable: report.pjeConnection.reachable,
       pjeLatencyMs: report.pjeConnection.latencyMs,
       cookiesCount: report.cookies.count,
@@ -390,19 +400,33 @@ export class Diagnostic {
 
   private analyzeReport(report: DiagnosticReport): { probableCause: string; nextAction: string } {
     const loginError = report.pjeLogin.error || '';
+    const certLabel = report.certA1.certType === 'A3' ? 'A3 (token)' : 'A1';
 
     if (!report.certA1.found) {
+      if (report.certA1.error?.includes('certutil')) {
+        return {
+          probableCause: `Certificado ${certLabel} nao foi encontrado. Middleware do token pode nao estar instalado.`,
+          nextAction: 'Instalar o middleware do token (SafeSign/SafeID) e conectar o token antes de tentar novamente.',
+        };
+      }
       return {
-        probableCause: 'Certificado A1 nao foi encontrado no Windows Cert Store.',
-        nextAction: 'Instalar o arquivo .pfx em Certificados - Usuario Atual - Pessoal e tentar novamente.',
+        probableCause: `Certificado ${certLabel} nao foi encontrado no Windows Cert Store.`,
+        nextAction: report.certA1.certType === 'A3'
+          ? 'Conectar o token A3 e verificar se o middleware esta instalado.'
+          : 'Instalar o arquivo .pfx em Certificados - Usuario Atual - Pessoal e tentar novamente.',
       };
     }
 
     if (report.certA1.expired) {
       return {
-        probableCause: 'Certificado A1 encontrado, mas expirado.',
-        nextAction: 'Renovar o certificado e instalar a nova versao no Windows.',
+        probableCause: `Certificado ${certLabel} encontrado, mas expirado.`,
+        nextAction: `Renovar o certificado ${certLabel} e instalar a nova versao.`,
       };
+    }
+
+    if (report.certA1.certType === 'A3' && report.certA1.keyExportable === false) {
+      // A3 tokens typically have non-exportable keys - this is normal
+      logger.info('Cert. A3 com chave nao exportavel (comportamento normal para tokens)');
     }
 
     if (!report.pjeConnection.reachable) {

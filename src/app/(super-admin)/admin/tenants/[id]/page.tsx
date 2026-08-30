@@ -7,6 +7,9 @@ import { requireSuperAdmin } from "@/lib/auth/guards";
 import { enterTenantMaintenance } from "../../actions";
 import { TenantStatusButton } from "../tenant-status-button";
 import { roleLabel } from "@/lib/auth/labels";
+import { ManualOabValidation } from "./manual-oab-validation";
+import { DeleteTenantButton } from "./delete-tenant-button";
+import { DeleteUserButton } from "./delete-user-button";
 
 export default async function AdminTenantDetailPage({
   params,
@@ -62,6 +65,7 @@ export default async function AdminTenantDetailPage({
             <Button type="submit" variant="outline">Abrir acesso de suporte</Button>
           </form>
           <TenantStatusButton tenantId={tenant.id} active={tenant.is_active} />
+          <DeleteTenantButton tenantId={tenant.id} tenantName={tenant.name} />
         </div>
       </header>
 
@@ -105,7 +109,12 @@ export default async function AdminTenantDetailPage({
                   <p className="font-medium">{user.name}</p>
                   <p className="text-sm text-muted-foreground">{user.email}</p>
                 </div>
-                <Badge variant="outline">{roleLabel(user.role, user.gender)}</Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline">{roleLabel(user.role, user.gender)}</Badge>
+                  {user.role !== "owner" && (
+                    <DeleteUserButton userId={user.id} tenantId={tenant.id} userName={user.name} />
+                  )}
+                </div>
               </div>
             ))}
           </CardContent>
@@ -127,6 +136,8 @@ export default async function AdminTenantDetailPage({
           </CardContent>
         </Card>
       </section>
+
+      <ManualOabValidation tenantId={tenant.id} users={users ?? []} />
     </div>
   );
 }

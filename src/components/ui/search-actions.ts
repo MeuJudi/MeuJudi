@@ -33,10 +33,15 @@ export async function globalSearch(
   if (wantProcessos) {
     promises.push(
       (async () => {
+        const processoIds = profile.tenant_id
+          ? (await import("@/lib/processos/helpers")).getProcessIdsForTenant(supabase, profile.tenant_id)
+          : [];
+        const ids = await processoIds;
+        if (ids.length === 0) return [] as SearchHit[];
         const { data } = await supabase
           .from("processos")
           .select(PROCESS_FIELDS)
-          .eq("tenant_id", profile.tenant_id)
+          .in("id", ids)
           .or(
             `cnj.ilike.${term},titulo.ilike.${term},classe_judicial.ilike.${term},assunto_principal.ilike.${term},tags.cs.{${q}}`
           )

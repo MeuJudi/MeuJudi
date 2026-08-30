@@ -77,14 +77,14 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
       if (existente.valor_causa_extraido == null) {
         await supabase.from("comunicacoes_mural").update({ valor_causa_extraido: valorCausa }).eq("id", existente.id).eq("tenant_id", tenantId);
       }
-      await supabase.from("processos").update({ valor_causa: valorCausa }).eq("id", existente.processo_id).eq("tenant_id", tenantId).is("valor_causa", null);
+      await supabase.from("processos").update({ valor_causa: valorCausa }).eq("id", existente.processo_id).is("valor_causa", null);
     }
     if (existente.processo_id && (metadados.magistradoNome || metadados.orgaoJulgador)) {
       if (metadados.orgaoJulgador) {
-        await supabase.from("processos").update({ orgao_julgador: metadados.orgaoJulgador }).eq("id", existente.processo_id).eq("tenant_id", tenantId).is("orgao_julgador", null);
+        await supabase.from("processos").update({ orgao_julgador: metadados.orgaoJulgador }).eq("id", existente.processo_id).is("orgao_julgador", null);
       }
       if (metadados.magistradoNome) {
-        await supabase.from("processos").update({ magistrado_nome: metadados.magistradoNome, magistrado_tipo: metadados.magistradoTipo }).eq("id", existente.processo_id).eq("tenant_id", tenantId).is("magistrado_nome", null);
+        await supabase.from("processos").update({ magistrado_nome: metadados.magistradoNome, magistrado_tipo: metadados.magistradoTipo }).eq("id", existente.processo_id).is("magistrado_nome", null);
       }
       await supabase.from("comunicacoes_mural").update({
         ...(metadados.magistradoNome ? { magistrado_nome: metadados.magistradoNome, magistrado_tipo: metadados.magistradoTipo } : {}),
@@ -112,7 +112,7 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
           const updateProc: Record<string, unknown> = {};
           if (dataAudienciaIso) updateProc.proxima_audiencia = dataAudienciaIso;
           if (dataFatal) updateProc.prazo_proxima_resposta = dataFatal;
-          await supabase.from("processos").update(updateProc).eq("id", existente.processo_id).eq("tenant_id", tenantId);
+          await supabase.from("processos").update(updateProc).eq("id", existente.processo_id);
 
           if (dataAudienciaIso) {
             await aplicarAudienciaEncontrada(supabase, {
@@ -141,37 +141,46 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
   }
 
   let processoId: string;
+  // Compartilhamento: buscar processo por CNJ em QUALQUER tenant
   const { data: processo } = await supabase
     .from("processos")
     .select("id, data_ultima_movimentacao, valor_causa, orgao_julgador, magistrado_nome, data_ultima_comunicacao_mural")
-    .eq("tenant_id", tenantId)
     .eq("cnj", com.numero_processo)
     .maybeSingle();
   if (processo) {
     processoId = processo.id;
+    // Verificar se tenant já é participante
+    const { data: existingParticipation } = await supabase
+      .from("processo_participantes")
+      .select("id")
+      .eq("processo_id", processoId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (!existingParticipation) {
+      await supabase.from("processo_participantes").insert({
+        processo_id: processoId,
+        tenant_id: tenantId,
+        oab_number: "",
+        oab_uf: "",
+        source: "mural",
+      }).select("id").maybeSingle();
+    }
   } else {
     const { data: novoProcesso, error } = await supabase.from("processos").insert({
-      tenant_id: tenantId,
       cnj: com.numero_processo,
       tribunal: normalizarTribunalSigla(com.siglaTribunal),
       classe_codigo: com.codigoClasse ? parseInt(com.codigoClasse) : null,
       classe_nome: com.nomeClasse ?? null,
       status: "ativo",
+      created_by_tenant: tenantId,
       ultima_sync_mural: new Date().toISOString(),
     }).select("id").single();
     if (error) {
-      // 23505 = unique_violation (tenant_id, cnj) — mesma corrida que o
-      // PDPJ já trata (ver src/app/api/cs/sync/pdpj/route.ts): PDPJ e
-      // Mural podem descobrir o mesmo CNJ quase ao mesmo tempo (mais
-      // provável ainda logo que uma OAB nova é cadastrada, quando os dois
-      // varrem ela pela primeira vez no mesmo ciclo). Antes essa corrida
-      // subia como exceção não tratada aqui; agora recupera o id já
-      // criado pela outra fonte em vez de derrubar a tarefa inteira.
+      // 23505 = unique_violation (cnj) — corrida com outra tarefa
       if (error.code === "23505") {
         const { data: refetched } = await supabase
           .from("processos")
           .select("id")
-          .eq("tenant_id", tenantId)
           .eq("cnj", com.numero_processo)
           .maybeSingle();
         if (!refetched) throw new Error(`Corrida ao criar processo ${com.numero_processo}, mas não achou a linha existente: ${error.message}`);
@@ -181,6 +190,14 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
       }
     } else if (novoProcesso) {
       processoId = novoProcesso.id;
+      // Vincular tenant ao novo processo
+      await supabase.from("processo_participantes").insert({
+        processo_id: processoId,
+        tenant_id: tenantId,
+        oab_number: "",
+        oab_uf: "",
+        source: "mural",
+      }).select("id").maybeSingle();
     } else {
       throw new Error(`Falha ao criar processo ${com.numero_processo}: insert não retornou id.`);
     }
@@ -278,7 +295,7 @@ export async function processarComunicacao(supabase: SupabaseClient, tenantId: s
       ? processo.data_ultima_comunicacao_mural
       : com.data_disponibilizacao,
     ultima_sync_mural: new Date().toISOString(),
-  }).eq("id", processoId).eq("tenant_id", tenantId);
+  }).eq("id", processoId);
   if (processoError) throw new Error(`Falha ao atualizar processo ${processoId}: ${processoError.message}`);
   await vincularProcessoAoCatalogo(supabase, processoId, com.siglaTribunal, "mural");
 

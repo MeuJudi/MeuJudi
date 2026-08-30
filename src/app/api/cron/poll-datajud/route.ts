@@ -112,16 +112,20 @@ export async function POST(req: NextRequest) {
   const resultado = { tenants_processados: 0, processos_atualizados: 0, sem_mudanca: 0, erros: 0, parou_por_orcamento_de_tempo: false, duracao_ms: 0 };
   const tribunaisSincronizados = new Set<string>();
 
+  const { getProcessIdsForTenant } = await import("@/lib/processos/helpers");
+
   for (const tenant of tenantsDaVez) {
     if (Date.now() - inicioExecucao > ORCAMENTO_TEMPO_MS) {
       resultado.parou_por_orcamento_de_tempo = true;
       break;
     }
 
+    const processoIds = await getProcessIdsForTenant(supabase, tenant.id);
+    if (processoIds.length === 0) { resultado.tenants_processados++; continue; }
     const { data: processos, error: processosError } = await supabase
       .from("processos")
       .select("id, cnj, data_ultima_movimentacao, data_ultima_movimentacao_datajud")
-      .eq("tenant_id", tenant.id)
+      .in("id", processoIds)
       .eq("status", "ativo")
       .eq("nivel_sigilo", 0)
       .order("ultima_sync_datajud", { ascending: true, nullsFirst: true })

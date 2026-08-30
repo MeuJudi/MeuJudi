@@ -31,12 +31,16 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
   if (active?.id) return NextResponse.json({ ok: true, jobId: active.id, resumed: true });
 
-  const { count, error: countError } = await supabase
-    .from("processos")
-    .select("id", { count: "exact", head: true })
-    .eq("tenant_id", device.tenantId)
-    .eq("status", "ativo")
-    .eq("nivel_sigilo", 0);
+  const { getProcessIdsForTenant } = await import("@/lib/processos/helpers");
+  const processoIds = await getProcessIdsForTenant(supabase, device.tenantId);
+  const { count, error: countError } = processoIds.length === 0
+    ? { count: 0, error: null }
+    : await supabase
+      .from("processos")
+      .select("id", { count: "exact", head: true })
+      .in("id", processoIds)
+      .eq("status", "ativo")
+      .eq("nivel_sigilo", 0);
   if (countError) {
     console.error("[cs/sync/datajud/trigger] falha ao contar processos:", countError.message);
     return NextResponse.json({ error: "falha_ao_contar_processos" }, { status: 500 });

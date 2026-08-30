@@ -429,11 +429,12 @@ export type ConfirmADVStatus =
 // ============================================================
 
 /**
- * InformaÃ§Ãµes do cert. A1 detectado no Windows.
+ * Informações do cert. detectado no Windows (A1 ou A3).
  */
 export interface CertA1Info {
   found: boolean;
-  subject?: string;          // "LUÃS FELLYPE DE ARAÃšJO:12345678900"
+  certType?: 'A1' | 'A3';   // A1 = arquivo .pfx, A3 = token/smart card
+  subject?: string;          // "LUÍS FELLYPE DE ARAÚJO:12345678900"
   cpf?: string;              // "12345678900"
   issuer?: string;           // "CN=AC OAB G3"
   validFrom?: string;        // ISO 8601
@@ -442,7 +443,9 @@ export interface CertA1Info {
   daysToExpire?: number;
   hasPrivateKey?: boolean;
   thumbprint?: string;
-  error?: string;            // erro se nÃ£o conseguiu detectar
+  provider?: string;         // "SafeSign IC Standard Windows CSP" (A3)
+  keyExportable?: boolean;   // false para maioria dos A3
+  error?: string;            // erro se não conseguiu detectar
 }
 
 /**

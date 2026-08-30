@@ -419,7 +419,8 @@ export class PdpjAuth {
 
           if (certificateList.length === 0) {
             logger.warn('Nenhum cert. disponível no Windows Cert Store!');
-            logger.warn('O usuário precisa instalar o cert. A1 antes de continuar');
+            logger.warn('Para A1: instale o .pfx no Windows');
+            logger.warn('Para A3: conecte o token e verifique o middleware');
             recordDiagnosticEvent('certificate_selection_failed', 'error', 'Nenhum certificado disponivel para o Chromium', {
               urlHost: safeHost(url),
             });
@@ -1204,21 +1205,29 @@ export class PdpjAuth {
 
   private showCertNotFoundError(): void {
     logger.error('========================================');
-    logger.error('CERT. A1 NÃO ENCONTRADO NO WINDOWS');
+    logger.error('CERTIFICADO NÃO ENCONTRADO NO WINDOWS');
     logger.error('========================================');
     logger.error('O usuário precisa:');
-    logger.error('  1. Instalar o cert. A1 (.pfx) no Windows:');
-    logger.error('     - Clique 2x no arquivo .pfx');
-    logger.error('     - "Instalar certificado" → "Pessoal"');
-    logger.error('     - Digite a senha do cert.');
-    logger.error('     - MARQUE "Marcar como exportável"');
-    logger.error('  2. Verificar em certmgr.msc → Pessoal → Certificados');
+    logger.error('');
+    logger.error('Para cert. A1 (.pfx):');
+    logger.error('  1. Clique 2x no arquivo .pfx');
+    logger.error('  2. "Instalar certificado" → "Pessoal"');
+    logger.error('  3. Digite a senha do cert.');
+    logger.error('  4. MARQUE "Marcar como exportável"');
+    logger.error('');
+    logger.error('Para cert. A3 (token/smart card):');
+    logger.error('  1. Conecte o token no USB');
+    logger.error('  2. Instale o middleware (SafeSign/SafeID) se ainda não instalou');
+    logger.error('  3. Abra o gerenciador do token e verifique se o cert. aparece');
+    logger.error('  4. Teste em: Certificados → Pessoal → verificar se o cert. A3 está lá');
+    logger.error('');
+    logger.error('Verificar em certmgr.msc → Pessoal → Certificados');
     logger.error('========================================');
   }
 
   private showCertRejectedError(): void {
     logger.error('========================================');
-    logger.error('CERT. A1 REJEITADO PELO PJe');
+    logger.error('CERTIFICADO REJEITADO PELO PJe');
     logger.error('Código de erro: -501 (ERR_BAD_SSL_CLIENT_AUTH_CERT)');
     logger.error('========================================');
     logger.error('Possíveis causas:');
@@ -1226,7 +1235,13 @@ export class PdpjAuth {
     logger.error('  2. Cert. revogado pela AC');
     logger.error('  3. PJe não confia na AC que emitiu o cert.');
     logger.error('  4. Popup do cert. foi cancelado pelo usuário');
-    logger.error('  5. Cert. não é e-CPF A1 (pode ser A3 ou A4)');
+    logger.error('  5. PIN do token não foi digitado ou incorreto');
+    logger.error('');
+    logger.error('Para cert. A3 (token):');
+    logger.error('  - Verifique se o token está conecto');
+    logger.error('  - Abra o gerenciador do token e digite o PIN');
+    logger.error('  - Teste o cert. em: certmgr.msc → Pessoal');
+    logger.error('  - Reinicie o navegador se necessário');
     logger.error('========================================');
   }
 

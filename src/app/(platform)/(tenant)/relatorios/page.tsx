@@ -14,7 +14,16 @@ export default async function RelatoriosPage() {
   if (!tenantId) return <RelatoriosView data={{ processes: [], clients: 0, tasks: [], movements: 0 }} />;
 
   const [{ data: processes }, { count: clients }, { data: tasks }, { count: movements }] = await Promise.all([
-    supabase.from("processos").select("id, status, tribunal, prazo_proxima_resposta").eq("tenant_id", tenantId),
+    // Buscar IDs via processo_participantes, depois buscar processos
+    (async () => {
+      const { data: pp } = await supabase
+        .from("processo_participantes")
+        .select("processo_id")
+        .eq("tenant_id", tenantId);
+      const ids = (pp ?? []).map((p) => p.processo_id);
+      if (ids.length === 0) return { data: [], error: null } as const;
+      return supabase.from("processos").select("id, status, tribunal, prazo_proxima_resposta").in("id", ids);
+    })(),
     supabase.from("clientes").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),
     supabase.from("tarefas").select("id, priority, due_date").eq("tenant_id", tenantId),
     supabase.from("movimentacoes").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("is_novo", true),

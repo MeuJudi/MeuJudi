@@ -53,7 +53,7 @@ export async function sincronizarProcessoDataJud(
     data_ultima_movimentacao_datajud: dataFreshIso,
     ...(dataFresh > dataLocal && (!globalDate || dataFresh > globalDate) ? { data_ultima_movimentacao: dataFreshIso } : {}),
   };
-  const { error: processError } = await supabase.from("processos").update(update).eq("id", processo.id).eq("tenant_id", tenantId);
+  const { error: processError } = await supabase.from("processos").update(update).eq("id", processo.id);
   if (processError) throw processError;
   await vincularProcessoAoCatalogo(supabase, processo.id, metadata.tribunal, "datajud");
   if (dataFresh <= dataLocal) return { status: "sem_mudanca" as const, movimentacoes: 0 };

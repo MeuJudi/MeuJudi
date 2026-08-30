@@ -24,14 +24,18 @@ export async function POST(request: NextRequest) {
 
   await supabase.from("datajud_sync_jobs").update({ status: "running", started_at: job.status === "pending" ? new Date().toISOString() : undefined, heartbeat_at: new Date().toISOString() }).eq("id", job.id);
 
-  const { data: processes, error: processError } = await supabase
-    .from("processos")
-    .select("id, cnj, data_ultima_movimentacao, data_ultima_movimentacao_datajud")
-    .eq("tenant_id", job.tenant_id)
-    .eq("status", "ativo")
-    .eq("nivel_sigilo", 0)
-    .order("id", { ascending: true })
-    .range(job.next_offset, job.next_offset + BATCH_SIZE - 1);
+  const { getProcessIdsForTenant } = await import("@/lib/processos/helpers");
+  const processoIds = await getProcessIdsForTenant(supabase, job.tenant_id);
+  const batchIds = processoIds.slice(job.next_offset, job.next_offset + BATCH_SIZE);
+  const { data: processes, error: processError } = batchIds.length === 0
+    ? { data: [], error: null }
+    : await supabase
+      .from("processos")
+      .select("id, cnj, data_ultima_movimentacao, data_ultima_movimentacao_datajud")
+      .in("id", batchIds)
+      .eq("status", "ativo")
+      .eq("nivel_sigilo", 0)
+      .order("id", { ascending: true });
   if (processError) {
     await supabase.from("datajud_sync_jobs").update({ status: "failed", last_error: processError.message, completed_at: new Date().toISOString() }).eq("id", job.id);
     return NextResponse.json({ error: processError.message }, { status: 500 });

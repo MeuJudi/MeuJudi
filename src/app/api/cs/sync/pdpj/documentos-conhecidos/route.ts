@@ -44,7 +44,6 @@ export async function POST(request: NextRequest) {
   const { data: processo } = await supabase
     .from("processos")
     .select("id")
-    .eq("tenant_id", device.tenantId)
     .eq("cnj", cnj)
     .maybeSingle();
 

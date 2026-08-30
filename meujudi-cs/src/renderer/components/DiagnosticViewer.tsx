@@ -117,7 +117,7 @@ function DiagnosticSummary({ report }: { report: DiagnosticReport }) {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
         <div>
-          <p className="text-gray-600">Cert. A1</p>
+          <p className="text-gray-600">Cert. {report.certA1.certType === 'A3' ? 'A3' : 'A1'}</p>
           <p className="font-mono">
             {!report.certA1.found ? '❌' : report.certA1.expired ? '❌ Expirado' : '✅'}
           </p>
@@ -195,11 +195,15 @@ function DiagnosticDetails({ report }: { report: DiagnosticReport }) {
         </div>
         <hr />
         <div className="flex justify-between">
-          <span className="text-gray-500">Cert. A1 encontrado:</span>
+          <span className="text-gray-500">Certificado encontrado:</span>
           <span>{report.certA1.found ? '✅ Sim' : '❌ Não'}</span>
         </div>
         {report.certA1.found && (
           <>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Tipo:</span>
+              <span>{report.certA1.certType === 'A3' ? 'A3 (token/smart card)' : 'A1 (.pfx)'}</span>
+            </div>
             <div className="flex justify-between">
               <span className="text-gray-500">CPF:</span>
               <span>{report.certA1.cpf || '—'}</span>
@@ -208,6 +212,12 @@ function DiagnosticDetails({ report }: { report: DiagnosticReport }) {
               <span className="text-gray-500">Subject:</span>
               <span className="truncate ml-2">{report.certA1.subject || '—'}</span>
             </div>
+            {report.certA1.provider && (
+              <div className="flex justify-between">
+                <span className="text-gray-500">Provider:</span>
+                <span className="truncate ml-2">{report.certA1.provider}</span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="text-gray-500">Expira em:</span>
               <span>

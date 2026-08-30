@@ -38,8 +38,7 @@ export async function aplicarPrazoEncontrado(
   await supabase
     .from("processos")
     .update({ prazo_proxima_resposta: dataFatal })
-    .eq("id", params.processoId)
-    .eq("tenant_id", params.tenantId);
+    .eq("id", params.processoId);
 
   const { error } = await supabase.from("agenda_eventos").upsert(
     {
@@ -93,8 +92,7 @@ export async function aplicarAudienciaEncontrada(
   await supabase
     .from("processos")
     .update({ proxima_audiencia: params.dataAudienciaIso })
-    .eq("id", params.processoId)
-    .eq("tenant_id", params.tenantId);
+    .eq("id", params.processoId);
 
   const { error } = await supabase.from("agenda_eventos").upsert(
     {

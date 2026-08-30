@@ -68,17 +68,21 @@ export async function buscarProcessosCandidatosPdpj(
   limiteAntiguidadeIso: string,
 ): Promise<ProcessoCandidato[]> {
   const candidatos: ProcessoCandidato[] = [];
+  const { getProcessIdsForTenant } = await import("@/lib/processos/helpers");
+  const processoIds = await getProcessIdsForTenant(supabase, tenantId);
+  if (processoIds.length === 0) return candidatos;
   let offset = 0;
   while (true) {
+    const batch = processoIds.slice(offset, offset + PAGE_SIZE);
+    if (batch.length === 0) break;
     const { data, error } = await supabase
       .from("processos")
       .select("id, cnj")
-      .eq("tenant_id", tenantId)
+      .in("id", batch)
       .eq("status", "ativo")
       .is("pdpj_acesso_negado_em", null)
       .or(`ultima_sync_pdpj.is.null,ultima_sync_pdpj.lt.${limiteAntiguidadeIso}`)
-      .order("ultima_sync_pdpj", { ascending: true, nullsFirst: true })
-      .range(offset, offset + PAGE_SIZE - 1);
+      .order("ultima_sync_pdpj", { ascending: true, nullsFirst: true });
     if (error) throw new Error(`Falha ao buscar processos candidatos a reescaneio PDPJ: ${error.message}`);
     for (const row of data ?? []) {
       if (row.cnj) candidatos.push({ id: row.id as string, cnj: row.cnj as string });

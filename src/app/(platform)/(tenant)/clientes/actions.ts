@@ -278,11 +278,14 @@ export async function autoLinkByDocument(tenantId: string) {
   if (!clientes?.length) return { linked: 0 };
 
   let linked = 0;
+  const { getProcessIdsForTenant } = await import("@/lib/processos/helpers");
+  const tenantProcessIds = await getProcessIdsForTenant(supabase, tenantId);
   for (const cliente of clientes) {
+    if (tenantProcessIds.length === 0) break;
     const { data: processos } = await supabase
       .from("processos")
       .select("id")
-      .eq("tenant_id", tenantId)
+      .in("id", tenantProcessIds)
       .or(`autor.ilike.%${cliente.name}%,reu.ilike.%${cliente.name}%`);
 
     if (!processos?.length) continue;

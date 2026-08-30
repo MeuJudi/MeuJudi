@@ -59,16 +59,20 @@ export async function POST(req: NextRequest) {
       // mas pagina do mesmo jeito, por segurança, caso o escritório tenha
       // um volume grande de urgências ao mesmo tempo.
       const candidatos: { id: string; cnj: string }[] = [];
+      const { getProcessIdsForTenant } = await import("@/lib/processos/helpers");
+      const processoIds = await getProcessIdsForTenant(supabase, tenant.id);
+      if (processoIds.length === 0) break;
       let offset = 0;
       while (true) {
+        const batch = processoIds.slice(offset, offset + PAGE_SIZE);
+        if (batch.length === 0) break;
         const { data, error } = await supabase
           .from("processos")
           .select("id, cnj")
-          .eq("tenant_id", tenant.id)
+          .in("id", batch)
           .eq("status", "ativo")
           .is("pdpj_acesso_negado_em", null)
-          .or(`prazo_proxima_resposta.lte.${limiteFuturo},proxima_audiencia.lte.${limiteFuturo}`)
-          .range(offset, offset + PAGE_SIZE - 1);
+          .or(`prazo_proxima_resposta.lte.${limiteFuturo},proxima_audiencia.lte.${limiteFuturo}`);
         if (error) throw new Error(`Falha ao buscar processos urgentes: ${error.message}`);
         for (const row of data ?? []) {
           if (row.cnj) candidatos.push({ id: row.id as string, cnj: row.cnj as string });

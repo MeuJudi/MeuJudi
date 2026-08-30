@@ -146,11 +146,19 @@ export async function moveProcessToColumn(processId: string, columnId: string) {
   const { supabase } = await requireAppUser();
   const column = await assertColumnAccess(supabase, columnId);
 
+  // Verificar que o tenant participa deste processo
+  const { data: pp } = await supabase
+    .from("processo_participantes")
+    .select("id")
+    .eq("processo_id", processId)
+    .eq("tenant_id", column.tenant_id)
+    .maybeSingle();
+  if (!pp) throw new Error("Processo não pertence a este escritório.");
+
   const { error } = await supabase
     .from("processos")
     .update({ kanban_column_id: column.id, updated_at: new Date().toISOString() })
-    .eq("id", processId)
-    .eq("tenant_id", column.tenant_id);
+    .eq("id", processId);
 
   if (error) {
     throw new Error(error.message);
@@ -250,10 +258,17 @@ export async function deleteKanbanColumn(columnId: string, targetColumnId: strin
     throw new Error("As colunas precisam pertencer ao mesmo escritorio.");
   }
 
+  // Buscar processos na coluna fonte que pertencem a este escritório
+  const { data: ppRows } = await supabase
+    .from("processo_participantes")
+    .select("processo_id")
+    .eq("tenant_id", source.tenant_id);
+  const ids = (ppRows ?? []).map((p) => p.processo_id);
+
   const { error: moveError } = await supabase
     .from("processos")
     .update({ kanban_column_id: target.id, updated_at: new Date().toISOString() })
-    .eq("tenant_id", source.tenant_id)
+    .in("id", ids)
     .eq("kanban_column_id", source.id);
 
   if (moveError) {
@@ -283,7 +298,6 @@ export async function syncProcessDataJudNow(processId: string) {
       .from("processos")
       .select("id, cnj, data_ultima_movimentacao, data_ultima_movimentacao_datajud")
       .eq("id", processId)
-      .eq("tenant_id", profile.tenant_id)
       .single();
     if (error) throw new Error(`Falha ao localizar processo: ${error.message}`);
     if (!processRow) throw new Error("Processo não encontrado.");
@@ -311,12 +325,16 @@ export async function startTenantDataJudSyncJob() {
       .maybeSingle();
     if (active?.id) return { ok: true as const, jobId: active.id as string, resumed: true as const };
 
-    const { count, error: countError } = await supabase
-      .from("processos")
-      .select("id", { count: "exact", head: true })
-      .eq("tenant_id", profile.tenant_id)
-      .eq("status", "ativo")
-      .eq("nivel_sigilo", 0);
+    const { getProcessIdsForTenant } = await import("@/lib/processos/helpers");
+    const processoIds = await getProcessIdsForTenant(supabase, profile.tenant_id);
+    const { count, error: countError } = processoIds.length === 0
+      ? { count: 0, error: null }
+      : await supabase
+        .from("processos")
+        .select("id", { count: "exact", head: true })
+        .in("id", processoIds)
+        .eq("status", "ativo")
+        .eq("nivel_sigilo", 0);
     if (countError) throw new Error(`Falha ao contar processos: ${countError.message}`);
 
     const { data: job, error } = await supabase
@@ -431,10 +449,13 @@ export async function syncTenantDataJudNow() {
     const { supabase, profile } = await requireAppUser();
     if (!profile.tenant_id) return { ok: false as const, message: "Usuário sem escritório vinculado." };
 
+    const { getProcessIdsForTenant } = await import("@/lib/processos/helpers");
+    const processoIds = await getProcessIdsForTenant(supabase, profile.tenant_id);
+    if (processoIds.length === 0) return { processados: 0, atualizados: 0, sem_mudanca: 0, nao_encontrados: 0, erros: 0 };
     const { data: processes, error } = await supabase
       .from("processos")
       .select("id, cnj, data_ultima_movimentacao, data_ultima_movimentacao_datajud")
-      .eq("tenant_id", profile.tenant_id)
+      .in("id", processoIds)
       .eq("status", "ativo")
       .eq("nivel_sigilo", 0);
     if (error) throw new Error(`Falha ao listar processos: ${error.message}`);
@@ -601,14 +622,17 @@ export async function syncTenantDataJudBatch(offset = 0, batchSize = 3) {
 
     const safeOffset = Math.max(0, Math.floor(offset));
     const safeBatchSize = Math.min(5, Math.max(1, Math.floor(batchSize)));
+    const { getProcessIdsForTenant } = await import("@/lib/processos/helpers");
+    const allProcessIds = await getProcessIdsForTenant(supabase, profile.tenant_id);
+    const batchIds = allProcessIds.slice(safeOffset, safeOffset + safeBatchSize);
+    if (batchIds.length === 0) return { ok: true as const, processados: 0, atualizados: 0, sem_mudanca: 0, nao_encontrados: 0, erros: 0, offset: safeOffset, nextOffset: safeOffset, total: allProcessIds.length, done: true };
     const { data: processes, count, error } = await supabase
       .from("processos")
       .select("id, cnj, data_ultima_movimentacao, data_ultima_movimentacao_datajud", { count: "exact" })
-      .eq("tenant_id", profile.tenant_id)
+      .in("id", batchIds)
       .eq("status", "ativo")
       .eq("nivel_sigilo", 0)
-      .order("id", { ascending: true })
-      .range(safeOffset, safeOffset + safeBatchSize - 1);
+      .order("id", { ascending: true });
     if (error) throw new Error(`Falha ao listar processos: ${error.message}`);
 
     const result = { processados: 0, atualizados: 0, sem_mudanca: 0, nao_encontrados: 0, erros: 0 };
@@ -627,9 +651,9 @@ export async function syncTenantDataJudBatch(offset = 0, batchSize = 3) {
     }
 
     const nextOffset = safeOffset + (processes?.length ?? 0);
-    const done = nextOffset >= (count ?? 0) || (processes?.length ?? 0) < safeBatchSize;
+    const done = nextOffset >= allProcessIds.length || (processes?.length ?? 0) < safeBatchSize;
     if (done) revalidatePath("/monitoramento");
-    return { ok: true as const, ...result, offset: safeOffset, nextOffset, total: count ?? 0, done };
+    return { ok: true as const, ...result, offset: safeOffset, nextOffset, total: allProcessIds.length, done };
   } catch (error) {
     console.error("[monitoramento] lote DataJud falhou:", error);
     return { ok: false as const, message: syncErrorMessage(error) };
@@ -651,7 +675,6 @@ export async function syncProcessMuralNow(processId: string) {
       .from("processos")
       .select("id, cnj")
       .eq("id", processId)
-      .eq("tenant_id", profile.tenant_id)
       .single();
     if (processError) throw new Error(`Falha ao localizar processo: ${processError.message}`);
     if (!process) throw new Error("Processo não encontrado.");
@@ -766,7 +789,7 @@ export async function createSampleProcesses() {
 
   const { data: processes, error } = await supabase
     .from("processos")
-    .upsert(rows, { onConflict: "tenant_id,cnj" })
+    .upsert(rows, { onConflict: "cnj" })
     .select("id, cnj, classe_nome, tribunal, proxima_audiencia, prazo_proxima_resposta");
 
   if (error) {

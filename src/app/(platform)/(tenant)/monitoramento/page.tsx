@@ -150,20 +150,30 @@ async function fetchAllProcessRows(
   const rows: ProcessRow[] = [];
   let page = 0;
 
+  // Buscar IDs dos processos que o tenant participa (via processo_participantes)
+  const { data: participacoes, error: ppError } = await supabase
+    .from("processo_participantes")
+    .select("processo_id")
+    .eq("tenant_id", tenantId);
+
+  if (ppError) throw new Error(`Falha ao carregar participações: ${ppError.message}`);
+
+  const processoIds = (participacoes ?? []).map((p) => p.processo_id);
+  if (processoIds.length === 0) return [];
+
   while (true) {
     const from = page * pageSize;
     const to = from + pageSize - 1;
     const { data, error } = await supabase
       .from("processos")
       .select("id, cnj, tribunal, classe_nome, autor, reu, prazo_proxima_resposta, proxima_audiencia, status, kanban_column_id, tags, is_favorito, data_ultima_movimentacao, responsavel_id, created_at, ultima_sync_mural")
-      .eq("tenant_id", tenantId)
-      .order("created_at", { ascending: false })
-      .range(from, to);
+      .in("id", processoIds.slice(from, to + 1))
+      .order("created_at", { ascending: false });
 
     if (error) throw new Error(`Falha ao carregar processos: ${error.message}`);
 
     rows.push(...((data ?? []) as ProcessRow[]));
-    if (!data || data.length < pageSize) return rows;
+    if (processoIds.length <= to + 1) return rows;
     page += 1;
   }
 }
@@ -197,11 +207,19 @@ export default async function MonitoramentoPage({
   const defaultColumnId = kanbanColumns[0]?.id ?? null;
 
   if (defaultColumnId) {
-    await supabase
-      .from("processos")
-      .update({ kanban_column_id: defaultColumnId })
-      .eq("tenant_id", tenantId)
-      .is("kanban_column_id", null);
+    // Buscar IDs dos processos do tenant para atualizar kanban_column_id
+    const { data: pp } = await supabase
+      .from("processo_participantes")
+      .select("processo_id")
+      .eq("tenant_id", tenantId);
+    const ids = (pp ?? []).map((p) => p.processo_id);
+    if (ids.length > 0) {
+      await supabase
+        .from("processos")
+        .update({ kanban_column_id: defaultColumnId })
+        .in("id", ids)
+        .is("kanban_column_id", null);
+    }
   }
 
   const [processRows, { data: movementRows }, { data: muralRows }, { count: unreadCount }, { count: urgentTodayCount }, { data: sourceValidation }] = await Promise.all([
@@ -225,13 +243,21 @@ export default async function MonitoramentoPage({
       .eq("tenant_id", tenantId)
       .eq("is_novo", true)
       .gte("data_movimento", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
-    // Urgentes hoje: prazo_proxima_resposta = hoje
-    supabase
-      .from("processos")
-      .select("id", { count: "exact", head: true })
-      .eq("tenant_id", tenantId)
-      .eq("status", "ativo")
-      .eq("prazo_proxima_resposta", new Date().toISOString().split("T")[0]),
+    // Urgentes hoje: prazo_proxima_resposta = hoje (via processo_participantes)
+    (async () => {
+      const { data: pp2 } = await supabase
+        .from("processo_participantes")
+        .select("processo_id")
+        .eq("tenant_id", tenantId);
+      const ids2 = (pp2 ?? []).map((p) => p.processo_id);
+      if (ids2.length === 0) return { count: 0, error: null } as const;
+      return supabase
+        .from("processos")
+        .select("id", { count: "exact", head: true })
+        .in("id", ids2)
+        .eq("status", "ativo")
+        .eq("prazo_proxima_resposta", new Date().toISOString().split("T")[0]);
+    })(),
     // Status da fonte: última validação positiva (Fase 4 da integração).
     // Quando o gate liberou o tenant, é esse registro que justifica a liberação.
     supabase

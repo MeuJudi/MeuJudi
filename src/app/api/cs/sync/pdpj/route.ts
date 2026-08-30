@@ -69,7 +69,6 @@ async function aplicarMetadadosPdpj(supabase: SupabaseClient, tenantId: string, 
     .from("processos")
     .select("tribunal, classe_nome, assuntos, valor_causa, orgao_julgador, data_ajuizamento, autor, reu")
     .eq("id", processoId)
-    .eq("tenant_id", tenantId)
     .maybeSingle();
   if (!processo) return;
 
@@ -88,7 +87,7 @@ async function aplicarMetadadosPdpj(supabase: SupabaseClient, tenantId: string, 
   if (metadata.reu && !processo.reu) update.reu = metadata.reu;
 
   if (Object.keys(update).length === 0) return;
-  const { error } = await supabase.from("processos").update(update).eq("id", processoId).eq("tenant_id", tenantId);
+  const { error } = await supabase.from("processos").update(update).eq("id", processoId);
   if (error) console.error("[cs/sync/pdpj] falha ao aplicar metadados do PDPJ:", error.message);
 }
 
@@ -138,35 +137,62 @@ export async function POST(request: NextRequest) {
   const documentos = selecionarDocumentosValidos(body.documentos);
   const now = new Date().toISOString();
 
-  const { data: existing } = await supabase
+  // Compartilhamento: buscar processo por CNJ em QUALQUER tenant
+  const { data: existingGlobal } = await supabase
     .from("processos")
-    .select("id")
-    .eq("tenant_id", device.tenantId)
+    .select("id, tenant_id")
     .eq("cnj", cnj)
     .maybeSingle();
 
-  let processoId = existing?.id as string | undefined;
+  let processoId = existingGlobal?.id as string | undefined;
+  let createdNew = false;
 
   if (processoId) {
+    // Processo já existe em algum tenant — verificar se este tenant já é participante
+    const { data: existingParticipation } = await supabase
+      .from("processo_participantes")
+      .select("id")
+      .eq("processo_id", processoId)
+      .eq("tenant_id", device.tenantId)
+      .maybeSingle();
+
+    if (!existingParticipation) {
+      // Tenant não é participante — adicionar vínculo (sem baixar dados do zero)
+      await supabase.from("processo_participantes").insert({
+        processo_id: processoId,
+        tenant_id: device.tenantId,
+        oab_number: body.oabNumber ?? "",
+        oab_uf: body.oabUf ?? "",
+        source: "pdpj",
+      }).select("id").maybeSingle();
+    }
+
+    // Atualizar timestamps de sync
     const { error } = await supabase
       .from("processos")
       .update({ ultima_sync_pje: now, ultima_sync_pdpj: now })
-      .eq("id", processoId)
-      .eq("tenant_id", device.tenantId);
+      .eq("id", processoId);
     if (error) {
       console.error("[cs/sync/pdpj] falha ao atualizar processo:", error);
       return NextResponse.json({ error: "processo_nao_atualizado" }, { status: 500 });
     }
   } else {
+    // Processo novo — criar e vincular tenant
     const { data: inserted, error } = await supabase
       .from("processos")
-      .insert({ tenant_id: device.tenantId, cnj, source_context: "private_cs", ultima_sync_pje: now, ultima_sync_pdpj: now })
+      .insert({
+        cnj,
+        source_context: "private_cs",
+        created_by_tenant: device.tenantId,
+        ultima_sync_pje: now,
+        ultima_sync_pdpj: now,
+      })
       .select("id")
       .maybeSingle();
     if (error) {
-      // 23505 = unique_violation (tenant_id, cnj) — corrida com outra tarefa; recupera o id existente.
+      // 23505 = unique_violation (cnj) — corrida com outra tarefa
       if (error.code === "23505") {
-        const { data: refetched } = await supabase.from("processos").select("id").eq("tenant_id", device.tenantId).eq("cnj", cnj).maybeSingle();
+        const { data: refetched } = await supabase.from("processos").select("id").eq("cnj", cnj).maybeSingle();
         processoId = refetched?.id;
       } else {
         console.error("[cs/sync/pdpj] falha ao criar processo:", error);
@@ -174,6 +200,19 @@ export async function POST(request: NextRequest) {
       }
     } else {
       processoId = inserted?.id;
+      createdNew = true;
+    }
+
+    // Vincular tenant ao processo (auto_link_process_participant trigger já faz isso,
+    // mas garantimos que a participação existe para OAB específica)
+    if (processoId) {
+      await supabase.from("processo_participantes").insert({
+        processo_id: processoId,
+        tenant_id: device.tenantId,
+        oab_number: body.oabNumber ?? "",
+        oab_uf: body.oabUf ?? "",
+        source: "pdpj",
+      }).select("id").maybeSingle();
     }
   }
 
@@ -193,7 +232,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, processoId, created: !existing, documentosSalvos, textosProcessados, documentosRecebidos: documentos.length });
+  return NextResponse.json({ ok: true, processoId, created: createdNew, documentosSalvos, textosProcessados, documentosRecebidos: documentos.length });
 }
 
 /** Grava (ou atualiza) a linha do documento; devolve o id pra quem chamar poder processar o texto em seguida. */
@@ -252,7 +291,6 @@ async function processarTextoDocumento(
     .from("processos")
     .select("orgao_julgador, magistrado_nome, valor_causa, autor, reu")
     .eq("id", processoId)
-    .eq("tenant_id", tenantId)
     .maybeSingle();
 
   const valorCausa = converterValorMonetario(extraido.valorCausa?.replace(/^R\$\s*/i, "") ?? null);
@@ -266,7 +304,7 @@ async function processarTextoDocumento(
   if (autor && !processo?.autor) updateProcesso.autor = autor;
   if (reu && !processo?.reu) updateProcesso.reu = reu;
   if (Object.keys(updateProcesso).length > 0) {
-    const { error } = await supabase.from("processos").update(updateProcesso).eq("id", processoId).eq("tenant_id", tenantId);
+    const { error } = await supabase.from("processos").update(updateProcesso).eq("id", processoId);
     if (error) console.error("[cs/sync/pdpj] falha ao atualizar processo com dados extraídos:", error);
   }
 

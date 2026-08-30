@@ -146,8 +146,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ta
     const { error: processoError } = await supabase
       .from("processos")
       .update({ pdpj_acesso_negado_em: now })
-      .eq("id", updated.processo_id)
-      .eq("tenant_id", device.tenantId);
+      .eq("id", updated.processo_id);
     if (processoError) console.error("[cs/tasks/complete] falha ao marcar processo sem acesso PDPJ:", processoError);
   }
 
@@ -169,7 +168,6 @@ async function encontrarDonoDeOabComAcesso(
     .from("processos")
     .select("advogados")
     .eq("id", processoId)
-    .eq("tenant_id", tenantId)
     .maybeSingle();
   const advogados = Array.isArray(processo?.advogados) ? (processo.advogados as Array<{ oab?: string; uf?: string }>) : [];
   if (advogados.length === 0) return null;
