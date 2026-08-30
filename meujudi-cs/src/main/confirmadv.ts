@@ -306,7 +306,7 @@ export class ConfirmADVService {
       this.logLifecycle('browser_opened', 'info');
     });
 
-    window.webContents.on('did-navigate', (_event, url) => {
+    const handleNavigation = (url: string) => {
       this.resetInactivityTimeout(validation.id);
       const hint = inferEventFromUrl(url);
       if (!hint) return;
@@ -324,6 +324,22 @@ export class ConfirmADVService {
       // Não chamamos closeWindow aqui: se o reportEvent receber status
       // terminal do Web (ex.: validada), ele já dispara o closeWindow
       // internamente. Antes havia um setTimeout que duplicava o close.
+    };
+
+    // did-navigate: navegação completa (full page load)
+    window.webContents.on('did-navigate', (_event, url) => {
+      handleNavigation(url);
+    });
+
+    // did-navigate-in-page: navegação client-side (SPA) — o ConfirmADV
+    // pode usar History API / React Router para mudar a URL sem reload.
+    // Sem isso, /completed/{token} nunca é detectado e a validação
+    // fica presa em "aguardando" até o timeout de inatividade.
+    window.webContents.on('did-navigate-in-page', (_event, url, isMainFrame) => {
+      if (isMainFrame) {
+        this.logLifecycle('navigate_in_page', 'info', { url });
+        handleNavigation(url);
+      }
     });
 
     window.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
@@ -454,7 +470,9 @@ export class ConfirmADVService {
    * "o sistema nunca deve confiar em dado enviado pelo cliente").
    */
   private async reportarResultadoVerificacao(validationId: string, token: string | undefined, tentativa = 0): Promise<void> {
+    this.logLifecycle('report_result_start', 'info', { token, tentativa });
     if (!token) {
+      logger.warn('ConfirmADV: token não extraído da URL, reportando falha');
       await this.reportEvent(validationId, 'failed', { message: 'Não foi possível identificar a solicitação concluída.' });
       this.closeWindow('failed');
       return;
@@ -462,12 +480,15 @@ export class ConfirmADVService {
 
     let data: ConfirmADVVerificationData | null = null;
     try {
-      const response = await fetch(`${CONFIRMADV_BASE}/api/lawyer/${token}/verification`, {
+      const apiUrl = `${CONFIRMADV_BASE}/api/lawyer/${token}/verification`;
+      logger.info('ConfirmADV: consultando API de verificação:', apiUrl);
+      const response = await fetch(apiUrl, {
         headers: { Accept: 'application/json' },
       });
       if (response.ok) {
         const body = (await response.json()) as { data?: ConfirmADVVerificationData };
         data = body.data ?? null;
+        logger.info('ConfirmADV: resposta da API:', { isValidation: data?.isValidation, name: data?.name, status: data?.status });
       } else {
         logger.warn('ConfirmADV: consulta de resultado retornou HTTP', response.status);
       }
