@@ -464,11 +464,9 @@ export async function createInviteMember(formData: FormData) {
     throw new Error("Papel inválido");
   }
 
-  const { error } = await supabase.from("tenant_invites").insert({
-    tenant_id: profile.tenant_id,
-    email,
-    role,
-    invited_by: user.id,
+  const { error } = await supabase.rpc("create_tenant_invite", {
+    p_email: email,
+    p_role: role,
   });
 
   if (error) throw error;
