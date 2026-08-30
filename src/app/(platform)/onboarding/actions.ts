@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 
 export async function completeOnboarding(formData: FormData) {
   const tenantName = String(formData.get("tenant_name") ?? "").trim();
@@ -107,28 +108,30 @@ export async function createInvites(
 
   if (!user) throw new Error("Não autenticado");
 
-  const { data: profile } = await supabase
-    .from("users")
-    .select("tenant_id")
-    .eq("id", user.id)
-    .single();
-
-  if (!profile?.tenant_id) throw new Error("Tenant não encontrado");
-
+  const serviceClient = createServiceClient();
   const results: Array<{ email: string; error?: string }> = [];
 
   for (const invite of invites) {
-    const { error } = await supabase.from("tenant_invites").insert({
-      tenant_id: profile.tenant_id,
-      email: invite.email.toLowerCase().trim(),
-      role: invite.role,
-      invited_by: user.id,
+    const email = invite.email.toLowerCase().trim();
+    const { error } = await supabase.rpc("create_tenant_invite", {
+      p_email: email,
+      p_role: invite.role,
     });
 
-    results.push({
-      email: invite.email,
-      error: error?.message,
+    if (error) {
+      results.push({ email, error: error.message });
+      continue;
+    }
+
+    const { error: inviteError } = await serviceClient.auth.admin.inviteUserByEmail(email, {
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.meujudi.com.br"}/onboarding?flow=join`,
     });
+
+    if (inviteError) {
+      console.error("[onboarding] Failed to send invite email:", inviteError.message);
+    }
+
+    results.push({ email });
   }
 
   return results;

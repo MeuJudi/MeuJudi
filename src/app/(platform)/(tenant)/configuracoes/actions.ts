@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { stripMask } from "@/lib/masks";
 import { assertTenantWritable } from "@/lib/auth/access";
 import { dispararDescobertaInicial } from "@/lib/cs/descoberta-inicial";
@@ -464,12 +465,21 @@ export async function createInviteMember(formData: FormData) {
     throw new Error("Papel inválido");
   }
 
-  const { error } = await supabase.rpc("create_tenant_invite", {
+  const { data: inviteId, error } = await supabase.rpc("create_tenant_invite", {
     p_email: email,
     p_role: role,
   });
 
   if (error) throw error;
+
+  const serviceClient = createServiceClient();
+  const { error: inviteError } = await serviceClient.auth.admin.inviteUserByEmail(email, {
+    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.meujudi.com.br"}/onboarding?flow=join`,
+  });
+
+  if (inviteError) {
+    console.error("[equipe] Failed to send invite email:", inviteError.message);
+  }
 
   revalidatePath("/configuracoes/equipe");
   return { success: true };
