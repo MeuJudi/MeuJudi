@@ -1,5 +1,6 @@
 import { requireAppUser } from "@/lib/auth/guards";
 import { OabsForm } from "./oabs-form";
+import { OabDeleteButton } from "./oab-delete-button";
 import { cn } from "@/lib/utils";
 
 type OabRowData = {
@@ -111,6 +112,7 @@ export default async function OabsPage() {
                 <th className="px-4 py-3">OAB</th>
                 <th className="px-4 py-3">Vinculado a</th>
                 <th className="px-4 py-3">Tipo</th>
+                <th className="px-4 py-3 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--tenant-line)]">
@@ -157,6 +159,11 @@ export default async function OabsPage() {
                       >
                         {isPessoal ? "Pessoal" : "Institucional"}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {!isPessoal && (
+                        <OabDeleteButton oabId={oab.id} />
+                      )}
                     </td>
                   </tr>
                 );
