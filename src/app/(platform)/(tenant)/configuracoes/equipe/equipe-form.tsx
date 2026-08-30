@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Loader2, X, MailPlus } from "lucide-react";
+import { Loader2, X, MailPlus, ShieldCheck } from "lucide-react";
 import {
   updateMemberRole,
   deactivateMember,
   removeMember,
   revokeInvite,
   createInviteMember,
+  criarValidacaoOabParaMembro,
 } from "../actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { roleLabel } from "@/lib/auth/labels";
+import { ValidarOabModal } from "./validar-oab-modal";
 
 const roleLabels: Record<string, string> = {
   owner: roleLabel("owner"),
@@ -31,6 +33,8 @@ type Member = {
   is_active: boolean;
   avatar_url: string | null;
   last_login_at: string | null;
+  oab_number: string | null;
+  oab_uf: string | null;
 };
 
 type Invite = {
@@ -54,6 +58,7 @@ export function EquipeForm({ members, invites, currentUserId }: Props) {
   const [success, setSuccess] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("lawyer");
+  const [oabModalMember, setOabModalMember] = useState<Member | null>(null);
 
   function handleInvite(e: React.FormEvent) {
     e.preventDefault();
@@ -123,6 +128,12 @@ export function EquipeForm({ members, invites, currentUserId }: Props) {
     });
   }
 
+  async function handleValidarOab(data: { oab_number: string; oab_uf: string; professional_email: string; requester_name: string }) {
+    if (!oabModalMember) return;
+    setError(null);
+    await criarValidacaoOabParaMembro(oabModalMember.id, data);
+  }
+
   const activeMembers = members.filter((m) => m.is_active);
 
   return (
@@ -180,6 +191,17 @@ export function EquipeForm({ members, invites, currentUserId }: Props) {
                   </select>
                   {member.id !== currentUserId && (
                     <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setOabModalMember(member)}
+                        disabled={isPending}
+                        className="h-8 text-xs text-[var(--color-muted-foreground)] hover:text-[var(--tenant-brass)]"
+                        title="Validar OAB via ConfirmADV"
+                      >
+                        <ShieldCheck className="mr-1 h-3.5 w-3.5" />
+                        OAB
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -286,6 +308,15 @@ export function EquipeForm({ members, invites, currentUserId }: Props) {
             </div>
           </CardContent>
         </Card>
+      )}
+      {oabModalMember && (
+        <ValidarOabModal
+          memberName={oabModalMember.name}
+          memberOabNumber={oabModalMember.oab_number}
+          memberOabUf={oabModalMember.oab_uf}
+          onSubmit={handleValidarOab}
+          onClose={() => setOabModalMember(null)}
+        />
       )}
     </div>
   );

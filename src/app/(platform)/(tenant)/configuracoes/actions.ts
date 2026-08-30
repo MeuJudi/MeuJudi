@@ -193,6 +193,35 @@ export async function addOab(formData: FormData) {
     throw new Error("Número e UF são obrigatórios");
   }
 
+  // Verifica se a OAB já pertence a outro escritório
+  const { data: existsInOtherTenant } = await supabase
+    .from("escritorio_oabs")
+    .select("id, tenant_id")
+    .eq("oab_number", oabNumber)
+    .eq("oab_uf", oabUf)
+    .neq("tenant_id", profile.tenant_id)
+    .limit(1)
+    .maybeSingle();
+
+  if (existsInOtherTenant) {
+    throw new Error("Esta OAB já está vinculada a outro escritório no sistema");
+  }
+
+  // Verifica se a OAB já pertence a algum advogado (pessoal)
+  const { data: existsForLawyer } = await supabase
+    .from("users")
+    .select("id, name, email")
+    .eq("oab_number", oabNumber)
+    .eq("oab_uf", oabUf)
+    .limit(1)
+    .maybeSingle();
+
+  if (existsForLawyer) {
+    const nomeAdv = existsForLawyer.name || "um advogado";
+    throw new Error(`Esta OAB já está vinculada ao advogado: ${nomeAdv}`);
+  }
+
+  // Verifica se já existe neste escritório (duplicata local)
   const { data: existing } = await supabase
     .from("escritorio_oabs")
     .select("id")
@@ -582,4 +611,70 @@ export async function deleteAccount() {
   await supabase.auth.signOut();
 
   redirect("/login?success=account_deleted");
+}
+
+const STATUS_ATIVOS_OAB = ["pendente", "aguardando_cs", "recaptcha_em_andamento", "aguardando_codigo", "validando"] as const;
+
+export async function criarValidacaoOabParaMembro(
+  userId: string,
+  data: { oab_number: string; oab_uf: string; professional_email: string; requester_name: string }
+) {
+  await assertTenantWritable();
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("Não autenticado");
+
+  const { data: profile } = await supabase
+    .from("users")
+    .select("tenant_id, role")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile || profile.role !== "owner") {
+    throw new Error("Somente o owner pode validar OAB de membros");
+  }
+
+  const { count: dispositivosAtivos } = await supabase
+    .from("cs_devices")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", profile.tenant_id)
+    .is("revoked_at", null);
+
+  if (!dispositivosAtivos) {
+    throw new Error("Nenhum MeuJudi Sync pareado. Vá em Configurações → MeuJudi Sync para parear.");
+  }
+
+  const { data: existente } = await supabase
+    .from("oab_validations")
+    .select("id, status")
+    .eq("user_id", userId)
+    .in("status", STATUS_ATIVOS_OAB)
+    .order("created_at", { ascending: false })
+    .maybeSingle();
+
+  if (existente) {
+    return { id: existente.id as string, status: existente.status as string };
+  }
+
+  const { data: criada, error } = await supabase
+    .from("oab_validations")
+    .insert({
+      tenant_id: profile.tenant_id,
+      user_id: userId,
+      oab_number: data.oab_number,
+      oab_uf: data.oab_uf,
+      professional_email: data.professional_email,
+      requester_name: data.requester_name,
+      status: "pendente",
+    })
+    .select("id, status")
+    .single();
+
+  if (error || !criada) throw new Error(`Erro ao criar solicitação: ${error?.message ?? "desconhecido"}`);
+
+  revalidatePath("/configuracoes/equipe");
+  return { id: criada.id as string, status: criada.status as string };
 }
