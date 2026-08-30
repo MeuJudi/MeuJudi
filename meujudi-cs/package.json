@@ -1,6 +1,6 @@
 {
   "name": "meujudi-cs",
-  "version": "0.3.32",
+  "version": "0.3.33",
   "description": "MeuJudi Sync — app desktop (Electron) que sincroniza o escritório com o MeuJudi via Portal PDPJ/Jus.br e Mural Eletrônico.",
   "main": "dist/main/index.js",
   "author": "Caio",
@@ -28,6 +28,7 @@
     "@supabase/supabase-js": "^2.111.0",
     "electron-store": "^8.2.0",
     "electron-updater": "^6.3.9",
+    "jsqr": "^1.4.0",
     "node-cron": "^3.0.3",
     "node-machine-id": "^1.1.12",
     "pdf-parse": "^1.1.1",

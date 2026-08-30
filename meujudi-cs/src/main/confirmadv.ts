@@ -532,9 +532,20 @@ export class ConfirmADVService {
         body: JSON.stringify(payload),
       });
       const data = (await response.json()) as { ok?: boolean; status?: ConfirmADVStatus; error?: string };
+      // Se o Web retornou erro mas o evento é terminal (verified, failed,
+      // expired, cancelled), fechar a janela mesmo assim — o resultado já
+      // foi gravado no banco (status "validada" ou "recusada") e não
+      // faz sentido manter a janela aberta. Sem isso, o timeout de
+      // inatividade (5min) marca como "expirada" mesmo com resultado
+      // salvo, e o usuário vê "expirada" em vez de "validada".
       if (!response.ok) {
         logger.warn('Falha ao reportar evento ConfirmADV', eventType, ':', response.status, data.error);
-        return { ok: false };
+        const TERMINAL_EVENTS = new Set(['verified', 'rejected', 'expired', 'failed', 'cancelled']);
+        if (TERMINAL_EVENTS.has(eventType)) {
+          const reason = eventType === 'verified' ? 'verified' : eventType === 'rejected' || eventType === 'failed' ? 'failed' : eventType === 'expired' ? 'expired' : 'cancelled';
+          this.closeWindow(reason);
+        }
+        return { ok: false, status: data.status };
       }
       // Se o Web marcou como terminal, podemos fechar a janela.
       if (data.status && ['validada', 'recusada', 'expirada', 'cancelada'].includes(data.status)) {

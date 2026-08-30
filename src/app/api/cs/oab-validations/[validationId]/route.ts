@@ -207,12 +207,28 @@ export async function POST(request: NextRequest, context: { params: Promise<{ va
     if (rpcError) {
       // O resultado já foi gravado acima (status "validada" +
       // returned_name/status) — essa falha é só na liberação da fonte.
-      // Log e retorna 500 para o cliente saber que algo deu errado.
-      console.error("[cs/oab-validations] finalize_oab_validation falhou:", rpcError);
-      return NextResponse.json(
-        { error: "finalizacao_falhou", details: rpcError.message },
-        { status: 500 },
-      );
+      // Tenta fallback: atualiza user + tenant diretamente. Não é
+      // atômico como a RPC, mas é melhor que deixar o usuário preso
+      // na tela de validação com status "validada" e tenant bloqueado.
+      console.error("[cs/oab-validations] finalize_oab_validation falhou, tentando fallback:", rpcError);
+
+      const now = new Date().toISOString();
+      await Promise.all([
+        supabase
+          .from("users")
+          .update({
+            oab_number: current.oab_number,
+            oab_uf: current.oab_uf,
+            oab_validated_at: now,
+          })
+          .eq("id", current.user_id)
+          .eq("tenant_id", current.tenant_id),
+        supabase
+          .from("tenants")
+          .update({ access_status: "liberado" })
+          .eq("id", current.tenant_id)
+          .neq("access_status", "suspenso"),
+      ]);
     }
 
     // Momento em que o tenant passa a `access_status = 'liberado'` de
