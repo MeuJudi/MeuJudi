@@ -198,17 +198,23 @@ export async function manuallyValidateOab(formData: FormData) {
     throw new Error(`Falha ao finalizar validação: ${rpcError.message}`);
   }
 
-  await supabase.from("oab_validations").insert({
-    tenant_id: tenantId,
-    user_id: userId,
-    oab_number: oabNumber,
-    oab_uf: oabUf,
-    professional_email: "validacao-manual@meujudi.com.br",
-    requester_name: "Super Admin",
-    status: "validada",
-    provider: "manual",
-    verified_at: new Date().toISOString(),
-  });
+  const { error: insertError } = await createServiceClient()
+    .from("oab_validations")
+    .insert({
+      tenant_id: tenantId,
+      user_id: userId,
+      oab_number: oabNumber,
+      oab_uf: oabUf,
+      professional_email: "validacao-manual@meujudi.com.br",
+      requester_name: "Super Admin",
+      status: "validada",
+      provider: "manual",
+      verified_at: new Date().toISOString(),
+    });
+
+  if (insertError) {
+    console.error("[admin/manuallyValidateOab] insert oab_validations falhou:", insertError);
+  }
 
   await supabase.rpc("write_audit_log", {
     p_action: "oab.manually_validated",
