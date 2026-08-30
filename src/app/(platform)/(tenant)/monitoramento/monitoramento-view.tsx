@@ -124,12 +124,12 @@ type MonitoramentoViewProps = {
   error?: string;
   scope?: string;
   userId?: string;
-  sourceValidation?: {
+  sourceValidations?: {
     oabNumber: string;
     oabUf: string;
     verifiedAt: string;
     returnedName: string | null;
-  } | null;
+  }[];
 };
 
 const statusClass: Record<MonitorProcess["status"], string> = {
@@ -603,7 +603,7 @@ export function MonitoramentoView({
   error,
   scope,
   userId,
-  sourceValidation,
+  sourceValidations,
 }: MonitoramentoViewProps) {
   const [view, setView] = useState<"lista" | "kanban" | "mural">("lista");
   const [query, setQuery] = useState("");
@@ -949,15 +949,16 @@ export function MonitoramentoView({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {sourceValidation ? (
+          {sourceValidations?.map((v) => (
             <Badge
+              key={`${v.oabNumber}/${v.oabUf}`}
               className="rounded-full bg-[color-mix(in_srgb,var(--tenant-moss)_14%,transparent)] text-[var(--tenant-moss)]"
-              title={`Validado pelo ConfirmADV em ${new Date(sourceValidation.verifiedAt).toLocaleString("pt-BR")}`}
+              title={`Validado em ${new Date(v.verifiedAt).toLocaleString("pt-BR")}`}
             >
               <CheckCircle2 className="mr-1 inline h-3 w-3" />
-              OAB {sourceValidation.oabNumber}/{sourceValidation.oabUf} validada
+              OAB {v.oabNumber}/{v.oabUf} validada
             </Badge>
-          ) : null}
+          ))}
           <Badge className="rounded-full bg-[color-mix(in_srgb,var(--tenant-moss)_14%,transparent)] text-[var(--tenant-moss)]">
             {metrics.active} processos ativos
           </Badge>
