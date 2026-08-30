@@ -186,7 +186,7 @@ export async function manuallyValidateOab(formData: FormData) {
     throw new Error("Já existe uma validação em andamento para este usuário. Aguarde ou cancele a anterior.");
   }
 
-  const { error: rpcError } = await supabase.rpc("finalize_oab_validation", {
+  const { error: rpcError } = await createServiceClient().rpc("finalize_oab_validation", {
     p_user_id: userId,
     p_tenant_id: tenantId,
     p_oab_number: oabNumber,
