@@ -142,6 +142,7 @@ function CsReleaseCard({ release }: { release: CsRelease }) {
       <CsReleaseActions
         releaseId={release.id}
         isActive={release.is_active}
+        githubReleaseId={release.github_release_id}
       />
     </div>
   );

@@ -282,7 +282,6 @@ export async function uploadLatestYmlToRelease(input: {
   await requireSuperAdmin();
   try {
     const github = await getGithubInstallationToken();
-    const latestYmlBytes = Buffer.from(input.latestYmlContent, "utf-8");
 
     const deleteResponse = await fetch(
       `https://api.github.com/repos/${github.owner}/${github.repo}/releases/${input.releaseId}/assets`,
@@ -321,7 +320,7 @@ export async function uploadLatestYmlToRelease(input: {
           Authorization: `Bearer ${github.token}`,
           "Content-Type": "text/yaml",
         },
-        body: latestYmlBytes,
+        body: Buffer.from(input.latestYmlContent, "utf-8"),
       },
     );
     if (!uploadResponse.ok) {
@@ -335,6 +334,31 @@ export async function uploadLatestYmlToRelease(input: {
     console.error("[CS release] Falha ao enviar latest.yml:", error);
     return { ok: false, error: message };
   }
+}
+
+/** Envia latest.yml para o release existente identificado pelo releaseId do cs_releases. */
+export async function uploadLatestYmlToExistingRelease(input: {
+  csReleaseId: string;
+  latestYmlContent: string;
+}): Promise<ActionResult<null>> {
+  await requireSuperAdmin();
+  const service = createServiceClient();
+  const { data: release } = await service
+    .from("cs_releases")
+    .select("github_release_id, github_tag_name, version")
+    .eq("id", input.csReleaseId)
+    .single();
+
+  if (!release?.github_release_id) {
+    return { ok: false, error: "Esta versão não foi publicada via GitHub (sem github_release_id)." };
+  }
+
+  const result = await uploadLatestYmlToRelease({
+    releaseId: release.github_release_id,
+    latestYmlContent: input.latestYmlContent,
+  });
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true, data: null };
 }
 
 /** Registra no Supabase um asset que ja foi enviado diretamente ao GitHub. */

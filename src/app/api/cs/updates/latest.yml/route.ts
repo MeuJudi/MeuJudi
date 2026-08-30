@@ -39,6 +39,10 @@ export async function GET() {
     return NextResponse.json({ error: "falha_ao_buscar_latest_yml" }, { status: 502 });
   }
 
+  if (response.status === 404) {
+    return NextResponse.json({ error: "latest_yml_nao_encontrado", message: "Nenhum latest.yml encontrado no release mais recente do GitHub. Envie o latest.yml pelo painel admin." }, { status: 404 });
+  }
+
   if (!response.ok) {
     console.error("[cs/updates/latest.yml] GitHub respondeu", response.status);
     return NextResponse.json({ error: "falha_ao_buscar_latest_yml" }, { status: 502 });
