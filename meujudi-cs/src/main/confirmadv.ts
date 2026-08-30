@@ -296,6 +296,10 @@ export class ConfirmADVService {
     // Eventos da janela
     window.webContents.on('did-finish-load', () => {
       this.resetInactivityTimeout(validation.id);
+
+      // Injeta JavaScript para pré-preencher campos do formulário
+      this.injectPrefillData(window, validation);
+
       // Só reporta na primeira carga. O ConfirmADV usa navegação real de
       // página (confirmado no HAR), então isso refiraria em /waiting,
       // /completed etc. e regrediria o status no Web se reportássemos de
@@ -413,6 +417,89 @@ export class ConfirmADVService {
     this.validationTimeout = null;
     this.inactivityTimeout = null;
     this.verificationRetryTimer = null;
+  }
+
+  /**
+   * Tenta pré-preencher os campos do formulário do ConfirmADV via JavaScript.
+   * O ConfirmADV é um site externo — esta injeção é frágil e pode quebrar
+   * se o site mudar. Em caso de erro, é ignorada silenciosamente.
+   */
+  private injectPrefillData(window: BrowserWindow, validation: ConfirmADVValidation): void {
+    const { oab_number, oab_uf, professional_email } = validation;
+
+    const script = `
+      (function() {
+        function findInput(selectors) {
+          for (const sel of selectors) {
+            const el = document.querySelector(sel);
+            if (el) return el;
+          }
+          return null;
+        }
+
+        function findInputByPlaceholder(keywords) {
+          const inputs = document.querySelectorAll('input[type="text"], input[type="email"], input[type="number"], input:not([type])');
+          for (const input of inputs) {
+            const ph = (input.placeholder || '').toLowerCase();
+            const label = input.getAttribute('aria-label') || '';
+            const name = input.name || '';
+            for (const kw of keywords) {
+              if (ph.includes(kw) || label.toLowerCase().includes(kw) || name.toLowerCase().includes(kw)) {
+                return input;
+              }
+            }
+          }
+          return null;
+        }
+
+        function setValue(input, value) {
+          if (!input || !value) return false;
+          const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+          nativeSetter.call(input, value);
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        }
+
+        // OAB number
+        const oabInput = findInput([
+          'input[name="oab"]', 'input[name="oabNumber"]', 'input[name="oab_number"]',
+          'input[id*="oab"]', 'input[id*="OAB"]',
+          'input[name="registro"]', 'input[name="register"]',
+        ]) || findInputByPlaceholder(['oab', 'registro', 'numero', 'matrícula']);
+        setValue(oabInput, '${oab_number}');
+
+        // UF
+        const ufInput = findInput([
+          'select[name="uf"]', 'select[name="oabUf"]', 'select[name="oab_uf"]',
+          'select[id*="uf"]', 'select[id*="UF"]',
+          'input[name="uf"]', 'input[name="state"]',
+        ]) || findInputByPlaceholder(['uf', 'estado', 'state']);
+        if (ufInput) {
+          if (ufInput.tagName === 'SELECT') {
+            const options = Array.from(ufInput.options);
+            const match = options.find(o => o.value === '${oab_uf}' || o.text === '${oab_uf}');
+            if (match) {
+              ufInput.value = match.value;
+              ufInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+          } else {
+            setValue(ufInput, '${oab_uf}');
+          }
+        }
+
+        // Email
+        const emailInput = findInput([
+          'input[type="email"]', 'input[name="email"]',
+          'input[id*="email"]', 'input[name="professionalEmail"]',
+        ]) || findInputByPlaceholder(['email', 'e-mail', 'mail']);
+        setValue(emailInput, '${professional_email}');
+      })();
+    `;
+
+    window.webContents.executeJavaScript(script).catch(() => {
+      // Ignora erros de injeção — o site pode ter mudado a estrutura
+    });
   }
 
   private closeWindow(reason: 'cancelled' | 'verified' | 'expired' | 'failed'): void {
