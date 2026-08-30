@@ -9,7 +9,7 @@ export default async function EquipePage() {
     profile = ctx.profile;
     authUser = ctx.authUser;
   } catch (err) {
-    console.error("[equipe-page] requireOwner failed:", err);
+    console.error("[equipe-page] requireOwner failed:", err instanceof Error ? err.message : err);
     throw err;
   }
 
@@ -25,7 +25,7 @@ export default async function EquipePage() {
     oab_uf: string | null;
   }> = [];
 
-  let invitesWithNames: Array<{
+  const invitesWithNames: Array<{
     id: string;
     email: string;
     role: string;
@@ -41,11 +41,14 @@ export default async function EquipePage() {
       .eq("tenant_id", profile.tenant_id)
       .order("created_at", { ascending: false });
 
+    if (membersResult.error) {
+      console.error("[equipe-page] members query error:", membersResult.error.message, membersResult.error.code);
+    }
     if (membersResult.data) {
       members = membersResult.data;
     }
   } catch (err) {
-    console.error("[equipe-page] members query failed:", err);
+    console.error("[equipe-page] members query failed:", err instanceof Error ? err.message : err);
   }
 
   try {
@@ -54,6 +57,10 @@ export default async function EquipePage() {
       .select("id, email, role, status, expires_at, invited_by")
       .eq("tenant_id", profile.tenant_id)
       .order("created_at", { ascending: false });
+
+    if (invitesResult.error) {
+      console.error("[equipe-page] invites query error:", invitesResult.error.message, invitesResult.error.code);
+    }
 
     const invites = invitesResult.data ?? [];
 

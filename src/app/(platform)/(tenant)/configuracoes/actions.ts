@@ -3,7 +3,6 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { createServiceClient } from "@/lib/supabase/service";
 import { stripMask } from "@/lib/masks";
 import { assertTenantWritable } from "@/lib/auth/access";
 import { dispararDescobertaInicial } from "@/lib/cs/descoberta-inicial";
