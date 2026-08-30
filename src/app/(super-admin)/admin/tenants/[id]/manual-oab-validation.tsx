@@ -21,6 +21,8 @@ interface User {
   email: string;
   role: string;
   is_active: boolean;
+  oab_number: string | null;
+  oab_uf: string | null;
 }
 
 export function ManualOabValidation({ tenantId, users }: { tenantId: string; users: User[] }) {
@@ -33,6 +35,13 @@ export function ManualOabValidation({ tenantId, users }: { tenantId: string; use
   const [oabUf, setOabUf] = useState("");
 
   const activeUsers = users.filter((u) => u.is_active);
+
+  const handleUserChange = (userId: string) => {
+    setSelectedUserId(userId);
+    const user = activeUsers.find((u) => u.id === userId);
+    if (user?.oab_number) setOabNumber(user.oab_number);
+    if (user?.oab_uf) setOabUf(user.oab_uf);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,7 +82,7 @@ export function ManualOabValidation({ tenantId, users }: { tenantId: string; use
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="member">Membro da equipe</Label>
-            <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+            <Select value={selectedUserId} onValueChange={handleUserChange}>
               <SelectTrigger id="member">
                 <SelectValue placeholder="Selecione o membro" />
               </SelectTrigger>

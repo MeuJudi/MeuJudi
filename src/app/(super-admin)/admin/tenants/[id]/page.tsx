@@ -27,7 +27,7 @@ export default async function AdminTenantDetailPage({
         .single(),
       supabase
         .from("users")
-        .select("id, name, email, role, gender, is_active, created_at")
+        .select("id, name, email, role, gender, is_active, oab_number, oab_uf, created_at")
         .eq("tenant_id", id)
         .order("created_at", { ascending: false }),
       supabase
