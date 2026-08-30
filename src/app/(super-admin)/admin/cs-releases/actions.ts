@@ -274,6 +274,69 @@ export async function createGithubReleaseUploadTicket(input: {
   }
 }
 
+/** Faz upload do latest.yml para um release já existente no GitHub. */
+export async function uploadLatestYmlToRelease(input: {
+  releaseId: number;
+  latestYmlContent: string;
+}): Promise<ActionResult<{ assetId: number }>> {
+  await requireSuperAdmin();
+  try {
+    const github = await getGithubInstallationToken();
+    const latestYmlBytes = Buffer.from(input.latestYmlContent, "utf-8");
+
+    const deleteResponse = await fetch(
+      `https://api.github.com/repos/${github.owner}/${github.repo}/releases/${input.releaseId}/assets`,
+      {
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${github.token}`,
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+      },
+    );
+    if (deleteResponse.ok) {
+      const existingAssets = (await deleteResponse.json()) as Array<{ id: number; name: string }>;
+      const existingYml = existingAssets.find((a) => a.name === "latest.yml");
+      if (existingYml) {
+        await fetch(
+          `https://api.github.com/repos/${github.owner}/${github.repo}/releases/assets/${existingYml.id}`,
+          {
+            method: "DELETE",
+            headers: {
+              Accept: "application/vnd.github+json",
+              Authorization: `Bearer ${github.token}`,
+              "X-GitHub-Api-Version": "2022-11-28",
+            },
+          },
+        );
+      }
+    }
+
+    const uploadResponse = await fetch(
+      `https://uploads.github.com/repos/${github.owner}/${github.repo}/releases/${input.releaseId}/assets?name=latest.yml`,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${github.token}`,
+          "Content-Type": "text/yaml",
+        },
+        body: latestYmlBytes,
+      },
+    );
+    if (!uploadResponse.ok) {
+      const details = await uploadResponse.text();
+      throw new Error(`Falha ao enviar latest.yml: ${details}`);
+    }
+    const asset = (await uploadResponse.json()) as { id: number };
+    return { ok: true, data: { assetId: asset.id } };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha ao enviar latest.yml.";
+    console.error("[CS release] Falha ao enviar latest.yml:", error);
+    return { ok: false, error: message };
+  }
+}
+
 /** Registra no Supabase um asset que ja foi enviado diretamente ao GitHub. */
 export async function finalizeGithubReleaseUpload(input: {
   releaseId: number;

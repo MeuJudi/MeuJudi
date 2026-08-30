@@ -8,6 +8,7 @@ import {
   createGithubReleaseUploadTicket,
   finalizeGithubReleaseUpload,
   listGithubReleases,
+  uploadLatestYmlToRelease,
   type TrackedGithubRelease,
 } from "./actions";
 
@@ -38,6 +39,7 @@ export function CsReleaseForm({ latestVersion, savedVersions }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [latestYmlName, setLatestYmlName] = useState<string | null>(null);
   const [source, setSource] = useState<"local" | "git">("local");
   const [releaseKind, setReleaseKind] = useState<ReleaseKind>("patch");
   const [version, setVersion] = useState(() => calculateVersion(latestVersion, "patch"));
@@ -45,6 +47,7 @@ export function CsReleaseForm({ latestVersion, savedVersions }: Props) {
   const [selectedRelease, setSelectedRelease] = useState<TrackedGithubRelease | null>(null);
   const [githubError, setGithubError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const latestYmlRef = useRef<HTMLInputElement>(null);
   const versionRef = useRef<HTMLInputElement>(null);
 
   const selectedVersion = selectedRelease?.version ?? version;
@@ -116,9 +119,22 @@ export function CsReleaseForm({ latestVersion, savedVersions }: Props) {
           browserDownloadUrl: asset.browser_download_url,
         });
         if (!finalizeResult.ok) throw new Error(finalizeResult.error);
+
+        const latestYmlFile = formData.get("latestYml") instanceof File ? (formData.get("latestYml") as File) : null;
+        if (latestYmlFile && latestYmlFile.size > 0) {
+          const latestYmlContent = await latestYmlFile.text();
+          const ymlResult = await uploadLatestYmlToRelease({ releaseId: ticket.releaseId, latestYmlContent });
+          if (!ymlResult.ok) {
+            console.warn("[CS release] Aviso: .exe publicado, mas latest.yml falhou:", ymlResult.error);
+          }
+        } else {
+          console.warn("[CS release] Aviso: .exe publicado, mas latest.yml nao foi enviado. O auto-update pode nao funcionar.");
+        }
+
         setSuccess(true);
         form.reset();
         setFileName(null);
+        setLatestYmlName(null);
         setTimeout(() => setSuccess(false), 3000);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : "Erro ao publicar a versao.");
@@ -191,6 +207,15 @@ export function CsReleaseForm({ latestVersion, savedVersions }: Props) {
                 {fileName ?? "Selecionar arquivo..."}
               </button>
               <input ref={fileRef} name="file" type="file" required={source === "local"} accept=".exe,.msi,.dmg,.appimage,.tar.gz,.zip" className="hidden" onChange={(event) => setFileName(event.target.files?.[0]?.name ?? null)} />
+              <div className="mt-2">
+                <label className="text-xs font-medium text-muted-foreground">latest.yml (obrigatório para auto-update)</label>
+                <button type="button" onClick={() => latestYmlRef.current?.click()} className="mt-1 flex w-full items-center gap-2 rounded-md border border-dashed border-[var(--tenant-line)] bg-[var(--tenant-surface-muted)] px-3 py-2 text-left text-sm hover:bg-[var(--tenant-surface)]">
+                  <FileUp className="h-4 w-4 text-muted-foreground" />
+                  {latestYmlName ?? "Selecionar latest.yml..."}
+                </button>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">Gerado por <code>npm run dist:win:update</code> na pasta <code>release-update/</code>.</p>
+                <input ref={latestYmlRef} name="latestYml" type="file" accept=".yml,.yaml" className="hidden" onChange={(event) => setLatestYmlName(event.target.files?.[0]?.name ?? null)} />
+              </div>
             </>
           ) : (
             <select
