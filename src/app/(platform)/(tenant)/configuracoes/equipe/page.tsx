@@ -13,7 +13,7 @@ export default async function EquipePage() {
     throw err;
   }
 
-  const [{ data: members, error: membersErr }, { data: invites, error: invitesErr }] = await Promise.all([
+  const [{ data: members }, { data: invites }] = await Promise.all([
     supabase
       .from("users")
       .select("id, name, email, role, gender, is_active, avatar_url, last_login_at")
@@ -26,24 +26,31 @@ export default async function EquipePage() {
       .order("created_at", { ascending: false }),
   ]);
 
-  if (membersErr) {
-    console.error("[equipe-page] members query error:", membersErr);
-  }
-  if (invitesErr) {
-    console.error("[equipe-page] invites query error:", invitesErr);
-  }
+  const invitesWithNames: Array<{
+    id: string;
+    email: string;
+    role: string;
+    status: string;
+    expires_at: string;
+    invited_by_name: string | null;
+  }> = [];
 
-  const invitesWithNames = await Promise.all(
-    (invites ?? []).map(async (invite) => {
-      if (!invite.invited_by) return { ...invite, invited_by_name: null };
+  for (const invite of invites ?? []) {
+    try {
+      if (!invite.invited_by) {
+        invitesWithNames.push({ ...invite, invited_by_name: null });
+        continue;
+      }
       const { data: inviter } = await supabase
         .from("users")
         .select("name")
         .eq("id", invite.invited_by)
         .maybeSingle();
-      return { ...invite, invited_by_name: inviter?.name ?? null };
-    })
-  );
+      invitesWithNames.push({ ...invite, invited_by_name: inviter?.name ?? null });
+    } catch {
+      invitesWithNames.push({ ...invite, invited_by_name: null });
+    }
+  }
 
   return (
     <EquipeForm
