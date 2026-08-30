@@ -447,7 +447,7 @@ export async function createInviteMember(formData: FormData) {
 
   const { data: profile } = await supabase
     .from("users")
-    .select("tenant_id, role")
+    .select("tenant_id, role, name")
     .eq("id", user.id)
     .single();
 
@@ -472,14 +472,20 @@ export async function createInviteMember(formData: FormData) {
 
   if (error) throw error;
 
-  const serviceClient = createServiceClient();
-  const { error: inviteError } = await serviceClient.auth.admin.inviteUserByEmail(email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.meujudi.com.br"}/onboarding?flow=join`,
-  });
+  const { data: tenant } = await supabase
+    .from("tenants")
+    .select("name")
+    .eq("id", profile.tenant_id)
+    .single();
 
-  if (inviteError) {
-    console.error("[equipe] Failed to send invite email:", inviteError.message);
-  }
+  const { sendInviteEmail } = await import("@/lib/email/send-invite");
+  await sendInviteEmail({
+    to: email,
+    inviterName: profile.name,
+    tenantName: tenant?.name ?? "Escritório",
+    role,
+    inviteId: inviteId as string,
+  });
 
   revalidatePath("/configuracoes/equipe");
   return { success: true };

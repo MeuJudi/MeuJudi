@@ -73,7 +73,7 @@ export async function signUp(formData: FormData) {
         oab: formData.get("oab"),
         uf: formData.get("uf"),
       },
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/auth/callback?next=/onboarding`,
+      emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.meujudi.com.br"}/auth/callback?next=/onboarding`,
     },
   });
 
@@ -117,7 +117,7 @@ export async function forgotPassword(formData: FormData) {
   const email = requireString(formData, "email");
   const supabase = await createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/reset-password`,
+    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.meujudi.com.br"}/auth/callback?next=/reset-password`,
   });
   if (error) {
     redirect("/forgot-password?error=send_failed");

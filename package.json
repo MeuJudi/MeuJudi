@@ -33,6 +33,7 @@
     "qrcode": "^1.5.4",
     "react": "latest",
     "react-dom": "latest",
+    "resend": "^6.25.0",
     "safe-regex": "^2.1.1",
     "tailwind-merge": "latest"
   },

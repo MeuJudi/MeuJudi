@@ -20,6 +20,15 @@ const publicPrefixes = ["/admin/login", "/forgot-password", "/reset-password"];
 
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
+  const { searchParams } = request.nextUrl;
+
+  // If the root URL has a ?code= param (from Supabase auth redirects),
+  // redirect to /auth/callback so the code gets exchanged properly
+  if (path === "/" && searchParams.has("code")) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/auth/callback";
+    return NextResponse.redirect(url);
+  }
   const isAdminPath = path === "/admin" || path.startsWith("/admin/");
   const isSupportMode = !isAdminPath && Boolean(request.cookies.get(SUPPORT_TENANT_COOKIE)?.value);
   const cookieOptions = isAdminPath || isSupportMode ? { name: ADMIN_AUTH_COOKIE } : undefined;

@@ -108,12 +108,26 @@ export async function createInvites(
 
   if (!user) throw new Error("Não autenticado");
 
-  const serviceClient = createServiceClient();
+  const { data: profile } = await supabase
+    .from("users")
+    .select("tenant_id, name")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile?.tenant_id) throw new Error("Tenant não encontrado");
+
+  const { data: tenant } = await supabase
+    .from("tenants")
+    .select("name")
+    .eq("id", profile.tenant_id)
+    .single();
+
+  const { sendInviteEmail } = await import("@/lib/email/send-invite");
   const results: Array<{ email: string; error?: string }> = [];
 
   for (const invite of invites) {
     const email = invite.email.toLowerCase().trim();
-    const { error } = await supabase.rpc("create_tenant_invite", {
+    const { data: inviteId, error } = await supabase.rpc("create_tenant_invite", {
       p_email: email,
       p_role: invite.role,
     });
@@ -123,12 +137,16 @@ export async function createInvites(
       continue;
     }
 
-    const { error: inviteError } = await serviceClient.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.meujudi.com.br"}/onboarding?flow=join`,
-    });
-
-    if (inviteError) {
-      console.error("[onboarding] Failed to send invite email:", inviteError.message);
+    try {
+      await sendInviteEmail({
+        to: email,
+        inviterName: profile.name,
+        tenantName: tenant?.name ?? "Escritório",
+        role: invite.role,
+        inviteId: inviteId as string,
+      });
+    } catch (err) {
+      console.error("[onboarding] Failed to send invite email:", err);
     }
 
     results.push({ email });
