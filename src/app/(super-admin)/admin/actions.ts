@@ -5,7 +5,88 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { requireSuperAdmin } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/service";
-import { SUPPORT_TENANT_COOKIE } from "@/lib/supabase/auth-scope";
+import { IMPERSONATE_USER_COOKIE } from "@/lib/supabase/auth-scope";
+import { dispararDescobertaInicial } from "@/lib/cs/descoberta-inicial";
+
+const IMPERSONATE_COOKIE_MAX_AGE = 60 * 60 * 2; // 2h — sessão de suporte não fica aberta pra sempre.
+
+/**
+ * Entra como uma pessoa específica de um tenant — acesso completo (não
+ * somente-leitura), pensado pra suporte resolver um problema no lugar do
+ * cliente (ex.: reproduzir um bug que só acontece pra aquele usuário).
+ * `authUser` continua sendo o Super Admin de verdade; só `profile`
+ * (ver requireAppUser em src/lib/auth/guards.ts) passa a ser da pessoa
+ * impersonada — por isso toda tela existente funciona automaticamente,
+ * sem precisar tratar "modo suporte" caso a caso.
+ */
+async function setImpersonationCookie(userId: string) {
+  const cookieStore = await cookies();
+  cookieStore.set(IMPERSONATE_USER_COOKIE, userId, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: IMPERSONATE_COOKIE_MAX_AGE,
+  });
+}
+
+export async function impersonateUser(formData: FormData) {
+  const userId = String(formData.get("user_id") ?? "").trim();
+  if (!userId) throw new Error("user_id obrigatorio");
+
+  const { supabase } = await requireSuperAdmin();
+  const { data: target, error } = await supabase
+    .from("users")
+    .select("id, name, tenant_id, is_active")
+    .eq("id", userId)
+    .single();
+
+  if (error || !target) throw new Error("Usuário não encontrado.");
+  if (!target.is_active) throw new Error("Usuário está desativado.");
+  if (!target.tenant_id) throw new Error("Usuário sem escritório vinculado.");
+
+  await setImpersonationCookie(userId);
+
+  await supabase.rpc("write_audit_log", {
+    p_action: "admin.impersonation_started",
+    p_entity: "users",
+    p_entity_id: userId,
+    p_tenant_id: target.tenant_id,
+    p_category: "admin",
+    p_metadata: { user_name: target.name },
+  });
+
+  redirect("/monitoramento");
+}
+
+/** Atalho pra "entrar como" o owner do escritório, direto da tela do tenant. */
+export async function enterTenantAsOwner(formData: FormData) {
+  const tenantId = String(formData.get("tenant_id") ?? "").trim();
+  if (!tenantId) throw new Error("tenant_id obrigatorio");
+
+  const { supabase } = await requireSuperAdmin();
+  const { data: owner, error } = await supabase
+    .from("users")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("role", "owner")
+    .eq("is_active", true)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !owner) throw new Error("Nenhum owner ativo encontrado neste escritório.");
+
+  const impersonateFormData = new FormData();
+  impersonateFormData.set("user_id", owner.id);
+  await impersonateUser(impersonateFormData);
+}
+
+export async function exitImpersonation() {
+  const cookieStore = await cookies();
+  cookieStore.delete(IMPERSONATE_USER_COOKIE);
+  redirect("/admin/tenants");
+}
 
 export async function setTenantStatus(formData: FormData) {
   const tenantId = String(formData.get("tenant_id") ?? "");
@@ -38,30 +119,9 @@ export async function setTenantStatus(formData: FormData) {
   revalidatePath(`/admin/tenants/${tenantId}`);
 }
 
-export async function enterTenantMaintenance(formData: FormData) {
-  const tenantId = String(formData.get("tenant_id") ?? "").trim();
-  if (!tenantId) throw new Error("tenant_id obrigatorio");
-
-  const { supabase } = await requireSuperAdmin();
-  const { data: tenant, error } = await supabase
-    .from("tenants")
-    .select("id")
-    .eq("id", tenantId)
-    .single();
-
-  if (error || !tenant) throw new Error("Tenant nao encontrado");
-
-  const cookieStore = await cookies();
-  cookieStore.set(SUPPORT_TENANT_COOKIE, tenantId, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 30,
-  });
-
-  redirect(`/monitoramento?tenant=${encodeURIComponent(tenantId)}`);
-}
+// [removido, 31/08/2026] enterTenantMaintenance/exitTenantMaintenance
+// (acesso de suporte somente-leitura, sem escolher uma pessoa) — ver
+// enterTenantAsOwner/impersonateUser/exitImpersonation acima.
 
 function parseDateTime(date: string, time: string) {
   const value = new Date(`${date}T${time || "00:00"}:00`);
@@ -147,12 +207,6 @@ export async function cancelMaintenanceWindow(formData: FormData) {
   revalidatePath("/admin/maintenance");
 }
 
-export async function exitTenantMaintenance() {
-  const cookieStore = await cookies();
-  cookieStore.delete(SUPPORT_TENANT_COOKIE);
-  redirect("/admin/tenants");
-}
-
 export async function manuallyValidateOab(formData: FormData) {
   const { supabase } = await requireSuperAdmin();
   const userId = String(formData.get("user_id") ?? "").trim();
@@ -215,6 +269,15 @@ export async function manuallyValidateOab(formData: FormData) {
   if (insertError) {
     console.error("[admin/manuallyValidateOab] insert oab_validations falhou:", insertError);
   }
+
+  // [corrigido 31/08/2026] Faltava aqui — só o caminho do ConfirmADV via CS
+  // disparava a descoberta imediata; a validação manual do Admin deixava a
+  // OAB esperando o próximo balde de 6h dos crons (ou, antes da migration
+  // 20260831000000, nunca era descoberta). Não bloqueia a resposta: falha
+  // aqui não deve impedir a validação de aparecer concluída.
+  dispararDescobertaInicial(tenantId, oabNumber, oabUf).catch((error) => {
+    console.error("[admin/manuallyValidateOab] falha ao disparar descoberta inicial:", error);
+  });
 
   await supabase.rpc("write_audit_log", {
     p_action: "oab.manually_validated",

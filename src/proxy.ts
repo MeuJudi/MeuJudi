@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { ADMIN_AUTH_COOKIE, SUPPORT_TENANT_COOKIE } from "@/lib/supabase/auth-scope";
+import { ADMIN_AUTH_COOKIE, SUPPORT_TENANT_COOKIE, IMPERSONATE_USER_COOKIE } from "@/lib/supabase/auth-scope";
 
 const protectedPrefixes = [
   "/dashboard",
@@ -30,7 +30,9 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
   const isAdminPath = path === "/admin" || path.startsWith("/admin/");
-  const isSupportMode = !isAdminPath && Boolean(request.cookies.get(SUPPORT_TENANT_COOKIE)?.value);
+  const isSupportMode =
+    !isAdminPath &&
+    Boolean(request.cookies.get(SUPPORT_TENANT_COOKIE)?.value || request.cookies.get(IMPERSONATE_USER_COOKIE)?.value);
   const cookieOptions = isAdminPath || isSupportMode ? { name: ADMIN_AUTH_COOKIE } : undefined;
   let response = NextResponse.next({ request });
   const supabase = createServerClient(

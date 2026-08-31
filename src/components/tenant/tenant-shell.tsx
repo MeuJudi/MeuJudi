@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { signOut } from "@/app/(auth)/actions";
-import { exitTenantMaintenance } from "@/app/(super-admin)/admin/actions";
+import { exitImpersonation } from "@/app/(super-admin)/admin/actions";
 import { cn } from "@/lib/utils";
 import { palettes, getPaletteStyles, type PaletteId } from "@/lib/themes/palettes";
 import { roleLabel } from "@/lib/auth/labels";
@@ -38,6 +38,7 @@ type TenantShellProps = {
   avatarUrl: string | null;
   initialPaletteId: PaletteId;
   upcomingMaintenance?: MaintenanceWindow[];
+  impersonating?: { adminName: string } | null;
 };
 
 const navItems = [
@@ -58,11 +59,10 @@ function initials(name: string) {
     .join("") || "MJ";
 }
 
-export function TenantShell({ children, userName, role, gender, avatarUrl, initialPaletteId, upcomingMaintenance = [] }: TenantShellProps) {
+export function TenantShell({ children, userName, role, gender, avatarUrl, initialPaletteId, upcomingMaintenance = [], impersonating = null }: TenantShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const tenantParam = searchParams.get("tenant");
   const currentScope = searchParams.get("scope") ?? "all";
   const [paletteId, setPaletteId] = useState<PaletteId>(() => {
     if (typeof window === "undefined") return initialPaletteId;
@@ -117,22 +117,6 @@ export function TenantShell({ children, userName, role, gender, avatarUrl, initi
     };
   }, [paletteStyles]);
 
-  function withTenantContext(href: string) {
-    if (!tenantParam) return href;
-    const separator = href.includes("?") ? "&" : "?";
-    return `${href}${separator}tenant=${encodeURIComponent(tenantParam)}`;
-  }
-
-  function withScope(href: string, scope: string) {
-    let url = href;
-    if (tenantParam) {
-      url += `?tenant=${encodeURIComponent(tenantParam)}&scope=${scope}`;
-    } else {
-      url += `?scope=${scope}`;
-    }
-    return url;
-  }
-
   function handleScopeChange(scope: string) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("scope", scope);
@@ -143,7 +127,7 @@ export function TenantShell({ children, userName, role, gender, avatarUrl, initi
     <div className="tenant-shell min-h-screen" data-theme="custom" style={paletteStyles}>
       <div className="grid min-h-screen lg:grid-cols-[230px_1fr]">
         <aside className="sticky top-0 z-20 flex h-auto gap-2 overflow-x-auto bg-[var(--tenant-sidebar)] px-3 py-3 text-[var(--tenant-sidebar-foreground)] lg:h-screen lg:flex-col lg:overflow-visible lg:px-3 lg:py-5">
-          <Link href={withTenantContext("/monitoramento")} className="flex shrink-0 items-center pb-5 pr-4 lg:pb-5">
+          <Link href={"/monitoramento"} className="flex shrink-0 items-center pb-5 pr-4 lg:pb-5">
             <span className="block w-40 lg:w-full">
               <MeuJudiLogo className={cn("block h-auto w-full", paletteId === "padrao" && "logo-outline-white")} />
             </span>
@@ -155,7 +139,7 @@ export function TenantShell({ children, userName, role, gender, avatarUrl, initi
               return (
                 <Link
                   key={item.href}
-                  href={withTenantContext(item.href)}
+                  href={item.href}
                   className={cn(
                     "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-[var(--tenant-sidebar-foreground)] transition-colors hover:bg-[var(--tenant-surface-muted)] hover:text-[var(--tenant-brass)]",
                     active && "bg-[var(--tenant-surface-muted)] text-[var(--tenant-brass)]",
@@ -172,7 +156,7 @@ export function TenantShell({ children, userName, role, gender, avatarUrl, initi
 
           <div className="border-[var(--tenant-line)] lg:border-t lg:pt-2">
             <Link
-              href={withTenantContext("/configuracoes")}
+              href={"/configuracoes"}
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-[var(--tenant-sidebar-foreground)] transition-colors hover:bg-[var(--tenant-surface-muted)] hover:text-[var(--tenant-brass)]",
                 pathname.startsWith("/configuracoes") && "bg-[var(--tenant-surface-muted)] text-[var(--tenant-brass)]",
@@ -185,11 +169,14 @@ export function TenantShell({ children, userName, role, gender, avatarUrl, initi
         </aside>
 
         <main className="min-w-0 bg-[var(--tenant-paper)] px-4 py-5 text-[var(--tenant-surface-foreground)] sm:px-6 lg:px-8">
-          {role === "super_admin" && tenantParam ? (
+          {impersonating ? (
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-              <span><strong>Acesso de suporte:</strong> visualização somente leitura deste escritório como Super Admin.</span>
-              <form action={exitTenantMaintenance}>
-                <button type="submit" className="font-medium underline underline-offset-2">Voltar ao Super Admin</button>
+              <span>
+                <strong>Modo suporte:</strong> {impersonating.adminName} está atuando como {userName}. Ações feitas
+                agora ficam registradas em nome dessa pessoa.
+              </span>
+              <form action={exitImpersonation}>
+                <button type="submit" className="font-medium underline underline-offset-2">Sair e voltar ao Super Admin</button>
               </form>
             </div>
           ) : null}
@@ -349,14 +336,14 @@ export function TenantShell({ children, userName, role, gender, avatarUrl, initi
                     </div>
                     <div className="py-1">
                       <Link
-                        href={withTenantContext("/configuracoes/perfil")}
+                        href={"/configuracoes/perfil"}
                         className="flex items-center gap-2 px-4 py-2 text-sm text-[var(--tenant-surface-foreground)] transition-colors hover:bg-[var(--tenant-surface-muted)]"
                       >
                         <UserCircle className="h-4 w-4" />
                         Meu Perfil
                       </Link>
                       <Link
-                        href={withTenantContext("/configuracoes")}
+                        href={"/configuracoes"}
                         className="flex items-center gap-2 px-4 py-2 text-sm text-[var(--tenant-surface-foreground)] transition-colors hover:bg-[var(--tenant-surface-muted)]"
                       >
                         <Settings className="h-4 w-4" />

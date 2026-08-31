@@ -88,7 +88,7 @@ export default async function EquipePage() {
     <EquipeForm
       members={members}
       invites={invitesWithNames}
-      currentUserId={authUser.id}
+      currentUserId={profile.id}
     />
   );
 }

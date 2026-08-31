@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireSuperAdmin } from "@/lib/auth/guards";
-import { enterTenantMaintenance } from "../../actions";
+import { enterTenantAsOwner, impersonateUser } from "../../actions";
 import { TenantStatusButton } from "../tenant-status-button";
 import { roleLabel } from "@/lib/auth/labels";
 import { ManualOabValidation } from "./manual-oab-validation";
@@ -60,9 +60,9 @@ export default async function AdminTenantDetailPage({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <form action={enterTenantMaintenance}>
+          <form action={enterTenantAsOwner}>
             <input type="hidden" name="tenant_id" value={tenant.id} />
-            <Button type="submit" variant="outline">Abrir acesso de suporte</Button>
+            <Button type="submit" variant="outline">Entrar como o owner</Button>
           </form>
           <TenantStatusButton tenantId={tenant.id} active={tenant.is_active} />
           <DeleteTenantButton tenantId={tenant.id} tenantName={tenant.name} />
@@ -111,6 +111,12 @@ export default async function AdminTenantDetailPage({
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="outline">{roleLabel(user.role, user.gender)}</Badge>
+                  <form action={impersonateUser}>
+                    <input type="hidden" name="user_id" value={user.id} />
+                    <Button type="submit" size="sm" variant="outline" disabled={!user.is_active}>
+                      Entrar como
+                    </Button>
+                  </form>
                   {user.role !== "owner" && (
                     <DeleteUserButton userId={user.id} tenantId={tenant.id} userName={user.name} />
                   )}

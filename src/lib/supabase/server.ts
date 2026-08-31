@@ -1,10 +1,13 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import { ADMIN_AUTH_COOKIE, SUPPORT_TENANT_COOKIE, type AuthScope } from "./auth-scope";
+import { ADMIN_AUTH_COOKIE, SUPPORT_TENANT_COOKIE, IMPERSONATE_USER_COOKIE, type AuthScope } from "./auth-scope";
 
 export async function createClient(scope?: AuthScope) {
   const cookieStore = await cookies();
-  const effectiveScope = scope ?? (cookieStore.get(SUPPORT_TENANT_COOKIE)?.value ? "admin" : "tenant");
+  const hasSupportCookie = Boolean(
+    cookieStore.get(SUPPORT_TENANT_COOKIE)?.value || cookieStore.get(IMPERSONATE_USER_COOKIE)?.value,
+  );
+  const effectiveScope = scope ?? (hasSupportCookie ? "admin" : "tenant");
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

@@ -15,7 +15,7 @@ export default async function TenantLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const { profile, supabase } = await requireAppUser();
+  const { profile, supabase, impersonating } = await requireAppUser();
   const cookieStore = await cookies();
   const rawPalette = cookieStore.get("meujudi-palette")?.value;
   const paletteId: PaletteId =
@@ -32,6 +32,7 @@ export default async function TenantLayout({
       avatarUrl={profile.avatar_url}
       initialPaletteId={paletteId}
       upcomingMaintenance={upcomingMaintenance}
+      impersonating={impersonating}
     >
       <CsStatusBanner />
       {children}
