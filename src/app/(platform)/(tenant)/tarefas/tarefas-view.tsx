@@ -18,7 +18,7 @@ import { displayUserName } from "@/lib/auth/display-name";
 export type { TaskItem };
 
 export type TaskColumn = { id: string; name: string; position: number; color: string; is_default: boolean };
-export type TaskUser = { id: string; name: string; nickname: string | null; email: string; oab_number: string | null; oab_uf: string | null; avatar_url: string | null };
+export type TaskUser = { id: string; name: string; nickname: string | null; email: string; oab_number: string | null; oab_uf: string | null; avatar_url: string | null; gender?: string | null };
 
 const priorityClass = {
   alta: "bg-[color-mix(in_srgb,var(--tenant-wine)_10%,transparent)] text-[var(--tenant-wine)]",

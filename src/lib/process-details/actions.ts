@@ -2,6 +2,7 @@
 
 import { requireAppUser, requireWritableAppUser } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/service";
+import { displayUserName } from "@/lib/auth/display-name";
 
 export type ProcessDetails = {
   process: {
@@ -186,7 +187,7 @@ async function resolveAttorneyAvatars(keys: AttorneyKey[], attorneys: unknown[])
   const ufs = [...new Set(keys.map((key) => key.uf))];
   const [{ data: users }, { data: directory }] = await Promise.all([
     service.from("users")
-      .select("name, nickname, oab_number, oab_uf, avatar_url, is_active")
+      .select("name, nickname, oab_number, oab_uf, avatar_url, gender, is_active")
       .in("oab_number", numbers)
       .in("oab_uf", ufs)
       .eq("is_active", true),
@@ -202,7 +203,11 @@ async function resolveAttorneyAvatars(keys: AttorneyKey[], attorneys: unknown[])
     const uf = String(user.oab_uf ?? "").toUpperCase();
     if (number && uf && user.avatar_url) {
       const displayName = String(user.nickname ?? user.name ?? "").trim();
-      matches.set(`${number}/${uf}`, { avatar_url: user.avatar_url, avatar_source: "meujudi_user", display_name: displayName ? `Dr. ${displayName}` : "" });
+      matches.set(`${number}/${uf}`, {
+        avatar_url: user.avatar_url,
+        avatar_source: "meujudi_user",
+        display_name: displayName ? displayUserName({ name: user.name, nickname: user.nickname, oab_number: number, oab_uf: uf, gender: user.gender }) : "",
+      });
     }
   }
   for (const item of directory ?? []) {
@@ -229,7 +234,7 @@ async function resolveAttorneyAvatars(keys: AttorneyKey[], attorneys: unknown[])
  * /api/cs/document-requests/* autenticadas por device token.
  */
 export async function solicitarDocumento(processoDocumentoId: string): Promise<{ requestId: string }> {
-  const { supabase, authUser, profile } = await requireWritableAppUser();
+  const { supabase, profile } = await requireWritableAppUser();
   if (!profile.tenant_id) throw new Error("Usuario sem tenant.");
 
   const { data: documento, error: documentoError } = await supabase
@@ -250,7 +255,7 @@ export async function solicitarDocumento(processoDocumentoId: string): Promise<{
       processo_documento_id: documento.id,
       cnj: cnjValue,
       pdpj_documento_id: documento.pdpj_documento_id,
-      requested_by: authUser.id,
+      requested_by: profile.id,
     })
     .select("id")
     .single();

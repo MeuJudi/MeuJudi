@@ -42,7 +42,7 @@ export type TaskItem = {
   attachments: { id: string; name: string; type: string; url: string; source: string }[];
 };
 
-type UserProfile = { id: string; name: string; nickname: string | null; email: string; oab_number: string | null; oab_uf: string | null; avatar_url: string | null };
+type UserProfile = { id: string; name: string; nickname: string | null; email: string; oab_number: string | null; oab_uf: string | null; avatar_url: string | null; gender?: string | null };
 
 const priorityLabels: Record<TaskItem["priority"], string> = {
   alta: "Alta",
