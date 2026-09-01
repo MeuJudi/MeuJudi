@@ -179,11 +179,17 @@ async function buscarDocumentosConhecidos(deviceToken: string, cnj: string, docu
   }
 }
 
-async function enviarResultadoPdpj(deviceToken: string, cnj: string, documentos: DocumentoParaEnviar[], metadata: PdpjMetadata): Promise<void> {
+async function enviarResultadoPdpj(
+  deviceToken: string,
+  cnj: string,
+  documentos: DocumentoParaEnviar[],
+  metadata: PdpjMetadata,
+  oab?: { oabNumber?: string; oabUf?: string },
+): Promise<void> {
   const response = await fetch(`${MEUJUDI_WEB_URL}/api/cs/sync/pdpj`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deviceToken}` },
-    body: JSON.stringify({ cnj, documentos, metadata }),
+    body: JSON.stringify({ cnj, documentos, metadata, oabNumber: oab?.oabNumber, oabUf: oab?.oabUf }),
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({})) as Record<string, unknown>;
@@ -269,7 +275,7 @@ export function createPdpjTaskHandlers(pairing: Pairing, auth: PdpjAuth) {
           const cnj = cnjRaw.replace(/\D/g, '');
           if (cnj.length !== 20) continue;
           recebidos += 1;
-          const created = await createPdpjCnjTask(deviceToken, cnj, task.id);
+          const created = await createPdpjCnjTask(deviceToken, cnj, task.id, state.oabNumber, state.oabUf);
           if (created) novos += 1;
         }
 
@@ -305,6 +311,15 @@ export function createPdpjTaskHandlers(pairing: Pairing, auth: PdpjAuth) {
   const handlePdpjCnj: TaskHandler = async (task: SyncTask): Promise<TaskHandlerResult> => {
     const cnj = task.cnj;
     if (!cnj) return { status: 'failed', errorCode: 'sem_cnj', errorMessage: 'Tarefa pdpj_cnj sem CNJ.' };
+    // [corrigido] `createPdpjCnjTask` grava a OAB que descobriu este CNJ no
+    // cursor da tarefa — sem isso, `processo_participantes.oab_number/uf`
+    // ficava sempre vazio (achado 01/09/2026, ao investigar por que não dava
+    // pra saber quais processos vieram da OAB de um advogado específico).
+    const cursorOab = isRecord(task.cursor) ? task.cursor : null;
+    const oab = {
+      oabNumber: typeof cursorOab?.oabNumber === 'string' ? cursorOab.oabNumber : undefined,
+      oabUf: typeof cursorOab?.oabUf === 'string' ? cursorOab.oabUf : undefined,
+    };
 
     try {
       await ensureSession();
@@ -333,7 +348,7 @@ export function createPdpjTaskHandlers(pairing: Pairing, auth: PdpjAuth) {
         // descoberta por OAB não tinha nada disso até o primeiro pdpj_cnj
         // que passasse por aqui, e "sem documento novo" acontece logo na
         // primeira sincronização real de muitos deles).
-        await enviarResultadoPdpj(token, cnj, [], metadata);
+        await enviarResultadoPdpj(token, cnj, [], metadata, oab);
         recordDiagnosticEvent('pdpj_cnj_task_finished', 'success', `CNJ ${cnj.slice(-8)} sem documento novo, pulado`, {
           documentosVerificados: documentos.length,
         });
@@ -351,7 +366,7 @@ export function createPdpjTaskHandlers(pairing: Pairing, auth: PdpjAuth) {
         texto: textos[indice],
       }));
 
-      await enviarResultadoPdpj(token, cnj, documentosParaEnviar, metadata);
+      await enviarResultadoPdpj(token, cnj, documentosParaEnviar, metadata, oab);
 
       recordDiagnosticEvent('pdpj_cnj_task_finished', 'success', `Detalhe do CNJ ${cnj.slice(-8)} sincronizado`, {
         documentosEncontrados: documentosParaEnviar.length,
@@ -371,7 +386,7 @@ export function createPdpjTaskHandlers(pairing: Pairing, auth: PdpjAuth) {
     }
   };
 
-  async function createPdpjCnjTask(deviceToken: string, cnj: string, parentTaskId: string): Promise<boolean> {
+  async function createPdpjCnjTask(deviceToken: string, cnj: string, parentTaskId: string, oabNumber: string, oabUf: string): Promise<boolean> {
     const response = await fetch(`${MEUJUDI_WEB_URL}/api/cs/tasks/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deviceToken}` },
@@ -382,6 +397,7 @@ export function createPdpjTaskHandlers(pairing: Pairing, auth: PdpjAuth) {
         cnj,
         parentTaskId,
         priority: 6,
+        cursor: { oabNumber, oabUf },
       }),
     }).catch((err) => {
       logger.warn('[PdpjTasks] Falha ao criar tarefa pdpj_cnj:', err.message);
