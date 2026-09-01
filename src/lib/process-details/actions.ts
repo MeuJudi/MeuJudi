@@ -198,22 +198,34 @@ async function resolveAttorneyAvatars(keys: AttorneyKey[], attorneys: unknown[])
   ]);
 
   const matches = new Map<string, { avatar_url: string; avatar_source: string; display_name: string }>();
+  // Um usuário real do MeuJudi com essa OAB é sempre a fonte de verdade do
+  // NOME, mesmo sem foto de perfil — achado 01/09/2026: exigir avatar_url
+  // pra sequer registrar o match fazia um advogado real sem foto (comum em
+  // conta nova) cair no fallback do lawyers_directory, que pode estar
+  // desatualizado (a OAB pode ter sido de outra pessoa antes — é um
+  // diretório global por número de OAB, não por tenant).
   for (const user of users ?? []) {
     const number = String(user.oab_number ?? "").replace(/\D/g, "");
     const uf = String(user.oab_uf ?? "").toUpperCase();
-    if (number && uf && user.avatar_url) {
-      const displayName = String(user.nickname ?? user.name ?? "").trim();
-      matches.set(`${number}/${uf}`, {
-        avatar_url: user.avatar_url,
-        avatar_source: "meujudi_user",
-        display_name: displayName ? displayUserName({ name: user.name, nickname: user.nickname, oab_number: number, oab_uf: uf, gender: user.gender }) : "",
-      });
-    }
+    if (!number || !uf) continue;
+    const displayName = String(user.nickname ?? user.name ?? "").trim();
+    matches.set(`${number}/${uf}`, {
+      avatar_url: user.avatar_url ?? "",
+      avatar_source: "meujudi_user",
+      display_name: displayName ? displayUserName({ name: user.name, nickname: user.nickname, oab_number: number, oab_uf: uf, gender: user.gender }) : "",
+    });
   }
   for (const item of directory ?? []) {
     const key = `${item.oab_number_normalized}/${String(item.oab_uf).toUpperCase()}`;
-    if (!matches.has(key) && item.avatar_url) {
-      matches.set(key, { avatar_url: item.avatar_url, avatar_source: item.avatar_source ?? "authorized_external", display_name: item.canonical_name ?? "" });
+    const existing = matches.get(key);
+    if (!existing) {
+      // Sem usuário real cadastrado — usa o diretório inteiro (nome + avatar).
+      if (item.avatar_url) matches.set(key, { avatar_url: item.avatar_url, avatar_source: item.avatar_source ?? "authorized_external", display_name: item.canonical_name ?? "" });
+    } else if (!existing.avatar_url && item.avatar_url) {
+      // Usuário real existe mas não tem foto — só empresta o avatar do
+      // diretório, nunca o nome (esse já veio do usuário real acima).
+      existing.avatar_url = item.avatar_url;
+      existing.avatar_source = item.avatar_source ?? "authorized_external";
     }
   }
 
