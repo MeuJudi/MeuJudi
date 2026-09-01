@@ -13,6 +13,7 @@ const tabs = [
   { href: "/configuracoes/equipe", label: "Equipe" },
   { href: "/configuracoes/seguranca", label: "Segurança" },
   { href: "/configuracoes/notificacoes", label: "Notificações" },
+  { href: "/configuracoes/ajuda", label: "Ajuda" },
 ];
 
 export default function ConfiguracoesLayout({ children }: { children: React.ReactNode }) {
