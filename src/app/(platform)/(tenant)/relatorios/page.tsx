@@ -1,5 +1,6 @@
 import { RelatoriosView, type ReportData } from "./relatorios-view";
 import { requireAppUser } from "@/lib/auth/guards";
+import { getProcessIdsForTenant } from "@/lib/processos/helpers";
 
 // Mesmo limite de monitoramento/page.tsx — evita estourar o tamanho da URL
 // num `.in("id", ...)` quando o tenant tem muitos processos vinculados
@@ -21,11 +22,7 @@ export default async function RelatoriosPage() {
   const [{ data: processes }, { count: clients }, { data: tasks }, { count: movements }] = await Promise.all([
     // Buscar IDs via processo_participantes, depois buscar processos
     (async () => {
-      const { data: pp } = await supabase
-        .from("processo_participantes")
-        .select("processo_id")
-        .eq("tenant_id", tenantId);
-      const ids = [...new Set((pp ?? []).map((p) => p.processo_id))];
+      const ids = await getProcessIdsForTenant(supabase, tenantId);
       if (ids.length === 0) return { data: [], error: null } as const;
       const rows: ReportData["processes"] = [];
       for (let from = 0; from < ids.length; from += PROCESS_ID_CHUNK_SIZE) {

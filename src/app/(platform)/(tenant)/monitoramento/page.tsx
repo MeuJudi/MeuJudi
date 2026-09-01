@@ -1,6 +1,7 @@
 import { MonitoramentoView, type KanbanColumn, type MonitorProcess } from "./monitoramento-view";
 import { requireTenantDataAccess as requireAppUser } from "@/lib/auth/tenant-access";
 import { unstable_noStore as noStore } from "next/cache";
+import { getProcessIdsForTenant } from "@/lib/processos/helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -154,19 +155,7 @@ async function fetchAllProcessRows(
   tenantId: string,
 ) {
   const rows: ProcessRow[] = [];
-
-  // Buscar IDs dos processos que o tenant participa (via processo_participantes).
-  // Um mesmo processo pode ter mais de uma participação (ex.: duas OABs do
-  // escritório no mesmo caso) — dedup aqui evita buscar/repetir a mesma
-  // linha e mantém a lista de IDs o menor possível.
-  const { data: participacoes, error: ppError } = await supabase
-    .from("processo_participantes")
-    .select("processo_id")
-    .eq("tenant_id", tenantId);
-
-  if (ppError) throw new Error(`Falha ao carregar participações: ${ppError.message}`);
-
-  const processoIds = [...new Set((participacoes ?? []).map((p) => p.processo_id))];
+  const processoIds = await getProcessIdsForTenant(supabase, tenantId);
   if (processoIds.length === 0) return [];
 
   for (let from = 0; from < processoIds.length; from += PROCESS_ID_CHUNK_SIZE) {
@@ -213,11 +202,7 @@ export default async function MonitoramentoPage({
 
   if (defaultColumnId) {
     // Buscar IDs dos processos do tenant para atualizar kanban_column_id
-    const { data: pp } = await supabase
-      .from("processo_participantes")
-      .select("processo_id")
-      .eq("tenant_id", tenantId);
-    const ids = [...new Set((pp ?? []).map((p) => p.processo_id))];
+    const ids = await getProcessIdsForTenant(supabase, tenantId);
     for (let from = 0; from < ids.length; from += PROCESS_ID_CHUNK_SIZE) {
       await supabase
         .from("processos")
@@ -250,11 +235,7 @@ export default async function MonitoramentoPage({
       .gte("data_movimento", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
     // Urgentes hoje: prazo_proxima_resposta = hoje (via processo_participantes)
     (async () => {
-      const { data: pp2 } = await supabase
-        .from("processo_participantes")
-        .select("processo_id")
-        .eq("tenant_id", tenantId);
-      const ids2 = [...new Set((pp2 ?? []).map((p) => p.processo_id))];
+      const ids2 = await getProcessIdsForTenant(supabase, tenantId);
       if (ids2.length === 0) return { count: 0, error: null } as const;
       const hoje = new Date().toISOString().split("T")[0];
       let total = 0;
