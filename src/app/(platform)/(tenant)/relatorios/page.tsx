@@ -1,6 +1,11 @@
 import { RelatoriosView, type ReportData } from "./relatorios-view";
 import { requireAppUser } from "@/lib/auth/guards";
 
+// Mesmo limite de monitoramento/page.tsx — evita estourar o tamanho da URL
+// num `.in("id", ...)` quando o tenant tem muitos processos vinculados
+// (achado 01/09/2026).
+const PROCESS_ID_CHUNK_SIZE = 200;
+
 async function resolveTenantId(supabase: Awaited<ReturnType<typeof requireAppUser>>["supabase"], profile: Awaited<ReturnType<typeof requireAppUser>>["profile"]) {
   if (profile.tenant_id) return profile.tenant_id;
   if (profile.role !== "super_admin") return null;
@@ -20,9 +25,18 @@ export default async function RelatoriosPage() {
         .from("processo_participantes")
         .select("processo_id")
         .eq("tenant_id", tenantId);
-      const ids = (pp ?? []).map((p) => p.processo_id);
+      const ids = [...new Set((pp ?? []).map((p) => p.processo_id))];
       if (ids.length === 0) return { data: [], error: null } as const;
-      return supabase.from("processos").select("id, status, tribunal, prazo_proxima_resposta").in("id", ids);
+      const rows: ReportData["processes"] = [];
+      for (let from = 0; from < ids.length; from += PROCESS_ID_CHUNK_SIZE) {
+        const { data, error } = await supabase
+          .from("processos")
+          .select("id, status, tribunal, prazo_proxima_resposta")
+          .in("id", ids.slice(from, from + PROCESS_ID_CHUNK_SIZE));
+        if (error) return { data: null, error } as const;
+        rows.push(...(data ?? []));
+      }
+      return { data: rows, error: null } as const;
     })(),
     supabase.from("clientes").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId),
     supabase.from("tarefas").select("id, priority, due_date").eq("tenant_id", tenantId),

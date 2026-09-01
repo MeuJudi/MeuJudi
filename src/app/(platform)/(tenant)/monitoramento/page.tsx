@@ -142,15 +142,23 @@ async function ensureKanbanColumns(
   return (insertedRows ?? []) as KanbanColumnRow[];
 }
 
+// Tamanho seguro pra caber num `.in("id", ...)` sem estourar limite de
+// tamanho de URL (achado 01/09/2026 — um tenant com >1000 processos
+// vinculados via processo_participantes derrubava a página inteira com
+// "Erro de renderização" porque o pageSize de 1000 UUIDs gerava uma URL
+// de ~40KB). 200 UUIDs fica bem abaixo de qualquer limite comum (8-16KB).
+const PROCESS_ID_CHUNK_SIZE = 200;
+
 async function fetchAllProcessRows(
   supabase: Awaited<ReturnType<typeof requireAppUser>>["supabase"],
   tenantId: string,
 ) {
-  const pageSize = 1000;
   const rows: ProcessRow[] = [];
-  let page = 0;
 
-  // Buscar IDs dos processos que o tenant participa (via processo_participantes)
+  // Buscar IDs dos processos que o tenant participa (via processo_participantes).
+  // Um mesmo processo pode ter mais de uma participação (ex.: duas OABs do
+  // escritório no mesmo caso) — dedup aqui evita buscar/repetir a mesma
+  // linha e mantém a lista de IDs o menor possível.
   const { data: participacoes, error: ppError } = await supabase
     .from("processo_participantes")
     .select("processo_id")
@@ -158,24 +166,21 @@ async function fetchAllProcessRows(
 
   if (ppError) throw new Error(`Falha ao carregar participações: ${ppError.message}`);
 
-  const processoIds = (participacoes ?? []).map((p) => p.processo_id);
+  const processoIds = [...new Set((participacoes ?? []).map((p) => p.processo_id))];
   if (processoIds.length === 0) return [];
 
-  while (true) {
-    const from = page * pageSize;
-    const to = from + pageSize - 1;
+  for (let from = 0; from < processoIds.length; from += PROCESS_ID_CHUNK_SIZE) {
+    const chunk = processoIds.slice(from, from + PROCESS_ID_CHUNK_SIZE);
     const { data, error } = await supabase
       .from("processos")
       .select("id, cnj, tribunal, classe_nome, autor, reu, prazo_proxima_resposta, proxima_audiencia, status, kanban_column_id, tags, is_favorito, data_ultima_movimentacao, responsavel_id, created_at, ultima_sync_mural")
-      .in("id", processoIds.slice(from, to + 1))
+      .in("id", chunk)
       .order("created_at", { ascending: false });
 
     if (error) throw new Error(`Falha ao carregar processos: ${error.message}`);
-
     rows.push(...((data ?? []) as ProcessRow[]));
-    if (processoIds.length <= to + 1) return rows;
-    page += 1;
   }
+  return rows;
 }
 
 export default async function MonitoramentoPage({
@@ -212,12 +217,12 @@ export default async function MonitoramentoPage({
       .from("processo_participantes")
       .select("processo_id")
       .eq("tenant_id", tenantId);
-    const ids = (pp ?? []).map((p) => p.processo_id);
-    if (ids.length > 0) {
+    const ids = [...new Set((pp ?? []).map((p) => p.processo_id))];
+    for (let from = 0; from < ids.length; from += PROCESS_ID_CHUNK_SIZE) {
       await supabase
         .from("processos")
         .update({ kanban_column_id: defaultColumnId })
-        .in("id", ids)
+        .in("id", ids.slice(from, from + PROCESS_ID_CHUNK_SIZE))
         .is("kanban_column_id", null);
     }
   }
@@ -249,14 +254,21 @@ export default async function MonitoramentoPage({
         .from("processo_participantes")
         .select("processo_id")
         .eq("tenant_id", tenantId);
-      const ids2 = (pp2 ?? []).map((p) => p.processo_id);
+      const ids2 = [...new Set((pp2 ?? []).map((p) => p.processo_id))];
       if (ids2.length === 0) return { count: 0, error: null } as const;
-      return supabase
-        .from("processos")
-        .select("id", { count: "exact", head: true })
-        .in("id", ids2)
-        .eq("status", "ativo")
-        .eq("prazo_proxima_resposta", new Date().toISOString().split("T")[0]);
+      const hoje = new Date().toISOString().split("T")[0];
+      let total = 0;
+      for (let from = 0; from < ids2.length; from += PROCESS_ID_CHUNK_SIZE) {
+        const { count, error } = await supabase
+          .from("processos")
+          .select("id", { count: "exact", head: true })
+          .in("id", ids2.slice(from, from + PROCESS_ID_CHUNK_SIZE))
+          .eq("status", "ativo")
+          .eq("prazo_proxima_resposta", hoje);
+        if (error) return { count: null, error } as const;
+        total += count ?? 0;
+      }
+      return { count: total, error: null } as const;
     })(),
     // Validações OAB positivas do tenant.
     supabase
