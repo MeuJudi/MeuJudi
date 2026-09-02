@@ -4,11 +4,12 @@ import { BarChart3, Building2, CalendarClock, ClipboardList, FileDown, HelpCircl
 import { requireSuperAdmin } from "@/lib/auth/guards";
 import { adminSignOut } from "@/app/(auth)/actions";
 import { cn } from "@/lib/utils";
+import { createServiceClient } from "@/lib/supabase/service";
 
 const adminLinks = [
   { href: "/admin", label: "Resumo", icon: BarChart3 },
   { href: "/admin/tenants", label: "Clientes", icon: Building2 },
-  { href: "/admin/ajuda", label: "Ajuda", icon: HelpCircle },
+  { href: "/admin/ajuda", label: "Ajuda", icon: HelpCircle, showBadge: true },
   { href: "/admin/oab-stats", label: "OAB Métricas", icon: ShieldCheck },
   { href: "/admin/cs-releases", label: "CS Versões", icon: FileDown },
   { href: "/admin/cs-diagnostics", label: "CS Diagnósticos", icon: MonitorCog },
@@ -24,8 +25,18 @@ export const metadata: Metadata = {
   },
 };
 
+async function getNewReportCount(): Promise<number> {
+  const supabase = createServiceClient();
+  const { count } = await supabase
+    .from("support_reports")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "novo");
+  return count ?? 0;
+}
+
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   await requireSuperAdmin();
+  const newReportCount = await getNewReportCount();
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -45,6 +56,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             >
               <link.icon className="h-4 w-4" />
               {link.label}
+              {link.showBadge && newReportCount > 0 && (
+                <span className="ml-auto rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                  {newReportCount > 99 ? "99+" : newReportCount}
+                </span>
+              )}
             </Link>
           ))}
         </nav>

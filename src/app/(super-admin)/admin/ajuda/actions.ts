@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireSuperAdmin } from "@/lib/auth/guards";
+import { sendSupportAnswerEmail } from "@/lib/email/send-support-answer";
 
 export type SupportReportWithTenant = {
   id: string;
@@ -84,6 +85,43 @@ export async function answerSupportReport(
     .eq("id", reportId);
 
   if (error) return { error: "Nao foi possivel salvar a resposta." };
+
+  // Envia email de notificação pro tenant (fire and forget)
+  const { data: reportData } = await supabase
+    .from("support_reports")
+    .select("user_email, user_name, title, report_type, tenant_id, user_id")
+    .eq("id", reportId)
+    .single();
+
+  if (reportData?.user_email) {
+    const { data: tenantData } = await supabase
+      .from("tenants")
+      .select("name")
+      .eq("id", reportData.tenant_id)
+      .single();
+
+    sendSupportAnswerEmail({
+      to: reportData.user_email,
+      tenantName: tenantData?.name ?? "Meu Judi",
+      userName: reportData.user_name,
+      reportTitle: reportData.title,
+      answer: trimmed,
+      reportType: reportData.report_type,
+    }).catch(() => undefined);
+  }
+
+  // Cria notificação in-app pro tenant
+  if (reportData?.user_id) {
+    const typeLabels: Record<string, string> = { bug: "erro", sugestao: "sugestão", duvida: "dúvida" };
+    await supabase.from("notifications").insert({
+      tenant_id: reportData.tenant_id,
+      user_id: reportData.user_id,
+      type: "support_answer",
+      title: `Sua ${typeLabels[reportData.report_type] ?? "report"} foi respondida`,
+      message: `"${reportData.title}" recebeu uma resposta do suporte.`,
+      link: "/configuracoes/ajuda",
+    });
+  }
 
   revalidatePath("/admin/ajuda");
   revalidatePath(`/admin/ajuda/${reportId}`);
