@@ -120,11 +120,31 @@ function extrairDataAudiencia(contexto: string): string | null {
   return null;
 }
 
+// Texto já passou por normalizarTextoPdpj (remove acento) antes de chegar
+// aqui, então "não" sempre vira "nao" — não precisa cobrir a forma acentuada.
+// Sem flag `g`/stateless — seguro reaproveitar entre chamadas.
+const REGEX_AGENDAMENTO_NEGADO = /\bnao\b[^.]{0,25}?(?:designada|redesignada|agendada)\b/i;
+
 function extrairAudiencias(texto: string): AudienciaPdpj[] {
   const encontrados: AudienciaPdpj[] = [];
-  const regex = /(?:(?:audiencia|sessao de julgamento|pauta de julgamento)[\s\S]{0,180}?(?:designada|redesignada|agendada|paute-se|retire-se de pauta|realizada|compareceram)[\s\S]{0,100}|(?:paute-se|retire-se de pauta)[\s\S]{0,100}(?:audiencia|sessao de julgamento|pauta de julgamento)[\s\S]{0,100})/gi;
+  // [corrigido 01/09/2026] "realizada"/"compareceram" removidos dos
+  // gatilhos: são sempre passado (audiência que já aconteceu), nunca
+  // indicam uma data futura — usá-los criava evento de agenda pra
+  // audiência que já ocorreu. Regex criado aqui dentro (não como
+  // constante do módulo) de propósito: tem flag `g` e usa `.exec()` em
+  // loop com estado (`lastIndex`) — como módulo compartilhado entre
+  // chamadas, o estado vazaria de um documento pro próximo.
+  const regex = /(?:(?:audiencia|sessao de julgamento|pauta de julgamento)[\s\S]{0,180}?(?:designada|redesignada|agendada|paute-se|retire-se de pauta)[\s\S]{0,100}|(?:paute-se|retire-se de pauta)[\s\S]{0,100}(?:audiencia|sessao de julgamento|pauta de julgamento)[\s\S]{0,100})/gi;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(texto))) {
+    // Descarta quando o verbo de agendamento vem negado ("nao agendada
+    // automaticamente", "nao foi designada") — sem isso, uma frase dizendo
+    // que a audiência NÃO existe virava evento de agenda com a data mais
+    // próxima no texto (quase sempre de outro assunto, ex.: distribuição).
+    // Achado real: "Audiencia inicial do processo nao agendada
+    // automaticamente" batia no gatilho "agendada" mesmo dizendo o
+    // contrário, e "Distribuído em" virava data de audiência fantasma.
+    if (REGEX_AGENDAMENTO_NEGADO.test(match[0])) continue;
     const item = evidencia(texto, match, match[0]);
     encontrados.push({ ...item, dataIso: extrairDataAudiencia(item.contexto) });
   }
